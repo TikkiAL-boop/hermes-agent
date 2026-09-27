@@ -8,19 +8,69 @@ interface AreaLabels {
     sections: Record<AdminSection, string>
     intro: Record<AdminSection, string>
     roles: { save: string; saved: string; loading: string; missingProfile: string; houseRules: string; pick: string }
-    bots: { name: string; task: string; model: string; fallback: string; port: string; status: string; atStart: string; onDemand: string; online: string; offline: string; unknown: string; setup: string }
+    bots: {
+      name: string
+      task: string
+      model: string
+      fallback: string
+      port: string
+      status: string
+      atStart: string
+      onDemand: string
+      online: string
+      offline: string
+      unknown: string
+      setup: string
+    }
     users: { name: string; address: string; role: string; admin: string; member: string; invite: string; note: string }
     nodes: { name: string; kind: string; ram: string; role: string; status: string; note: string }
   }
   areas: Record<Area, string>
   browser: { close: string; newTab: string; untitled: string }
-  post: { comingSoon: string; inbox: string; title: string }
+  post: {
+    address: string
+    addressHint: string
+    attachments: string
+    cancel: string
+    cc: string
+    compose: string
+    delete: string
+    inbox: string
+    loading: string
+    markUnread: string
+    noMessages: string
+    noSelection: string
+    password: string
+    reply: string
+    refresh: string
+    send: string
+    sending: string
+    sent: string
+    signIn: string
+    signInIntro: string
+    signInButton: string
+    signingIn: string
+    signOut: string
+    subject: string
+    title: string
+    to: string
+    unread: string
+  }
   rail: { label: string }
 }
 
 const de: AreaLabels = {
   admin: {
-    sections: { schluessel: 'Schlüssel', modelle: 'Modelle', regeln: 'Regeln & Prompts', bots: 'Bots', nutzer: 'Nutzer', rechner: 'Rechner', gedaechtnis: 'Gedächtnis', system: 'System' },
+    sections: {
+      schluessel: 'Schlüssel',
+      modelle: 'Modelle',
+      regeln: 'Regeln & Prompts',
+      bots: 'Bots',
+      nutzer: 'Nutzer',
+      rechner: 'Rechner',
+      gedaechtnis: 'Gedächtnis',
+      system: 'System'
+    },
     intro: {
       schluessel: 'Alle Anbieter-Schlüssel an einer Stelle. Sie liegen beim Backend, nie in der App.',
       modelle: 'Welches Modell wofür: Tikki im Vorzimmer, der Raumleiter, die Bots. Mit Ausweichkette.',
@@ -31,24 +81,93 @@ const de: AreaLabels = {
       gedaechtnis: 'Was Tikki sich merkt: getrennt nach Nutzer, System und Projekt.',
       system: 'Backend, Gateway, Verbindungen, Updates.'
     },
-    roles: { save: 'Speichern', saved: 'Gespeichert', loading: 'Lade …', missingProfile: 'Profil ist auf diesem Backend noch nicht angelegt. Einrichten mit tikki/werkzeuge/rollen-einrichten.sh.', houseRules: 'Hausregeln (gelten für alle Rollen)', pick: 'Rolle wählen' },
-    bots: { name: 'Rolle', task: 'Aufgabe', model: 'Modell', fallback: 'Ausweich', port: 'Port', status: 'Status', atStart: 'ab Start im Raum', onDemand: 'nach Bedarf', online: 'erreichbar', offline: 'aus', unknown: 'unbekannt', setup: 'Truppe einrichten: tikki/werkzeuge/rollen-einrichten.sh auf dem Rechner mit Hermes ausführen.' },
-    users: { name: 'Name', address: 'Adresse', role: 'Rolle', admin: 'Admin', member: 'Familie', invite: 'Einladen', note: 'Anmeldung mit name@tikki.team. Konten und Rechte kommen mit den Räumen; die Liste hier ist die Vorlage.' },
-    nodes: { name: 'Rechner', kind: 'Art', ram: 'RAM', role: 'Rolle', status: 'Status', note: 'Rechner melden sich später selbst an. Bis dahin ist das die geplante Flotte.' }
+    roles: {
+      save: 'Speichern',
+      saved: 'Gespeichert',
+      loading: 'Lade …',
+      missingProfile:
+        'Profil ist auf diesem Backend noch nicht angelegt. Einrichten mit tikki/werkzeuge/rollen-einrichten.sh.',
+      houseRules: 'Hausregeln (gelten für alle Rollen)',
+      pick: 'Rolle wählen'
+    },
+    bots: {
+      name: 'Rolle',
+      task: 'Aufgabe',
+      model: 'Modell',
+      fallback: 'Ausweich',
+      port: 'Port',
+      status: 'Status',
+      atStart: 'ab Start im Raum',
+      onDemand: 'nach Bedarf',
+      online: 'erreichbar',
+      offline: 'aus',
+      unknown: 'unbekannt',
+      setup: 'Truppe einrichten: tikki/werkzeuge/rollen-einrichten.sh auf dem Rechner mit Hermes ausführen.'
+    },
+    users: {
+      name: 'Name',
+      address: 'Adresse',
+      role: 'Rolle',
+      admin: 'Admin',
+      member: 'Familie',
+      invite: 'Einladen',
+      note: 'Anmeldung mit name@tikki.team. Konten und Rechte kommen mit den Räumen; die Liste hier ist die Vorlage.'
+    },
+    nodes: {
+      name: 'Rechner',
+      kind: 'Art',
+      ram: 'RAM',
+      role: 'Rolle',
+      status: 'Status',
+      note: 'Rechner melden sich später selbst an. Bis dahin ist das die geplante Flotte.'
+    }
   },
   areas: { admin: 'Admin', browser: 'Browser', post: 'Post', terminal: 'Terminal', tikki: 'Tikki' },
   browser: { close: 'Tab schließen', newTab: 'Neuer Tab', untitled: 'Neue Seite' },
   post: {
-    comingSoon: 'Das Postfach kommt als Nächstes: Posteingang, Schreiben, Anhänge, und Tikki liest mit.',
+    address: 'Adresse',
+    addressHint: 'Dein Postfach bei tikki.team, z. B. karin@tikki.team. Das Passwort bleibt auf diesem Rechner.',
+    attachments: 'Anhänge',
+    cancel: 'Abbrechen',
+    cc: 'Kopie',
+    compose: 'Schreiben',
+    delete: 'Löschen',
     inbox: 'Posteingang',
-    title: 'Post'
+    loading: 'Lade …',
+    markUnread: 'Als ungelesen markieren',
+    noMessages: 'Keine Nachrichten in diesem Ordner.',
+    noSelection: 'Wähle links eine Nachricht.',
+    password: 'Passwort',
+    reply: 'Antworten',
+    refresh: 'Aktualisieren',
+    send: 'Senden',
+    sending: 'Sende …',
+    sent: 'Gesendet.',
+    signIn: 'Anmelden',
+    signInIntro: 'Post für die Familie. Melde dich mit deiner tikki.team-Adresse an.',
+    signInButton: 'Anmelden',
+    signingIn: 'Prüfe Zugang …',
+    signOut: 'Abmelden',
+    subject: 'Betreff',
+    title: 'Post',
+    to: 'An',
+    unread: 'ungelesen'
   },
   rail: { label: 'Bereiche' }
 }
 
 const en: AreaLabels = {
   admin: {
-    sections: { schluessel: 'Keys', modelle: 'Models', regeln: 'Rules & prompts', bots: 'Bots', nutzer: 'Users', rechner: 'Machines', gedaechtnis: 'Memory', system: 'System' },
+    sections: {
+      schluessel: 'Keys',
+      modelle: 'Models',
+      regeln: 'Rules & prompts',
+      bots: 'Bots',
+      nutzer: 'Users',
+      rechner: 'Machines',
+      gedaechtnis: 'Memory',
+      system: 'System'
+    },
     intro: {
       schluessel: 'Every provider key in one place. They live with the backend, never in the app.',
       modelle: 'Which model for what: Tikki at the front desk, the room lead, the bots. With fallbacks.',
@@ -59,17 +178,76 @@ const en: AreaLabels = {
       gedaechtnis: 'What Tikki remembers: separated by user, system and project.',
       system: 'Backend, gateway, connections, updates.'
     },
-    roles: { save: 'Save', saved: 'Saved', loading: 'Loading …', missingProfile: 'Profile is not set up on this backend yet. Run tikki/werkzeuge/rollen-einrichten.sh.', houseRules: 'House rules (apply to every role)', pick: 'Pick a role' },
-    bots: { name: 'Role', task: 'Task', model: 'Model', fallback: 'Fallback', port: 'Port', status: 'Status', atStart: 'in the room from the start', onDemand: 'on demand', online: 'reachable', offline: 'off', unknown: 'unknown', setup: 'Set up the troop: run tikki/werkzeuge/rollen-einrichten.sh on the machine running Hermes.' },
-    users: { name: 'Name', address: 'Address', role: 'Role', admin: 'Admin', member: 'Family', invite: 'Invite', note: 'Sign-in with name@tikki.team. Accounts and rights ship with the rooms; this list is the template.' },
-    nodes: { name: 'Machine', kind: 'Kind', ram: 'RAM', role: 'Role', status: 'Status', note: 'Machines will register themselves later. Until then this is the planned fleet.' }
+    roles: {
+      save: 'Save',
+      saved: 'Saved',
+      loading: 'Loading …',
+      missingProfile: 'Profile is not set up on this backend yet. Run tikki/werkzeuge/rollen-einrichten.sh.',
+      houseRules: 'House rules (apply to every role)',
+      pick: 'Pick a role'
+    },
+    bots: {
+      name: 'Role',
+      task: 'Task',
+      model: 'Model',
+      fallback: 'Fallback',
+      port: 'Port',
+      status: 'Status',
+      atStart: 'in the room from the start',
+      onDemand: 'on demand',
+      online: 'reachable',
+      offline: 'off',
+      unknown: 'unknown',
+      setup: 'Set up the troop: run tikki/werkzeuge/rollen-einrichten.sh on the machine running Hermes.'
+    },
+    users: {
+      name: 'Name',
+      address: 'Address',
+      role: 'Role',
+      admin: 'Admin',
+      member: 'Family',
+      invite: 'Invite',
+      note: 'Sign-in with name@tikki.team. Accounts and rights ship with the rooms; this list is the template.'
+    },
+    nodes: {
+      name: 'Machine',
+      kind: 'Kind',
+      ram: 'RAM',
+      role: 'Role',
+      status: 'Status',
+      note: 'Machines will register themselves later. Until then this is the planned fleet.'
+    }
   },
   areas: { admin: 'Admin', browser: 'Browser', post: 'Mail', terminal: 'Terminal', tikki: 'Tikki' },
   browser: { close: 'Close tab', newTab: 'New tab', untitled: 'New page' },
   post: {
-    comingSoon: 'Mail is next: inbox, compose, attachments, and Tikki reads along.',
+    address: 'Address',
+    addressHint: 'Your tikki.team mailbox, e.g. karin@tikki.team. The password stays on this machine.',
+    attachments: 'Attachments',
+    cancel: 'Cancel',
+    cc: 'Cc',
+    compose: 'Compose',
+    delete: 'Delete',
     inbox: 'Inbox',
-    title: 'Mail'
+    loading: 'Loading …',
+    markUnread: 'Mark as unread',
+    noMessages: 'No messages in this folder.',
+    noSelection: 'Pick a message on the left.',
+    password: 'Password',
+    reply: 'Reply',
+    refresh: 'Refresh',
+    send: 'Send',
+    sending: 'Sending …',
+    sent: 'Sent.',
+    signIn: 'Sign in',
+    signInIntro: 'Mail for the family. Sign in with your tikki.team address.',
+    signInButton: 'Sign in',
+    signingIn: 'Checking access …',
+    signOut: 'Sign out',
+    subject: 'Subject',
+    title: 'Mail',
+    to: 'To',
+    unread: 'unread'
   },
   rail: { label: 'Areas' }
 }

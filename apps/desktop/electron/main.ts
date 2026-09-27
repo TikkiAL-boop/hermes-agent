@@ -500,6 +500,7 @@ import { createSshTeardownTracker } from './ssh-teardown'
 import { createStreamThrottle } from './stream-throttle'
 import { installSystemCaTrust } from './system-ca'
 import { registerTerminalIpc } from './terminal-ipc'
+import { TikkiMailService } from './tikki-mail'
 import { nativeOverlayWidth as computeNativeOverlayWidth, titleBarOverlayOptions } from './titlebar-overlay-width'
 import {
   backgroundMaterialFor,
@@ -15831,6 +15832,32 @@ ipcMain.handle('hermes:connection-config:test', async (_event, payload) => testD
 // and re-encodes every stored secret (see applySecretStorageEncryption).
 ipcMain.handle('hermes:secret-storage:get', async () => ({ on: secretStoragePolicy().on }))
 ipcMain.handle('hermes:secret-storage:set', async (_event: any, on: any) => applySecretStorageEncryption(on === true))
+
+// ── Tikki Post (mail) IPC ───────────────────────────────────────────────────
+// The mail client's main-process half (tikki-mail.ts). Credentials go through
+// the same secret store as gateway tokens and never reach the renderer; every
+// call below is a plain request/response over IMAP or SMTP.
+const tikkiMailStorePath = () => path.join(app.getPath('userData'), 'tikki-mail.json')
+const tikkiMail = new TikkiMailService({
+  decrypt: decryptDesktopSecret,
+  encrypt: value => encryptDesktopSecret(value),
+  log: rememberLog,
+  readStoreText: () => fs.readFileSync(tikkiMailStorePath(), 'utf8'),
+  writeStoreText: (text: string) => {
+    fs.mkdirSync(path.dirname(tikkiMailStorePath()), { recursive: true })
+    fs.writeFileSync(tikkiMailStorePath(), text, { mode: 0o600 })
+  }
+})
+
+ipcMain.handle('tikki:mail:status', () => tikkiMail.status())
+ipcMain.handle('tikki:mail:login', (_event, input) => tikkiMail.login(input))
+ipcMain.handle('tikki:mail:logout', () => tikkiMail.logout())
+ipcMain.handle('tikki:mail:mailboxes', () => tikkiMail.mailboxes())
+ipcMain.handle('tikki:mail:list', (_event, mailbox, limit) => tikkiMail.list(String(mailbox), Number(limit) || 50))
+ipcMain.handle('tikki:mail:read', (_event, mailbox, uid) => tikkiMail.read(String(mailbox), Number(uid)))
+ipcMain.handle('tikki:mail:seen', (_event, mailbox, uid, seen) => tikkiMail.setSeen(String(mailbox), Number(uid), seen === true))
+ipcMain.handle('tikki:mail:remove', (_event, mailbox, uid) => tikkiMail.remove(String(mailbox), Number(uid)))
+ipcMain.handle('tikki:mail:send', (_event, input) => tikkiMail.send(input))
 
 // ── v2 connection registry IPC (multi-source) ───────────────────────────────
 // Storage-level CRUD for named agent sources. Routing/pooling consumption of

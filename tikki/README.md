@@ -84,6 +84,28 @@ Nur in Umgebungsvariablen oder in `~/.hermes/profiles/<slug>/.env` (liegt außer
 Nie in Dateien in diesem Repo, nie im Chat, nie in Seelen. Der Sicherheitsbeauftragte und der
 API-Fachmann geben gefundene Schlüssel grundsätzlich nicht wieder.
 
+## Post und Browser
+
+**Post** ist ein eigener Mail-Client in der App (`apps/desktop/electron/tikki-mail.ts`,
+Oberfläche unter `apps/desktop/src/app/areas/post-area.tsx`). Anmeldung mit
+`name@tikki.team` und dem Postfach-Passwort; die Adresse bestimmt die Server:
+
+| Weg  | Server              | Port | Verschlüsselung |
+|------|---------------------|------|-----------------|
+| IMAP | `mail.tikki.email`  | 993  | TLS             |
+| SMTP | `mail.tikki.email`  | 587  | STARTTLS        |
+
+Das Passwort bleibt auf dem Rechner (Secret-Store der App), die Oberfläche
+sieht es nie. Für Tests gegen einen anderen Server: `TIKKI_MAIL_IMAP_HOST`,
+`TIKKI_MAIL_IMAP_PORT`, `TIKKI_MAIL_SMTP_HOST`, `TIKKI_MAIL_SMTP_PORT`.
+
+**Browser**: Cookie-Banner werden automatisch weggeklickt
+(`apps/desktop/electron/preview-guest-cookie-consent.ts`). Bekannte
+Consent-Manager (OneTrust, Cookiebot, Didomi, Quantcast, …) über ihre festen
+Knöpfe, alles andere über die Beschriftung („Alle akzeptieren“, „Zustimmen“,
+„Accept all“ …), aber nur innerhalb eines Dialogs, der nach Cookie/Consent
+aussieht. Höchstens vier Klicks pro Seite.
+
 ## Ports
 
 8650 (Tikki) bis 8661 (Übersetzer), je Rolle einer, nur auf `127.0.0.1`. Die Belegung steht

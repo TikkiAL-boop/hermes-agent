@@ -654,6 +654,18 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
       return () => ipcRenderer.removeListener('hermes:updates:progress', listener)
     }
   },
+  // Tikki Post: the mail client (electron/tikki-mail.ts). Passwords stay in main.
+  tikkiMail: {
+    status: () => ipcRenderer.invoke('tikki:mail:status'),
+    login: input => ipcRenderer.invoke('tikki:mail:login', input),
+    logout: () => ipcRenderer.invoke('tikki:mail:logout'),
+    mailboxes: () => ipcRenderer.invoke('tikki:mail:mailboxes'),
+    list: (mailbox, limit) => ipcRenderer.invoke('tikki:mail:list', mailbox, limit),
+    read: (mailbox, uid) => ipcRenderer.invoke('tikki:mail:read', mailbox, uid),
+    setSeen: (mailbox, uid, seen) => ipcRenderer.invoke('tikki:mail:seen', mailbox, uid, seen),
+    remove: (mailbox, uid) => ipcRenderer.invoke('tikki:mail:remove', mailbox, uid),
+    send: input => ipcRenderer.invoke('tikki:mail:send', input)
+  },
   themes: {
     fetchMarketplace: id => ipcRenderer.invoke('hermes:vscode-theme:fetch', id),
     searchMarketplace: query => ipcRenderer.invoke('hermes:vscode-theme:search', query)

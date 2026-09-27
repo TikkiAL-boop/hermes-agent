@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import { atom, computed } from 'nanostores'
 import type { CSSProperties, ReactElement, PointerEvent as ReactPointerEvent } from 'react'
 
+import { AreaShell } from '@/app/areas/shell'
 import { SessionDraftTitle } from '@/app/chat/session-draft-title'
 import { SessionStatusDot } from '@/app/chat/session-status-dot'
 import { PALETTE_AREA, type PaletteContribution, paletteToggle } from '@/app/command-palette/contrib'
@@ -832,7 +833,11 @@ export function ContribController() {
           data-contrib-shell=""
           style={{ '--titlebar-height': '0px' } as CSSProperties}
         >
-          <LayoutTreeRoot titlebar />
+          {/* Tikki: the four areas (chat, browser, mail, terminal) behind the
+              left rail. The chat is the Hermes layout tree, unchanged. */}
+          <AreaShell>
+            <LayoutTreeRoot titlebar />
+          </AreaShell>
 
           {/* "Close running tab?" — the busy/input-blocked tile close gate. */}
           <SessionTileCloseConfirm />

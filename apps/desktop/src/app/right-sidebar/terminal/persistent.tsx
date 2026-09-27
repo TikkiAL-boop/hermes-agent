@@ -8,6 +8,8 @@ import { markRightPanePerf } from '@/debug/right-pane-events'
 import { createRendererLoopPauseController } from '@/lib/renderer-loop-pause'
 import { $paneStates } from '@/store/panes'
 
+import { $area } from '@/app/areas/store'
+
 import { $terminalTakeover } from '../store'
 
 import { ensureTerminal } from './terminals'
@@ -24,6 +26,15 @@ const $slot = atom<HTMLElement | null>(null)
 
 const SLOT_CLASS = 'relative flex min-h-0 min-w-0 flex-1 flex-col'
 
+// Slots register in mount order; the newest one wins. When the Terminal area
+// (Tikki) mounts its own slot over the chat's bottom pane, the overlay follows
+// it, and when that area unmounts the pane's slot takes over again.
+const registeredSlots: HTMLElement[] = []
+
+const publishSlot = () => {
+  $slot.set(registeredSlots[registeredSlots.length - 1] ?? null)
+}
+
 export function TerminalSlot({ className = SLOT_CLASS }: { className?: string }) {
   const ref = useRef<HTMLDivElement | null>(null)
 
@@ -34,12 +45,17 @@ export function TerminalSlot({ className = SLOT_CLASS }: { className?: string })
       return
     }
 
-    $slot.set(el)
+    registeredSlots.push(el)
+    publishSlot()
 
     return () => {
-      if ($slot.get() === el) {
-        $slot.set(null)
+      const index = registeredSlots.indexOf(el)
+
+      if (index !== -1) {
+        registeredSlots.splice(index, 1)
       }
+
+      publishSlot()
     }
   }, [])
 
@@ -63,7 +79,10 @@ const sameRect = (a: Rect | null, b: Rect) =>
 
 export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalProps) {
   const slot = useStore($slot)
-  const terminalTakeover = useStore($terminalTakeover)
+  const takeoverPref = useStore($terminalTakeover)
+  const area = useStore($area)
+  // The Terminal area shows the shells without the chat's bottom pane opening.
+  const terminalTakeover = takeoverPref || area === 'terminal'
   const [rect, setRect] = useState<Rect | null>(null)
   const [ready, setReady] = useState(false)
 

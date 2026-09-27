@@ -5,10 +5,10 @@
  */
 
 import { useStore } from '@nanostores/react'
-import { Puzzle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
+import { Puzzle } from '@/lib/icons'
 import { $chatLayoutPicked, assembleChatOnboarding } from '@/components/onboarding-chat/assembly'
 import { CardFrame, type CardProps, useCardCommit } from '@/components/onboarding-chat/cards/frame'
 import { Chip } from '@/components/onboarding-chat/chip'

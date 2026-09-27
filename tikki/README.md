@@ -1,0 +1,90 @@
+# Tikki – Bot-Truppe für Gruppenräume
+
+Tikki ist der Familienassistent auf Basis von Hermes. Dieser Ordner enthält alles, was die
+fertige Bot-Truppe für Gruppenräume braucht: den Rollenkatalog, die Seelen (System-Prompts)
+der Rollen, eine Konfigurationsvorlage und zwei Skripte zum Einrichten und Prüfen.
+Der Hermes-Quellcode außerhalb von `tikki/` bleibt unverändert.
+
+## Was liegt hier
+
+| Pfad | Inhalt |
+|------|--------|
+| `rollen/KATALOG.json` | Die 12 Rollen: Name, Kurzbeschreibung, Modelle, Werkzeuge, Port, Profilname |
+| `rollen/<slug>/SOUL.md` | System-Prompt der jeweiligen Rolle (Deutsch, mit Hausregeln) |
+| `hermes/vorlage-rolle.yaml` | Vorlage für `config.yaml` eines Rollenprofils (echte Hermes-Schlüssel) |
+| `werkzeuge/rollen-einrichten.sh` | Legt pro Rolle ein Hermes-Profil an bzw. bringt es auf Stand (`--dry-run` möglich) |
+| `werkzeuge/rollen-status.sh` | Fragt `/health` auf dem Port jeder Rolle ab |
+
+## Die Truppe
+
+- **Tikki** (Vorzimmer) – begrüßt, plaudert, beantwortet Mail-Fragen, macht aus Aufträgen Räume. Arbeitet nie selbst.
+- **Raumleiter** – sitzt ab Start in jedem Raum, plant, delegiert an bis zu 30 Bots, prüft, fasst zusammen, stoppt erst bei Ziel oder Entscheidung.
+- **Arbeiter** (werden bei Bedarf geholt): Rechercheur, Prüfer, Schreiber, Frontend-Entwickler,
+  Backend-Entwickler, Sicherheitsbeauftragter, Datenanalyst, Organisator, API-Fachmann, Übersetzer.
+
+Jede Seele enthält dieselben Hausregeln: Deutsch, kurz, keine Technik-Werbung, Aufgaben zu Ende
+bringen, bei echtem Bedarf eine `BRAUCHE:`-Zeile mit Vorschlag, Ergebnisse im Raum-Chat.
+
+## Einrichten auf dem Mac
+
+Voraussetzung: Hermes ist installiert (`hermes` im PATH oder dieses Repo mit `.venv`).
+
+```bash
+# 1. Schlüssel in die Umgebung (z. B. ~/.zshrc oder ein Passwortmanager, nie ins Repo)
+export XAI_API_KEY="…"
+export CURSOR_API_KEY="…"
+
+# 2. Ansehen, was passieren würde
+tikki/werkzeuge/rollen-einrichten.sh --dry-run
+
+# 3. Profile anlegen bzw. aktualisieren
+tikki/werkzeuge/rollen-einrichten.sh
+
+# 4. Pro Profil den Bearer-Schlüssel für den HTTP-Dienst setzen (Hermes verlangt ihn)
+#    -> ~/.hermes/profiles/<slug>/.env : API_SERVER_KEY=<eigener zufälliger Wert>
+
+# 5. Rollen starten (je ein Prozess, je ein Port)
+hermes -p tikki gateway
+hermes -p raumleiter gateway
+# … weitere Rollen bei Bedarf
+
+# 6. Prüfen
+tikki/werkzeuge/rollen-status.sh
+```
+
+Das Einrichten ist wiederholbar: vorhandene Profile werden nicht neu angelegt, `SOUL.md` und
+`config.yaml` werden nur geschrieben, wenn sie sich unterscheiden. `--nur <slug>` beschränkt
+den Lauf auf eine Rolle.
+
+## Modelle und Ersatz
+
+Die Zuordnung steht im Katalog unter `modell.primary` / `modell.fallback` in der Form
+`anbieter/modell`. Das Skript schreibt daraus `model.provider` + `model.default` und die
+`fallback_providers`-Kette in die Profilkonfiguration:
+
+- Tikki und alle Arbeiter: schnelles Hauptmodell, starkes Ersatzmodell.
+- Raumleiter: starkes Hauptmodell (Planung, Delegation), schnelles Ersatzmodell.
+
+Hermes wechselt bei Fehlern (Ratenlimit, Überlastung, Verbindung) automatisch auf den Ersatz.
+Modellnamen sind Konfiguration, nicht Prompt: In keiner Seele steht ein Modellname.
+
+Der Anbieter `cursor` ist in `hermes/vorlage-rolle.yaml` als eigener OpenAI-kompatibler Endpunkt
+eingetragen. **Die `base_url` dort ist vor dem ersten Einsatz zu prüfen.**
+
+## Wo die Schlüssel hingehören
+
+Nur in Umgebungsvariablen oder in `~/.hermes/profiles/<slug>/.env` (liegt außerhalb des Repos):
+
+| Variable | Zweck |
+|----------|-------|
+| `XAI_API_KEY` | Anbieter `xai` |
+| `CURSOR_API_KEY` | Anbieter `cursor` |
+| `API_SERVER_KEY` | Bearer-Schlüssel des HTTP-Dienstes, pro Profil |
+
+Nie in Dateien in diesem Repo, nie im Chat, nie in Seelen. Der Sicherheitsbeauftragte und der
+API-Fachmann geben gefundene Schlüssel grundsätzlich nicht wieder.
+
+## Ports
+
+8650 (Tikki) bis 8661 (Übersetzer), je Rolle einer, nur auf `127.0.0.1`. Die Belegung steht
+im Katalog; `rollen-status.sh` liest sie von dort.

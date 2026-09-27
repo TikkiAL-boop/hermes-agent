@@ -6,7 +6,7 @@ import { atom } from 'nanostores'
 
 import { persistString, storedString } from '@/lib/storage'
 
-export const AREAS = ['tikki', 'browser', 'post', 'terminal'] as const
+export const AREAS = ['tikki', 'browser', 'post', 'terminal', 'admin'] as const
 
 export type Area = (typeof AREAS)[number]
 

@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react'
 
 import { useI18n } from '@/i18n'
-import { Globe, Mail, MessageCircle, Terminal } from '@/lib/icons'
+import { Globe, Mail, MessageCircle, Settings, Terminal } from '@/lib/icons'
 import { isMacPlatform } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +9,7 @@ import { areaLabels } from './labels'
 import { $area, type Area, AREAS, setArea } from './store'
 
 const ICONS: Record<Area, typeof Globe> = {
+  admin: Settings,
   browser: Globe,
   post: Mail,
   terminal: Terminal,
@@ -50,6 +51,7 @@ export function AreaRail() {
             )}
             key={id}
             onClick={() => setArea(id)}
+            style={id === 'admin' ? { marginTop: 'auto' } : undefined}
             type="button"
           >
             <Icon aria-hidden className="size-6" stroke={1.75} />

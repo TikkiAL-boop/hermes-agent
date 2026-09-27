@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { hiddenPaneProps, PaneVisibleContext } from '@/components/pane-shell/pane-visibility'
 import { cn } from '@/lib/utils'
 
+import { AdminArea } from './admin'
 import { BrowserArea } from './browser-area'
 import { PostArea } from './post-area'
 import { AreaRail } from './rail'
@@ -29,7 +30,7 @@ function AreaLayer({ active, children, id }: { active: boolean; children: ReactN
  */
 export function AreaShell({ children }: { children: ReactNode }) {
   const area = useStore($area)
-  const [visited, setVisited] = useState<Record<Area, boolean>>({ browser: false, post: false, terminal: false, tikki: true })
+  const [visited, setVisited] = useState<Record<Area, boolean>>({ admin: false, browser: false, post: false, terminal: false, tikki: true })
 
   useEffect(() => {
     setVisited(prev => (prev[area] ? prev : { ...prev, [area]: true }))
@@ -55,6 +56,11 @@ export function AreaShell({ children }: { children: ReactNode }) {
         {visited.terminal && (
           <AreaLayer active={area === 'terminal'} id="terminal">
             <TerminalArea />
+          </AreaLayer>
+        )}
+        {area === 'admin' && (
+          <AreaLayer active id="admin">
+            <AdminArea />
           </AreaLayer>
         )}
       </div>

@@ -20,6 +20,7 @@
 
 import { THEME_PRESET_PALETTES } from '@hermes/shared'
 
+import { retintTheme } from './retint'
 import type { DesktopTheme, DesktopThemeTypography } from './types'
 
 // Color-emoji fonts to append to every stack as a last resort. None of the UI
@@ -395,7 +396,22 @@ export const slateTheme: DesktopTheme = {
   }
 }
 
+/**
+ * Tikki — the Nous skin re-seeded with the green of the Tikki emblem
+ * (`assets/tikki/tikki-logo-original.png`), so chrome, accents and the
+ * terminal palette match the app icon. Light and dark both derive from
+ * the one seed via `retintTheme`, which keeps AA contrast as a floor.
+ */
+export const TIKKI_ACCENT = '#7cb42e'
+export const tikkiTheme: DesktopTheme = {
+  ...retintTheme(nousTheme, TIKKI_ACCENT),
+  name: 'tikki',
+  label: 'Tikki',
+  description: 'Tikki green accent on clean chrome'
+}
+
 export const BUILTIN_THEMES: Record<string, DesktopTheme> = {
+  tikki: tikkiTheme,
   nous: nousTheme,
   github: githubTheme,
   catppuccin: catppuccinTheme,
@@ -412,4 +428,4 @@ export const BUILTIN_THEMES: Record<string, DesktopTheme> = {
 export const BUILTIN_THEME_LIST = Object.values(BUILTIN_THEMES)
 
 /** Skin used when nothing is persisted or the persisted name is retired. */
-export const DEFAULT_SKIN_NAME = 'nous'
+export const DEFAULT_SKIN_NAME = 'tikki'

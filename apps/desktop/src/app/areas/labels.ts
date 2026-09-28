@@ -24,6 +24,7 @@ interface AreaLabels {
     }
     users: { name: string; address: string; role: string; admin: string; member: string; invite: string; note: string }
     nodes: { name: string; kind: string; ram: string; role: string; status: string; note: string }
+    gedaechtnis: { laeuft: string; aus: string; pruefe: string; erklaerung: string; starten: string }
   }
   areas: Record<Area, string>
   browser: { close: string; newTab: string; untitled: string }
@@ -103,6 +104,14 @@ const de: AreaLabels = {
       rechner: 'Rechner',
       gedaechtnis: 'Gedächtnis',
       system: 'System'
+    },
+    gedaechtnis: {
+      laeuft: 'läuft auf diesem Rechner',
+      aus: 'nicht erreichbar',
+      pruefe: 'wird geprüft …',
+      erklaerung:
+        'Honcho ist Tikkis Gedächtnis und läuft als eigener Dienst auf diesem Rechner: ein Workspace für das System, ein Peer je Mensch, ein AI-Peer je Rolle, eine Sitzung je Suite. Alle Rollenprofile zeigen darauf.',
+      starten: 'Starten im Terminal:'
     },
     intro: {
       schluessel: 'Alle Anbieter-Schlüssel an einer Stelle. Sie liegen beim Backend, nie in der App.',
@@ -284,6 +293,14 @@ const en: AreaLabels = {
       role: 'Role',
       status: 'Status',
       note: 'Machines will register themselves later. Until then this is the planned fleet.'
+    },
+    gedaechtnis: {
+      laeuft: 'running on this machine',
+      aus: 'not reachable',
+      pruefe: 'checking …',
+      erklaerung:
+        "Honcho is Tikki's memory and runs as its own service on this machine: one workspace for the system, one peer per person, one AI peer per role, one session per suite. Every role profile points at it.",
+      starten: 'Start it in the terminal:'
     }
   },
   areas: { admin: 'Admin', browser: 'Browser', post: 'Mail', suites: 'Suites', terminal: 'Terminal', tikki: 'Tikki' },

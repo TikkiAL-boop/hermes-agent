@@ -1,5 +1,6 @@
 {
-  "_hinweis": "Tikki – Vorlage für ~/.hermes/profiles/<slug>/honcho.json. rollen_config.py setzt aiPeer je Rolle. Schlüssel: HONCHO_API_KEY in der Umgebung oder in .env des Profils (nie hier). Ohne Schlüssel und ohne baseUrl bleibt Honcho inaktiv.",
+  "_hinweis": "Tikki – Vorlage für ~/.hermes/profiles/<slug>/honcho.json. rollen_config.py setzt aiPeer je Rolle. baseUrl ist der lokale Tikki-Dienst (tikki/dienste/honcho/honcho.sh); ein lokaler baseUrl braucht keinen HONCHO_API_KEY.",
+  "baseUrl": "http://127.0.0.1:8000",
   "workspace": "tikki",
   "aiPeer": "tikki",
   "peerName": "thorsten",

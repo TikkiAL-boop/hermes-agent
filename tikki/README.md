@@ -16,6 +16,7 @@ Der Hermes-Quellcode außerhalb von `tikki/` bleibt unverändert.
 | `werkzeuge/rollen-einrichten.sh` | Legt pro Rolle ein Hermes-Profil an bzw. bringt es auf Stand (`--dry-run` möglich) |
 | `werkzeuge/rollen_config.py` | Erzeugt die `config.yaml` einer Rolle aus Katalog und Vorlage; das Skript ruft es über `hermes --run-module` in der Hermes-Umgebung auf |
 | `werkzeuge/rollen-status.sh` | Fragt `/health` auf dem Port jeder Rolle ab |
+| `dienste/honcho/honcho.sh` | Honcho als eigener Dienst auf dem Rechner (Docker Compose, Pin v3.2.1): `start|stop|status|logs` |
 
 ## Die Truppe
 
@@ -84,7 +85,7 @@ Nur in Umgebungsvariablen oder in `~/.hermes/profiles/<slug>/.env` (liegt außer
 | `XAI_API_KEY` | Anbieter `xai` |
 | `CURSOR_API_KEY` | Anbieter `cursor` |
 | `API_SERVER_KEY` | Bearer-Schlüssel des HTTP-Dienstes, pro Profil |
-| `HONCHO_API_KEY` | Honcho (Gedächtnis); ohne Schlüssel bleibt Honcho inaktiv |
+| `HONCHO_API_KEY` | Nur für Honcho in der Cloud; der lokale Tikki-Dienst braucht keinen |
 
 Nie in Dateien in diesem Repo, nie im Chat, nie in Seelen. Der Sicherheitsbeauftragte und der
 API-Fachmann geben gefundene Schlüssel grundsätzlich nicht wieder.

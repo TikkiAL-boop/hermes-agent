@@ -1,13 +1,15 @@
 import { useStore } from '@nanostores/react'
 import { type FormEvent, useEffect, useState } from 'react'
 
+import raumBild from '@/assets/tikki/suite-raum.svg?url'
 import { useI18n } from '@/i18n'
 import { Armchair, Loader2, Plus } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
+import { $uebungslaeufe } from '../admin/betrieb-store'
 import { rolle } from '../admin/katalog'
 import { areaLabels } from '../labels'
-import { SuiteRoom } from './suite-room'
+
 import {
   $aktiveSuite,
   $suiteEntsteht,
@@ -18,9 +20,44 @@ import {
   neueSuite,
   oeffneSuite,
   profilFehlt,
-  SUITE_PROFIL,
-  type Suite
+  type Suite,
+  SUITE_PROFIL
 } from './store'
+import { SuiteRoom } from './suite-room'
+import { uebungsTeil } from './uebung'
+
+/** Practice rooms hang under their project's room; a practice room without one stands alone. */
+export function verlaufGruppen(suites: readonly Suite[]): { suite: Suite; uebungen: Suite[] }[] {
+  const haupt = new Map(suites.filter(s => !uebungsTeil(s.titel)).map(s => [s.titel, s]))
+  const uebungen = new Map<string, Suite[]>()
+  const allein: Suite[] = []
+
+  for (const suite of suites) {
+    const teil = uebungsTeil(suite.titel)
+
+    if (!teil) {
+      continue
+    }
+
+    if (haupt.has(teil.basis)) {
+      uebungen.set(teil.basis, [...(uebungen.get(teil.basis) ?? []), suite])
+    } else {
+      allein.push(suite)
+    }
+  }
+
+  return suites
+    .filter(s => !uebungsTeil(s.titel) || allein.includes(s))
+    .map(suite => ({
+      suite,
+      uebungen: (uebungen.get(suite.titel) ?? []).sort(
+        (a, b) => (uebungsTeil(a.titel)?.nr ?? 0) - (uebungsTeil(b.titel)?.nr ?? 0)
+      )
+    }))
+}
+
+const TAKTE = ['stündlich', 'alle 30 Minuten', 'täglich 06:00', 'werktags 08:00', 'montags 09:00'] as const
+const EIGENER = '__eigener__'
 
 const raumleiter = rolle(SUITE_PROFIL)
 
@@ -58,8 +95,12 @@ function NeueSuiteForm({ onDone }: { onDone: () => void }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
   const entsteht = useStore($suiteEntsteht)
+  const uebungen = useStore($uebungslaeufe)
   const [name, setName] = useState('')
   const [ziel, setZiel] = useState('')
+  const [taktWahl, setTaktWahl] = useState('')
+  const [eigenerTakt, setEigenerTakt] = useState('')
+  const takt = taktWahl === EIGENER ? eigenerTakt.trim() : taktWahl
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -68,7 +109,7 @@ function NeueSuiteForm({ onDone }: { onDone: () => void }) {
       return
     }
 
-    await neueSuite(name, ziel)
+    await neueSuite(name, ziel, { takt: takt || undefined })
     onDone()
   }
 
@@ -100,6 +141,36 @@ function NeueSuiteForm({ onDone }: { onDone: () => void }) {
           value={ziel}
         />
       </label>
+      <div className="flex flex-wrap items-end gap-2 text-sm">
+        <label className="flex flex-col gap-1">
+          <span className="text-(--ui-text-secondary)">{s.takt}</span>
+          <select
+            className="rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-primary) px-2 py-1.5 text-(--ui-text-primary) outline-none focus:border-(--ui-accent)"
+            data-suite-takt=""
+            disabled={Boolean(entsteht)}
+            onChange={e => setTaktWahl(e.target.value)}
+            value={taktWahl}
+          >
+            <option value="">{s.taktEinmalig}</option>
+            {TAKTE.map(t => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+            <option value={EIGENER}>{s.taktEigener}</option>
+          </select>
+        </label>
+        {taktWahl === EIGENER && (
+          <input
+            aria-label={s.taktEigener}
+            className="min-w-56 flex-1 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-primary) px-2 py-1.5 text-(--ui-text-primary) outline-none focus:border-(--ui-accent)"
+            onChange={e => setEigenerTakt(e.target.value)}
+            placeholder={s.taktPlatzhalter}
+            value={eigenerTakt}
+          />
+        )}
+      </div>
+      {!takt && uebungen > 1 && <p className="text-xs text-(--ui-text-secondary)">{s.uebungenGeplant(uebungen)}</p>}
       <div className="flex items-center justify-end gap-2">
         <button
           className="rounded-md px-3 py-1.5 text-sm text-(--ui-text-secondary) hover:bg-(--ui-fill-quinary)"
@@ -126,9 +197,11 @@ function NeueSuiteForm({ onDone }: { onDone: () => void }) {
   )
 }
 
-function SuiteZeile({ suite }: { suite: Suite }) {
+function SuiteZeile({ suite, uebungen = [] }: { suite: Suite; uebungen?: Suite[] }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
+  const [offen, setOffen] = useState(false)
+  const teil = uebungsTeil(suite.titel)
 
   return (
     <li>
@@ -140,7 +213,9 @@ function SuiteZeile({ suite }: { suite: Suite }) {
       >
         <span className="flex w-full items-center gap-2">
           <Armchair aria-hidden className="size-4 shrink-0 text-(--ui-accent)" stroke={1.75} />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-(--ui-text-primary)">{suite.titel}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-(--ui-text-primary)">
+            {teil ? `${teil.basis} · ${s.uebungslauf(teil.nr)}` : suite.titel}
+          </span>
           <span className="text-[11px] text-(--ui-text-secondary)">{s.betreten}</span>
         </span>
         <span className="flex w-full min-w-0 gap-2 pl-6 text-xs text-(--ui-text-secondary)">
@@ -148,6 +223,35 @@ function SuiteZeile({ suite }: { suite: Suite }) {
           {suite.nachrichten !== undefined && <span className="shrink-0">{s.nachrichten(suite.nachrichten)}</span>}
         </span>
       </button>
+      {uebungen.length > 0 && (
+        <div className="pl-9">
+          <button
+            aria-expanded={offen}
+            className="text-[11px] font-medium text-(--ui-accent) hover:underline"
+            data-suite-uebungen={uebungen.length}
+            onClick={() => setOffen(o => !o)}
+            type="button"
+          >
+            {offen ? '−' : '+'} {s.uebungslaeufe(uebungen.length)}
+          </button>
+          {offen && (
+            <ul className="mt-0.5 flex flex-col">
+              {uebungen.map(u => (
+                <li key={u.id}>
+                  <button
+                    className="w-full truncate rounded-md px-2 py-1 text-left text-xs text-(--ui-text-secondary) hover:bg-(--ui-fill-quinary)"
+                    data-suite-id={u.id}
+                    onClick={() => void oeffneSuite(u)}
+                    type="button"
+                  >
+                    {s.uebungslauf(uebungsTeil(u.titel)?.nr ?? 0)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </li>
   )
 }
@@ -219,24 +323,29 @@ function SuitesLobby() {
           )}
           {suites.length > 0 && (
             <ul className={cn('flex flex-col gap-0.5', status === 'laedt' && 'opacity-70')}>
-              {suites.map(suite => (
-                <SuiteZeile key={suite.id} suite={suite} />
+              {verlaufGruppen(suites).map(({ suite, uebungen }) => (
+                <SuiteZeile key={suite.id} suite={suite} uebungen={uebungen} />
               ))}
             </ul>
           )}
         </div>
       </section>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
-        <h2 className="text-xl font-semibold text-(--ui-text-primary)">Suites</h2>
-        <p className="max-w-2xl text-sm text-(--ui-text-secondary)">{s.einfuehrung}</p>
-        {formular ? <NeueSuiteForm onDone={() => setFormular(false)} /> : null}
-        {fehler && status !== 'fehler' && (
-          <p className="text-sm text-destructive" role="alert">
-            {fehler}
-          </p>
-        )}
-        <div className="max-w-md">
-          <RaumleiterKarte />
+      <div
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[#041712] bg-cover bg-center p-6"
+        style={{ backgroundImage: `url(${raumBild})` }}
+      >
+        <div className="flex max-w-3xl flex-col gap-4 rounded-2xl border border-white/15 bg-(--ui-bg-chrome)/88 p-6 shadow-[0_0_40px_-12px_rgba(67,224,160,0.55)] backdrop-blur-md">
+          <h2 className="text-xl font-semibold text-(--ui-text-primary)">Suites</h2>
+          <p className="max-w-2xl text-sm text-(--ui-text-secondary)">{s.einfuehrung}</p>
+          {formular ? <NeueSuiteForm onDone={() => setFormular(false)} /> : null}
+          {fehler && status !== 'fehler' && (
+            <p className="text-sm text-destructive" role="alert">
+              {fehler}
+            </p>
+          )}
+          <div className="max-w-md">
+            <RaumleiterKarte />
+          </div>
         </div>
       </div>
     </div>

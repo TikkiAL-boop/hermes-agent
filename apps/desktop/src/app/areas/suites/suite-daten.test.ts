@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ChatMessage } from '@/lib/chat-messages'
 
-import { ausgabenAusNachrichten, eingabenAusNachrichten } from './suite-daten'
+import { ausgabenAusNachrichten, eingabenAusNachrichten, taktAusNachrichten } from './suite-daten'
 
 const user = (text: string, attachmentRefs?: string[]): ChatMessage => ({
   id: `u-${text.length}`,
@@ -57,5 +57,14 @@ describe('ausgabenAusNachrichten', () => {
         { art: 'link', label: 'example.test/ferien/haus', wert: 'https://example.test/ferien/haus?x=1' }
       ])
     )
+  })
+})
+
+describe('taktAusNachrichten', () => {
+  it('takes the last schedule line from either side, and "aus" ends it', () => {
+    expect(
+      taktAusNachrichten([user('RAUM: X\nTAKT: täglich 06:00'), bot('Bestätigt.\n**TAKT:** alle 30 Minuten')])
+    ).toBe('alle 30 Minuten')
+    expect(taktAusNachrichten([user('TAKT: täglich 06:00'), user('TAKT: aus')])).toBeUndefined()
   })
 })

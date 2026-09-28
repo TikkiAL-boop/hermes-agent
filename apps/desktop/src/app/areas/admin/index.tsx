@@ -1,10 +1,12 @@
 import { type ReactElement, useState } from 'react'
 
 import { useI18n } from '@/i18n'
-import { Book, Brain, KeyRound, Puzzle, Server, Settings, ShieldLock, Users } from '@/lib/icons'
+import { Activity, Book, Brain, KeyRound, Puzzle, Server, Settings, ShieldLock, Users } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { areaLabels } from '../labels'
+
+import { BetriebSection } from './betrieb'
 import { BotsSection } from './bots'
 import { GedaechtnisSection } from './gedaechtnis'
 import { ModelleSection } from './modelle'
@@ -16,6 +18,7 @@ import { ADMIN_SECTIONS, type AdminSection } from './sections'
 import { SystemSection } from './system'
 
 const ICONS: Record<AdminSection, typeof KeyRound> = {
+  betrieb: Activity,
   bots: Puzzle,
   gedaechtnis: Brain,
   modelle: ShieldLock,
@@ -27,6 +30,7 @@ const ICONS: Record<AdminSection, typeof KeyRound> = {
 }
 
 const SECTION: Record<AdminSection, () => ReactElement> = {
+  betrieb: BetriebSection,
   bots: BotsSection,
   gedaechtnis: GedaechtnisSection,
   modelle: ModelleSection,
@@ -51,7 +55,9 @@ export function AdminArea() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 bg-(--ui-bg-primary)" data-admin-area="">
       <nav className="flex w-56 shrink-0 flex-col gap-0.5 border-r border-(--ui-stroke-secondary) bg-(--ui-bg-chrome) p-2 pt-3">
-        <div className="px-2 pb-2 text-xs font-semibold tracking-wide text-(--ui-text-secondary) uppercase">{labels.areas.admin}</div>
+        <div className="px-2 pb-2 text-xs font-semibold tracking-wide text-(--ui-text-secondary) uppercase">
+          {labels.areas.admin}
+        </div>
         {ADMIN_SECTIONS.map(id => {
           const Icon = ICONS[id]
           const active = id === section
@@ -61,7 +67,9 @@ export function AdminArea() {
               aria-current={active ? 'page' : undefined}
               className={cn(
                 'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-                active ? 'bg-(--ui-accent)/15 text-(--ui-accent)' : 'text-(--ui-text-primary) hover:bg-(--ui-fill-quinary)'
+                active
+                  ? 'bg-(--ui-accent)/15 text-(--ui-accent)'
+                  : 'text-(--ui-text-primary) hover:bg-(--ui-fill-quinary)'
               )}
               key={id}
               onClick={() => setSection(id)}

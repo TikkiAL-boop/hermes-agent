@@ -25,6 +25,15 @@ interface AreaLabels {
     users: { name: string; address: string; role: string; admin: string; member: string; invite: string; note: string }
     nodes: { name: string; kind: string; ram: string; role: string; status: string; note: string }
     gedaechtnis: { laeuft: string; aus: string; pruefe: string; erklaerung: string; starten: string }
+    betrieb: {
+      uebungen: string
+      uebungenHinweis: string
+      kapazitaet: string
+      kapazitaetHinweis: string
+      mensch: string
+      menschHinweis: string
+      rundUmDieUhr: string
+    }
   }
   areas: Record<Area, string>
   browser: { close: string; newTab: string; untitled: string }
@@ -90,6 +99,15 @@ interface AreaLabels {
     wirdEroeffnet: string
     ziel: string
     zielPlatzhalter: string
+    takt: string
+    taktEinmalig: string
+    taktEigener: string
+    taktPlatzhalter: string
+    dauerauftrag: string
+    uebungenGeplant: (n: number) => string
+    uebungslaeufe: (n: number) => string
+    uebungslauf: (nr: number) => string
+    ansatz: string
   }
 }
 
@@ -103,7 +121,20 @@ const de: AreaLabels = {
       nutzer: 'Nutzer',
       rechner: 'Rechner',
       gedaechtnis: 'Gedächtnis',
+      betrieb: 'Betrieb',
       system: 'System'
+    },
+    betrieb: {
+      uebungen: 'Übungsläufe je Auftrag',
+      uebungenHinweis:
+        'Jeder neue Auftrag läuft so oft: dein Raum plus Übungsräume mit anderen Modellen und Ansätzen. Das erste fertige Ergebnis bekommst du sofort, danach lernt der Raumleiter aus dem Vergleich. Übungsräume starten nur, wenn genug Kapazität frei ist. 1 = aus.',
+      kapazitaet: 'Gleichzeitige Räume',
+      kapazitaetHinweis:
+        'So viele Räume dürfen im ganzen Haus gleichzeitig arbeiten. Übungsläufe halten sich daran, dein Raum nie.',
+      mensch: 'Name des Menschen',
+      menschHinweis: 'Steht in den Namen der Übungsräume: Projekt-name-2@tikki.team.',
+      rundUmDieUhr:
+        'Rund um die Uhr: Räume mit Takt laufen im Backend weiter, auch wenn die App zu ist; der Wachhalter geht alle 15 Minuten durch alle Räume. Beides richtet tikki/werkzeuge/rollen-einrichten.sh ein.'
     },
     gedaechtnis: {
       laeuft: 'läuft auf diesem Rechner',
@@ -121,6 +152,7 @@ const de: AreaLabels = {
       nutzer: 'Die Familie. Jeder sieht nur seine Räume, der Admin alle.',
       rechner: 'Die Rechnerflotte hinter Tikki. Grundlage für die Bot-Armee.',
       gedaechtnis: 'Was Tikki sich merkt: getrennt nach Nutzer, System und Projekt.',
+      betrieb: 'Wie die Räume arbeiten: Übungsläufe, Kapazität, Dauerbetrieb.',
       system: 'Backend, Gateway, Verbindungen, Updates.'
     },
     roles: {
@@ -144,7 +176,7 @@ const de: AreaLabels = {
       online: 'erreichbar',
       offline: 'aus',
       unknown: 'unbekannt',
-      setup: 'Truppe einrichten: tikki/werkzeuge/rollen-einrichten.sh auf dem Rechner mit Hermes ausführen.'
+      setup: 'Truppe einrichten: tikki/werkzeuge/rollen-einrichten.sh auf dem Tikki-Rechner ausführen.'
     },
     users: {
       name: 'Name',
@@ -229,6 +261,15 @@ const de: AreaLabels = {
     verlauf: 'Verlauf',
     wirdEroeffnet: 'Suite wird eröffnet …',
     ziel: 'Ziel',
+    takt: 'Takt',
+    taktEinmalig: 'Einmalig – fertig ist fertig',
+    taktEigener: 'Eigener Takt …',
+    taktPlatzhalter: 'z. B. alle 2 Stunden, montags 09:00, 0 7 * * *',
+    dauerauftrag: 'Dauerauftrag',
+    uebungenGeplant: n => (n > 1 ? `Dazu ${n - 1} Übungsläufe mit anderen Modellen, wenn Kapazität frei ist.` : ''),
+    uebungslaeufe: n => (n === 1 ? '1 Übungslauf' : `${n} Übungsläufe`),
+    uebungslauf: nr => `Übungslauf ${nr}`,
+    ansatz: 'Ansatz',
     zielPlatzhalter: 'Ein Satz: Was muss am Ende fertig sein?'
   }
 }
@@ -243,6 +284,7 @@ const en: AreaLabels = {
       nutzer: 'Users',
       rechner: 'Machines',
       gedaechtnis: 'Memory',
+      betrieb: 'Operations',
       system: 'System'
     },
     intro: {
@@ -253,6 +295,7 @@ const en: AreaLabels = {
       nutzer: 'The family. Everyone sees only their rooms, the admin sees all.',
       rechner: 'The machine fleet behind Tikki. Foundation for the bot army.',
       gedaechtnis: 'What Tikki remembers: separated by user, system and project.',
+      betrieb: 'How rooms work: practice runs, capacity, around-the-clock operation.',
       system: 'Backend, gateway, connections, updates.'
     },
     roles: {
@@ -275,7 +318,7 @@ const en: AreaLabels = {
       online: 'reachable',
       offline: 'off',
       unknown: 'unknown',
-      setup: 'Set up the troop: run tikki/werkzeuge/rollen-einrichten.sh on the machine running Hermes.'
+      setup: 'Set up the troop: run tikki/werkzeuge/rollen-einrichten.sh on the Tikki machine.'
     },
     users: {
       name: 'Name',
@@ -293,6 +336,18 @@ const en: AreaLabels = {
       role: 'Role',
       status: 'Status',
       note: 'Machines will register themselves later. Until then this is the planned fleet.'
+    },
+    betrieb: {
+      uebungen: 'Practice runs per order',
+      uebungenHinweis:
+        'Every new order runs this many times: your room plus practice rooms with other models and approaches. You get the first finished result right away; afterwards the room lead learns from the comparison. Practice rooms only start when there is capacity. 1 = off.',
+      kapazitaet: 'Rooms at the same time',
+      kapazitaetHinweis:
+        'How many rooms may work at once across the house. Practice runs respect it, your own room never waits.',
+      mensch: 'Person name',
+      menschHinweis: 'Used in practice room names: project-name-2@tikki.team.',
+      rundUmDieUhr:
+        'Around the clock: rooms with a schedule keep running on the backend even when the app is closed; the watchkeeper walks all rooms every 15 minutes. tikki/werkzeuge/rollen-einrichten.sh sets both up.'
     },
     gedaechtnis: {
       laeuft: 'running on this machine',
@@ -368,6 +423,15 @@ const en: AreaLabels = {
     verlauf: 'History',
     wirdEroeffnet: 'Opening suite …',
     ziel: 'Goal',
+    takt: 'Schedule',
+    taktEinmalig: 'Once – done is done',
+    taktEigener: 'Custom schedule …',
+    taktPlatzhalter: 'e.g. alle 2 Stunden, montags 09:00, 0 7 * * *',
+    dauerauftrag: 'Standing order',
+    uebungenGeplant: n => (n > 1 ? `Plus ${n - 1} practice runs with other models when capacity allows.` : ''),
+    uebungslaeufe: n => (n === 1 ? '1 practice run' : `${n} practice runs`),
+    uebungslauf: nr => `Practice run ${nr}`,
+    ansatz: 'Approach',
     zielPlatzhalter: 'One sentence: what has to be done in the end?'
   }
 }

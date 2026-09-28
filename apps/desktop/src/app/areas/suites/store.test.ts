@@ -7,9 +7,16 @@ vi.mock('@/store/gateway', () => ({
   requestGatewayForProfile: (...args: unknown[]) => rpc(...args)
 }))
 vi.mock('../store', () => ({ setArea: (...args: unknown[]) => setArea(...args) }))
+vi.mock('@/store/session-states', async () => {
+  const { atom } = await import('nanostores')
+
+  return { $workingSessionIds: atom<string[]>([]) }
+})
 
 const { $aktiveSuite, $suites, $suitesFehler, $suitesStatus, ladeSuites, neueSuite, SUITE_PROFIL, SUITE_QUELLE } =
   await import('./store')
+
+const { $kapazitaet, $uebungslaeufe } = await import('../admin/betrieb-store')
 
 const calls = () => rpc.mock.calls.map(([profile, method, params]) => [profile, method, params])
 
@@ -20,7 +27,29 @@ beforeEach(() => {
   $suites.set([])
   $suitesStatus.set('idle')
   $suitesFehler.set(null)
+  $uebungslaeufe.set(1)
+  $kapazitaet.set(40)
 })
+
+const neuerRaum = () => {
+  let n = 0
+
+  rpc.mockImplementation(async (_profile: string, method: string) => {
+    if (method === 'session.list') {
+      return { sessions: [] }
+    }
+
+    if (method === 'session.create') {
+      n += 1
+
+      return { session_id: `rt-${n}`, stored_session_id: `st-${n}` }
+    }
+
+    return {}
+  })
+}
+
+const warten = () => new Promise(resolve => setTimeout(resolve, 0))
 
 describe('ladeSuites', () => {
   it('starts with zero suites when the room lead profile has no sessions', async () => {
@@ -122,5 +151,52 @@ describe('neueSuite', () => {
 
     expect(calls().map(([, method]) => method)).toEqual(['session.list'])
     expect($aktiveSuite.get()).toMatchObject({ id: 'alt', titel: 'Urlaub Ostsee' })
+  })
+
+  it("briefs the person's room first, then opens practice runs as other rooms with other models", async () => {
+    $uebungslaeufe.set(4)
+    neuerRaum()
+
+    await neueSuite('App', 'Eine Hausaufgaben-App.')
+    await warten()
+
+    const creates = calls().filter(([, method]) => method === 'session.create')
+    const briefs = calls().filter(([, method]) => method === 'prompt.submit')
+
+    expect(creates.map(([, , params]) => (params as { title: string }).title)).toEqual([
+      'App',
+      'App-thorsten-2@tikki.team',
+      'App-thorsten-3@tikki.team',
+      'App-thorsten-4@tikki.team'
+    ])
+    expect(briefs[0]![2]).toMatchObject({ session_id: 'rt-1' })
+    expect(new Set(creates.slice(1).map(([, , params]) => (params as { model?: string }).model)).size).toBe(3)
+    expect((briefs[1]![2] as { text: string }).text).toMatch(/^ÜBUNG 2\/4\nANSATZ: /)
+
+    const prioritaeten = rpc.mock.calls
+      .filter(([, method]) => method === 'session.create')
+      .map(call => (call[5] as { spawnPriority: string }).spawnPriority)
+
+    expect(prioritaeten).toEqual(['foreground', 'background', 'background', 'background'])
+  })
+
+  it('opens only as many practice runs as the house has room for, and none for a standing order', async () => {
+    $uebungslaeufe.set(4)
+    $kapazitaet.set(2)
+    neuerRaum()
+
+    await neueSuite('Recherche', 'Etwas finden.')
+    await warten()
+    expect(calls().filter(([, method]) => method === 'session.create')).toHaveLength(2)
+
+    rpc.mockReset()
+    $kapazitaet.set(40)
+    neuerRaum()
+    await neueSuite('Förderung', 'Täglich prüfen.', { takt: 'täglich 06:00' })
+    await warten()
+    expect(calls().filter(([, method]) => method === 'session.create')).toHaveLength(1)
+    expect(calls().find(([, method]) => method === 'prompt.submit')![2]).toMatchObject({
+      text: expect.stringContaining('\nTAKT: täglich 06:00\n')
+    })
   })
 })

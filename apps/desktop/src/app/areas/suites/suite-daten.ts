@@ -28,6 +28,7 @@ const URL_RE = /https?:\/\/[^\s<>"')`\]]+/g
 const MARKDOWN_LINK_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)\)/g
 const PATH_RE = /(?:^|[\s("'`])((?:\/|~\/)[^\s"'`<>)]+\.[a-z0-9]{1,8})/gi
 const IMAGE_RE = /\.(?:png|jpe?g|gif|webp|svg|bmp)$/i
+
 const DATEI_RE =
   /\.(?:pdf|txt|json|md|csv|xlsx?|docx?|pptx?|html?|zip|tar|gz|mp3|wav|mp4|mov|py|ts|tsx|js|css|yaml|yml)$/i
 
@@ -130,4 +131,24 @@ export function ausgabenAusNachrichten(messages: readonly ChatMessage[]): Ausgab
   }
 
   return [...seen.values()]
+}
+
+const TAKT = /(?:^|\n)[ \t>*_]*TAKT:[ \t*_]*([^\n]+)/g
+const AUS = new Set(['aus', 'stopp', 'stop', 'keiner', 'kein', 'nein', 'off', '-'])
+
+/** The room's standing schedule: the last `TAKT:` line from the person or the room lead; `aus` ends it. */
+export function taktAusNachrichten(messages: readonly ChatMessage[]): string | undefined {
+  let takt: string | undefined
+
+  for (const message of messages) {
+    if (message.role !== 'user' && message.role !== 'assistant') {
+      continue
+    }
+
+    for (const treffer of chatMessageText(message).matchAll(TAKT)) {
+      takt = treffer[1]!.replace(/[*_`]+$/g, '').trim()
+    }
+  }
+
+  return takt && !AUS.has(takt.toLowerCase()) ? takt : undefined
 }

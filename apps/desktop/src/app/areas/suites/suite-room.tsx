@@ -1,12 +1,15 @@
 import { useStore } from '@nanostores/react'
+import { atom } from 'nanostores'
 import { type ReactNode, useMemo } from 'react'
 
-import { TileChat } from '@/app/chat/session-tile'
 import { useSubagentSnapshot } from '@/app/chat/composer/status-stack/use-subagent-snapshot'
+import { TileChat } from '@/app/chat/session-tile'
+import raumBild from '@/assets/tikki/suite-raum.svg?url'
 import { CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
 import { useI18n } from '@/i18n'
-import { AlertCircle, ArrowUpRight, CheckCircle2, FileText, Globe, ImageIcon, Link } from '@/lib/icons'
+import type { ChatMessage } from '@/lib/chat-messages'
 import { openExternalLink } from '@/lib/external-link'
+import { AlertCircle, ArrowUpRight, CheckCircle2, Clock, FileText, Globe, ImageIcon, Link } from '@/lib/icons'
 import { todoTree } from '@/lib/todos'
 import { useSessionSlice } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
@@ -18,15 +21,23 @@ import { $retainedTodosBySession, $todosBySession } from '@/store/todos'
 import { rolle } from '../admin/katalog'
 import { areaLabels } from '../labels'
 import { auftragAusText } from '../tikki/rollen'
-import { type Ausgabe, ausgabenAusNachrichten, type Eingabe, eingabenAusNachrichten } from './suite-daten'
-import { useSuiteRuntime } from './suite-runtime'
+
 import { type Suite, SUITE_PROFIL, verlasseSuite } from './store'
+import {
+  type Ausgabe,
+  ausgabenAusNachrichten,
+  type Eingabe,
+  eingabenAusNachrichten,
+  taktAusNachrichten
+} from './suite-daten'
+import { useSuiteRuntime } from './suite-runtime'
+import { uebungsTeil } from './uebung'
 
 const raumleiter = rolle(SUITE_PROFIL)
 
 function Zone({ children, count, title }: { children: ReactNode; count?: number; title: string }) {
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-chrome)">
+    <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-(--ui-accent)/35 bg-(--ui-bg-chrome)/70 shadow-[0_0_28px_-6px_rgba(67,224,160,0.55)] backdrop-blur-sm">
       <header className="flex items-center justify-between border-b border-(--ui-stroke-secondary) px-3 py-2">
         <h2 className="text-xs font-semibold tracking-wide text-(--ui-text-secondary) uppercase">{title}</h2>
         {count !== undefined && count > 0 && <span className="text-[11px] text-(--ui-text-secondary)">{count}</span>}
@@ -90,6 +101,7 @@ function Stuhl({ bot }: { bot: SubagentProgress }) {
   const auftrag = auftragAusText(bot.goal)
   const r = auftrag.rolle
   const live = bot.status === 'running' || bot.status === 'queued'
+
   const status =
     bot.status === 'failed' || bot.status === 'interrupted'
       ? labels.raum.fehler
@@ -286,9 +298,6 @@ function OutputScreen({
   )
 }
 
-import { atom } from 'nanostores'
-import type { ChatMessage } from '@/lib/chat-messages'
-
 const EMPTY_MESSAGES = atom<ChatMessage[]>([])
 const EMPTY_TEXT = atom('')
 
@@ -297,16 +306,55 @@ const EMPTY_TEXT = atom('')
  * wall and the chairs on the left, the data screen and the output screen on
  * the right. Everything shown belongs to this one session and nothing else.
  */
+/** Badges in the room header: a standing schedule, or which practice run this is. */
+function RaumMarken({ suite, view }: { suite: Suite; view: ReturnType<typeof useSuiteRuntime>['view'] }) {
+  const { locale } = useI18n()
+  const s = areaLabels(locale).suites
+  const messages = useStore(view?.$messages ?? EMPTY_MESSAGES)
+  const takt = useMemo(() => taktAusNachrichten(messages), [messages])
+  const teil = uebungsTeil(suite.titel)
+
+  return (
+    <>
+      {takt && (
+        <span
+          className="flex items-center gap-1 rounded-full border border-(--ui-accent)/50 bg-(--ui-accent)/15 px-2 py-0.5 text-[11px] font-medium text-(--ui-accent)"
+          data-suite-takt-marke={takt}
+        >
+          <Clock aria-hidden className="size-3" />
+          {s.dauerauftrag} · {takt}
+        </span>
+      )}
+      {teil && (
+        <span className="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[11px] text-(--ui-text-secondary)">
+          {s.uebungslauf(teil.nr)}
+        </span>
+      )}
+    </>
+  )
+}
+
+/**
+ * The room: walls you can see (the background is the room itself), the round
+ * table with the chat in the middle, the to-do wall and who sits at the table
+ * on the left, the data and output screens on the right. Everything here
+ * belongs to this one project and nothing else.
+ */
 export function SuiteRoom({ suite }: { suite: Suite }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
   const storedId = suite.resolvedId || suite.id
   const { fehler, ownerRoute, runtimeId, view } = useSuiteRuntime(storedId)
   const busy = useStore(view?.$busy ?? EMPTY_BUSY)
+  const teil = uebungsTeil(suite.titel)
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-(--ui-bg-primary)" data-suite-room={storedId}>
-      <header className="flex items-center gap-3 border-b border-(--ui-stroke-secondary) px-4 py-2">
+    <div
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#041712] bg-cover bg-center"
+      data-suite-room={storedId}
+      style={{ backgroundImage: `url(${raumBild})` }}
+    >
+      <header className="mx-6 mt-9 flex items-center gap-3 rounded-xl border border-(--ui-accent)/35 bg-(--ui-bg-chrome)/75 px-4 py-2 backdrop-blur-sm">
         <button
           className="rounded-md px-2 py-1 text-xs text-(--ui-text-secondary) hover:bg-(--ui-fill-quinary) hover:text-(--ui-text-primary)"
           onClick={verlasseSuite}
@@ -314,7 +362,11 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
         >
           ← {s.zurueck}
         </button>
-        <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-(--ui-text-primary)">{suite.titel}</h1>
+        <h1 className="min-w-0 truncate text-base font-semibold text-(--ui-text-primary)">
+          {teil ? teil.basis : suite.titel}
+        </h1>
+        <RaumMarken suite={suite} view={view} />
+        <span className="flex-1" />
         {raumleiter && (
           <span className="flex items-center gap-1.5 text-xs text-(--ui-text-secondary)">
             <span aria-hidden>{raumleiter.icon}</span>
@@ -323,13 +375,13 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
           </span>
         )}
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_18rem] gap-3 p-3">
+      <div className="grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)_17rem] gap-6 px-6 pt-5 pb-6">
         <div className="flex min-h-0 flex-col gap-3">
           <TodoWand runtimeId={runtimeId} />
           <AmTisch runtimeId={runtimeId} />
         </div>
         <div
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-primary)"
+          className="mx-4 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[2rem] border border-(--ui-accent)/50 bg-(--ui-bg-primary)/85 shadow-[0_0_48px_-8px_rgba(67,224,160,0.7)] backdrop-blur-sm"
           data-suite-tisch-chat=""
         >
           {fehler ? (

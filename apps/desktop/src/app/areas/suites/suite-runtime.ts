@@ -9,7 +9,7 @@ import { getLatestSessionMessages } from '@/api/sessions'
 import { reasoningEffortPending, type SessionView } from '@/app/chat/session-view'
 import { lastVisibleMessageIsUser } from '@/app/chat/thread-loading'
 import { type ChatMessage, toChatMessages } from '@/lib/chat-messages'
-import { activeGatewayConnectionId } from '@/store/gateway'
+import { activeGatewayConnectionId, requestGatewayForProfile } from '@/store/gateway'
 import { $connection, $gatewayState, setSessionOwnerHint } from '@/store/session'
 import type { SessionOwnerRoute } from '@/store/session-request-router'
 import { $sessionStates, holdSessionTranscript, publishSessionState, sessionTileDelegate } from '@/store/session-states'
@@ -117,6 +117,7 @@ export function useSuiteRuntime(storedId: string): SuiteRuntime {
     }
 
     let cancelled = false
+    let gebunden: string | null = null
 
     if (ownerRoute) {
       setSessionOwnerHint(storedId, ownerRoute)
@@ -136,6 +137,7 @@ export function useSuiteRuntime(storedId: string): SuiteRuntime {
         }
 
         await fuelleTranskript(storedId, id, ownerRoute)
+        gebunden = id
 
         if (!cancelled) {
           setRuntimeId(id)
@@ -149,6 +151,15 @@ export function useSuiteRuntime(storedId: string): SuiteRuntime {
 
     return () => {
       cancelled = true
+
+      // Leaving an idle room releases its session on the backend: Hermes allows one
+      // writer per session, and the room's Takt rounds run there while nobody watches.
+      if (gebunden && !$sessionStates.get()[gebunden]?.busy) {
+        void requestGatewayForProfile(SUITE_PROFIL, 'session.close', {
+          profile: SUITE_PROFIL,
+          session_id: gebunden
+        }).catch(() => undefined)
+      }
     }
   }, [gatewayOpen, ownerRoute, storedId])
 

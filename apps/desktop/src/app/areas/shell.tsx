@@ -6,11 +6,13 @@ import { cn } from '@/lib/utils'
 
 import { AdminArea } from './admin'
 import { BrowserArea } from './browser-area'
+import { startMarkenwache } from './markenwache'
 import { PostArea } from './post-area'
 import { AreaRail } from './rail'
 import { $area, type Area } from './store'
 import { SuitesArea } from './suites/suites-area'
 import { TerminalArea } from './terminal-area'
+import { startVorzimmerWache } from './tikki/vorzimmer'
 
 function AreaLayer({ active, children, id }: { active: boolean; children: ReactNode; id: Area }) {
   return (
@@ -31,6 +33,7 @@ function AreaLayer({ active, children, id }: { active: boolean; children: ReactN
  */
 export function AreaShell({ children }: { children: ReactNode }) {
   const area = useStore($area)
+
   const [visited, setVisited] = useState<Record<Area, boolean>>({
     admin: false,
     browser: false,
@@ -43,6 +46,10 @@ export function AreaShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setVisited(prev => (prev[area] ? prev : { ...prev, [area]: true }))
   }, [area])
+
+  // Tikki's room orders open suites wherever the person is standing.
+  useEffect(() => startVorzimmerWache(), [])
+  useEffect(() => startMarkenwache(), [])
 
   return (
     <div className="flex min-h-0 flex-1">

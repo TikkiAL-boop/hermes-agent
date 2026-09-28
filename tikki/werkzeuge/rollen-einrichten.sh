@@ -17,6 +17,7 @@ KATALOG="$TIKKI/rollen/KATALOG.json"
 VORLAGE="$TIKKI/hermes/vorlage-rolle.yaml"
 HERMES_HOME_BASIS="${HERMES_HOME_BASIS:-$HOME/.hermes}"
 PROFILE_DIR="$HERMES_HOME_BASIS/profiles"
+MODUL="tikki.werkzeuge.rollen_config"
 
 DRY_RUN=0
 NUR=""
@@ -31,42 +32,49 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# Python: bevorzugt das Hermes-venv (dort liegt ruamel.yaml), sonst python3.
-PY="python3"
-for kandidat in "$REPO/.venv/bin/python" "$HERMES_HOME_BASIS/hermes-agent/venv/bin/python"; do
-  if [ -x "$kandidat" ]; then PY="$kandidat"; break; fi
-done
-if ! "$PY" -c "import ruamel.yaml" 2>/dev/null; then
-  echo "FEHLER: ruamel.yaml fehlt in $PY (Hermes-venv nicht gefunden?)." >&2
-  exit 1
-fi
+[ -f "$KATALOG" ] || { echo "FEHLER: $KATALOG fehlt." >&2; exit 1; }
+[ -f "$VORLAGE" ] || { echo "FEHLER: $VORLAGE fehlt." >&2; exit 1; }
 
 # hermes-Befehl: im PATH oder im Repo-venv.
 HERMES_BIN="$(command -v hermes || true)"
 if [ -z "$HERMES_BIN" ] && [ -x "$REPO/.venv/bin/hermes" ]; then HERMES_BIN="$REPO/.venv/bin/hermes"; fi
 
-[ -f "$KATALOG" ] || { echo "FEHLER: $KATALOG fehlt." >&2; exit 1; }
-[ -f "$VORLAGE" ] || { echo "FEHLER: $VORLAGE fehlt." >&2; exit 1; }
+# Konfiguration erzeugt werkzeuge/rollen_config.py. Bevorzugt läuft es über den
+# Hermes-Starter (`hermes --run-module`): der bringt das von Hermes verwaltete venv
+# mit ruamel.yaml mit und kennt den aktuellen Konfigurationsstand, den er in jedes
+# Profil stempelt. Sonst ein Python mit ruamel.yaml (Repo-venv, altes Installer-venv,
+# python3); Hermes stempelt die Version dann beim ersten Start nach.
+if [ -n "$HERMES_BIN" ] && [ "$("$HERMES_BIN" --run-module "$MODUL" --pruefen 2>/dev/null || true)" = "ok" ]; then
+  KONFIG_LAUF="$HERMES_BIN (Hermes-Umgebung)"
+  konfig() { "$HERMES_BIN" --run-module "$MODUL" "$@"; }
+else
+  PY="python3"
+  for kandidat in "$REPO/.venv/bin/python" "$HERMES_HOME_BASIS/hermes-agent/venv/bin/python"; do
+    if [ -x "$kandidat" ]; then PY="$kandidat"; break; fi
+  done
+  if ! "$PY" -c "import ruamel.yaml" 2>/dev/null; then
+    echo "FEHLER: ruamel.yaml fehlt in $PY (Hermes-venv nicht gefunden?)." >&2
+    exit 1
+  fi
+  KONFIG_LAUF="$PY"
+  konfig() { "$PY" "$HIER/rollen_config.py" "$@"; }
+fi
 
 sagen() { if [ "$DRY_RUN" = 1 ]; then echo "  [dry-run] $*"; else echo "  $*"; fi; }
 tun()   { if [ "$DRY_RUN" = 1 ]; then echo "  [dry-run] $*"; else "$@"; fi; }
 
 # Katalog als Zeilen: slug<TAB>name<TAB>port
-ZEILEN="$("$PY" - "$KATALOG" <<'PYEOF'
-import json, sys
-for e in json.load(open(sys.argv[1], encoding="utf-8")):
-    print(f"{e['slug']}\t{e['name']}\t{e['port']}")
-PYEOF
-)"
+ZEILEN="$(konfig zeilen "$KATALOG")"
 
 echo "Tikki – Rollen einrichten"
 echo "Katalog:   $KATALOG"
 echo "Profile:   $PROFILE_DIR"
 echo "Hermes:    ${HERMES_BIN:-<nicht gefunden>}"
+echo "Konfig:    $KONFIG_LAUF"
 [ "$DRY_RUN" = 1 ] && echo "Modus:     dry-run (es wird nichts geändert)"
 echo
 
-ANGELEGT=0; AKTUALISIERT=0; UEBERSPRUNGEN=0; FEHLER=0
+ANGELEGT=0; AKTUALISIERT=0; FEHLER=0
 ZUSAMMENFASSUNG=""
 
 while IFS=$'\t' read -r SLUG NAME PORT; do
@@ -110,59 +118,9 @@ while IFS=$'\t' read -r SLUG NAME PORT; do
 
   # 3) config.yaml aus der Vorlage mit Port, Modellen und Werkzeugen der Rolle
   if [ "$DRY_RUN" = 1 ]; then
-    "$PY" - "$KATALOG" "$VORLAGE" "$SLUG" "" <<'PYEOF'
-import json, sys
-from ruamel.yaml import YAML
-katalog, vorlage, slug, ziel = sys.argv[1:5]
-rolle = next(e for e in json.load(open(katalog, encoding="utf-8")) if e["slug"] == slug)
-p_prov, p_model = rolle["modell"]["primary"].split("/", 1)
-f_prov, f_model = rolle["modell"]["fallback"].split("/", 1)
-print(f"  [dry-run] config.yaml: model={p_prov}/{p_model} fallback={f_prov}/{f_model} "
-      f"port={rolle['port']} approvals={rolle['freigabe']} toolsets={rolle['werkzeuge']}")
-PYEOF
+    konfig vorschau "$KATALOG" "$VORLAGE" "$SLUG"
   else
-    "$PY" - "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml" <<'PYEOF'
-import json, sys, os
-from ruamel.yaml import YAML
-katalog, vorlage, slug, ziel = sys.argv[1:5]
-rolle = next(e for e in json.load(open(katalog, encoding="utf-8")) if e["slug"] == slug)
-yaml = YAML()
-yaml.preserve_quotes = True
-with open(vorlage, encoding="utf-8") as f:
-    cfg = yaml.load(f)
-
-p_prov, p_model = rolle["modell"]["primary"].split("/", 1)
-f_prov, f_model = rolle["modell"]["fallback"].split("/", 1)
-cfg["model"]["provider"] = p_prov
-cfg["model"]["default"] = p_model
-cfg["fallback_providers"] = [{"provider": f_prov, "model": f_model}]
-cfg.setdefault("approvals", {})["mode"] = rolle.get("freigabe", "smart")
-werkzeuge = list(rolle.get("werkzeuge", []))
-cfg.setdefault("platform_toolsets", {})
-cfg["platform_toolsets"]["api_server"] = list(werkzeuge)
-cfg["platform_toolsets"]["cli"] = list(werkzeuge)
-api = cfg.setdefault("platforms", {}).setdefault("api_server", {})
-api["enabled"] = True
-api.setdefault("extra", {})["port"] = int(rolle["port"])
-api["extra"].setdefault("host", "127.0.0.1")
-# Delegation nur für Rollen, die sie im Katalog haben
-if "delegation" not in werkzeuge:
-    cfg.pop("delegation", None)
-
-# Bestehende Datei nur überschreiben, wenn sich etwas ändert
-neu_io = __import__("io").StringIO()
-yaml.dump(cfg, neu_io)
-neu = neu_io.getvalue()
-alt = open(ziel, encoding="utf-8").read() if os.path.exists(ziel) else None
-if alt == neu:
-    print("  config.yaml unverändert")
-else:
-    tmp = ziel + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(neu)
-    os.replace(tmp, ziel)
-    print(f"  config.yaml geschrieben: {ziel}")
-PYEOF
+    konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml"
   fi
 
   # 4) .env-Hinweis (wird nie vom Skript befüllt)

@@ -13,6 +13,7 @@ Der Hermes-Quellcode außerhalb von `tikki/` bleibt unverändert.
 | `rollen/<slug>/SOUL.md` | System-Prompt der jeweiligen Rolle (Deutsch, mit Hausregeln) |
 | `hermes/vorlage-rolle.yaml` | Vorlage für `config.yaml` eines Rollenprofils (echte Hermes-Schlüssel) |
 | `werkzeuge/rollen-einrichten.sh` | Legt pro Rolle ein Hermes-Profil an bzw. bringt es auf Stand (`--dry-run` möglich) |
+| `werkzeuge/rollen_config.py` | Erzeugt die `config.yaml` einer Rolle aus Katalog und Vorlage; das Skript ruft es über `hermes --run-module` in der Hermes-Umgebung auf |
 | `werkzeuge/rollen-status.sh` | Fragt `/health` auf dem Port jeder Rolle ab |
 
 ## Die Truppe
@@ -27,7 +28,9 @@ bringen, bei echtem Bedarf eine `BRAUCHE:`-Zeile mit Vorschlag, Ergebnisse im Ra
 
 ## Einrichten auf dem Mac
 
-Voraussetzung: Hermes ist installiert (`hermes` im PATH oder dieses Repo mit `.venv`).
+Voraussetzung: Hermes ist installiert (`hermes` im PATH oder dieses Repo mit `.venv`). Die
+Konfiguration wird in der Hermes-Umgebung erzeugt und trägt den aktuellen Konfigurationsstand
+(`_config_version`), damit Hermes die Datei beim ersten Start nicht selbst umschreibt.
 
 ```bash
 # 1. Schlüssel in die Umgebung (z. B. ~/.zshrc oder ein Passwortmanager, nie ins Repo)

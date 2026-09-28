@@ -3,7 +3,6 @@
 // with the primary and fallback model that profile carries. The list is the
 // backend's truth: no seeded rooms, zero suites until someone opens one.
 
-import { host } from '@hermes/plugin-sdk'
 import { atom } from 'nanostores'
 
 import { PROMPT_SUBMIT_REQUEST_TIMEOUT_MS } from '@/api/client'
@@ -33,6 +32,8 @@ export const $suitesStatus = atom<SuitesStatus>('idle')
 export const $suitesFehler = atom<string | null>(null)
 /** The suite whose creation is in flight, by name; guards a double click. */
 export const $suiteEntsteht = atom<string | null>(null)
+/** The suite the person is standing in; null means the lobby. */
+export const $aktiveSuite = atom<Suite | null>(null)
 
 interface SessionListRow {
   id: string
@@ -93,16 +94,15 @@ export async function ladeSuites(): Promise<void> {
   }
 }
 
-/** Walk into a suite: its chat becomes the Tikki layer's session. */
-export async function oeffneSuite(suite: Pick<Suite, 'id' | 'resolvedId'>): Promise<void> {
-  await host.openSession(suite.resolvedId || suite.id, {
-    awaitHydration: true,
-    forceResume: true,
-    intent: 'main',
-    keepAllProfilesScope: true,
-    profile: SUITE_PROFIL
-  })
-  setArea('tikki')
+/** Walk into a suite: the room mounts its chat and its four zones; the lobby stays behind. */
+export async function oeffneSuite(suite: Pick<Suite, 'id' | 'resolvedId'> & Partial<Suite>): Promise<void> {
+  $aktiveSuite.set({ id: suite.id, resolvedId: suite.resolvedId, titel: suite.titel ?? suite.id })
+  setArea('suites')
+}
+
+/** Back to the lobby. The session keeps running on the backend. */
+export function verlasseSuite(): void {
+  $aktiveSuite.set(null)
 }
 
 /** The room lead reads the room protocol: name and goal, in the words its SOUL expects. */
@@ -179,7 +179,7 @@ export async function neueSuite(name: string, ziel: string): Promise<void> {
       throw error
     }
 
-    await oeffneSuite({ id: stored })
+    await oeffneSuite({ id: stored, titel })
     // The brief is the first turn; its answer arrives over the session socket,
     // so the request itself is not awaited beyond the gateway's own deadline.
     void anfrage(

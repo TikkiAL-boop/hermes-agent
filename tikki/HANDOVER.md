@@ -19,9 +19,10 @@ Alles darin ist gegen den Code geprüft; Vermutungen sind als solche markiert.
   Port, Modell und Ausweichmodell, per Skript einrichtbar.
 - **Hermes-Kern (Python) hat keine geänderte Zeile.** Alle Tikki-Änderungen liegen in
   `apps/desktop` und `tikki/`. Upstream-Updates sollen weiter sauber einspielbar sein.
-- **Noch nicht gebaut**: die Räume (Raumleiter + bis zu 30 Bots in einem Chat), das
-  PA-Vorzimmer mit den vier Modi, Nutzer-Login, Honcho-Trennung, Rechnerflotte, Web auf
-  tikki.team.
+- **Suites (Räume)**: erster Stand gebaut (Abschnitt 4.7a): Lobby mit leerem Verlauf, Raum mit
+  rundem Tisch, To-do-Wand, Am Tisch, Daten- und Output-Screen.
+- **Noch nicht gebaut**: das PA-Vorzimmer mit den vier Modi, Nutzer-Login, Honcho-Trennung,
+  Rechnerflotte, Web auf tikki.team.
 - Offener Draft-PR: <https://github.com/TikkiAL-boop/hermes-agent/pull/1> (konfliktfrei,
   keine CI, wartet nur auf Merge-Entscheidung von Thorsten).
 
@@ -259,6 +260,31 @@ eine Testmail senden.** Wenn der Server anders heißt oder Ports abweichen, die 
 
 `katalog.ts` importiert `tikki/rollen/KATALOG.json` direkt (relativer Pfad aus
 `apps/desktop/src/app/areas/admin/`), Typ `KatalogRolle`.
+
+### 4.7a Suites (`apps/desktop/src/app/areas/suites/`)
+
+Thorstens Bild (28.09.): Man geht in einen neuen Chat hinein wie in einen Raum. Am **runden
+Tisch** sitzt das Basismodell als Raumleiter, man bespricht das Vorhaben, er holt Bots aus
+dem Katalog dazu. An der Wand die **To-do-Liste**, dazu ein **Daten-Screen** (alles, was
+hineingegeben wurde) und ein **Output-Screen** (Ergebnisse: Recherche, Dateien, Vorschau,
+Dokumente). Physisch/virtuell getrennt von allem anderen. Chats heißen **Suites**. Die Liste
+(Verlauf) startet wie ein frisches Hermes: **null Suites**, keine Vorbefüllung.
+
+| Datei | Zweck |
+|---|---|
+| `store.ts` | Eine Suite = Sitzung des Profils `raumleiter` mit `source: tikki-suite`. `ladeSuites()` = `session.list {profile, include_hidden}` gefiltert auf die Quelle (Fehler bleibt Fehler, nie „leer“). `neueSuite(name, ziel)`: exakte Titelsuche (adoptieren statt gabeln) → `session.create` → `session.title` (legt die Zeile an) → Raum öffnen → `prompt.submit` mit `RAUM:`/`ZIEL:` (Raumprotokoll). Alles über `requestGatewayForProfile('raumleiter')`. `$aktiveSuite` = der Raum, in dem man steht; `oeffneSuite`/`verlasseSuite`. |
+| `suites-area.tsx` | Lobby: Verlauf links (leer bis zur ersten Suite), Formular „Neue Suite“, Karte „Immer am Tisch“ (Raumleiter mit Haupt- und Ausweichmodell aus dem Katalog). Steht eine Suite in `$aktiveSuite`, zeigt der Bereich den Raum. |
+| `suite-room.tsx` | Der Raum: Kopf (Zur Lobby, Titel, Raumleiter, „arbeitet“), links **To-do-Wand** (`$todosBySession`, sonst `$retainedTodosBySession`, `todoTree`) und **Am Tisch** (Raumleiter + `$subagentsBySession`, Rolle per `AN:`-Zeile), Mitte **der Chat der Suite** (`TileChat` aus `app/chat/session-tile.tsx`, jetzt exportiert und mit festgenageltem `ownerRoute` auf `raumleiter`), rechts **Daten-Screen** und **Output-Screen**. |
+| `suite-runtime.ts` | `useSuiteRuntime(storedId)`: Owner-Hinweis setzen, `sessionTileDelegate().resumeTile(storedId, {refreshTranscript})`, daraus eine `SessionView` über `$sessionStates[runtimeId]`. Kein zweiter Resume-Pfad, kein Layoutbaum, keine Seitenleiste. |
+| `suite-daten.ts` | Reine Funktionen: `eingabenAusNachrichten` (Anhänge und `@file:/@url:/…`-Nennungen aus Nutzer-Nachrichten), `ausgabenAusNachrichten` (Markdown-Links, URLs, absolute Pfade mit Endung aus Bot-Antworten). Der Output-Screen mischt dazu `$previewStatusBySession`, `artifactsForSession` und `filesWritten` der Bots. |
+| Tests | `store.test.ts`, `suites-area.test.tsx`, `suite-daten.test.ts`. |
+
+Hermes-Änderung dafür: `TileChat` in `app/chat/session-tile.tsx` ist exportiert und nimmt
+optional `ownerRoute` (vorher nur Tile-intern). Sonst nichts im Hermes-Code.
+
+Offen an den Suites: Räume aus dem Vorzimmer heraus öffnen (Tikkis `RAUM:`-Antwort → Suite),
+Vorschau von Dateien direkt im Output-Screen (heute öffnen Links extern, Dateien sind nur
+gelistet), Umbenennen, Archivieren, Nutzerrechte je Suite, Raum-Postfach.
 
 ### 4.7 Bot-Truppe (`tikki/`)
 

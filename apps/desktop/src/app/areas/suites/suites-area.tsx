@@ -7,7 +7,9 @@ import { cn } from '@/lib/utils'
 
 import { rolle } from '../admin/katalog'
 import { areaLabels } from '../labels'
+import { SuiteRoom } from './suite-room'
 import {
+  $aktiveSuite,
   $suiteEntsteht,
   $suites,
   $suitesFehler,
@@ -156,6 +158,12 @@ function SuiteZeile({ suite }: { suite: Suite }) {
  * one. Entering a suite hands its chat to the Tikki layer.
  */
 export function SuitesArea() {
+  const aktive = useStore($aktiveSuite)
+
+  return aktive ? <SuiteRoom key={aktive.resolvedId || aktive.id} suite={aktive} /> : <SuitesLobby />
+}
+
+function SuitesLobby() {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
   const suites = useStore($suites)

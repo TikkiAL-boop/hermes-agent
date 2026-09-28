@@ -60,8 +60,17 @@ interface AreaLabels {
   raum: { bot: string; fertig: string; fehler: string; unvollstaendig: string }
   suites: {
     abbrechen: string
+    amTisch: string
     anlegen: string
+    arbeitet: string
     ausweich: string
+    daten: string
+    leereAusgabe: string
+    leereDaten: string
+    leereTodos: string
+    output: string
+    todoWand: string
+    zurueck: string
     betreten: string
     einfuehrung: string
     erneut: string
@@ -181,8 +190,17 @@ const de: AreaLabels = {
   raum: { bot: 'Bot', fertig: 'Fertig', fehler: 'Fehlgeschlagen', unvollstaendig: 'Unvollständig' },
   suites: {
     abbrechen: 'Abbrechen',
+    amTisch: 'Am Tisch',
     anlegen: 'Suite eröffnen',
+    arbeitet: 'arbeitet',
     ausweich: 'Ausweichmodell',
+    daten: 'Daten-Screen',
+    leereAusgabe: 'Noch nichts fertig. Ergebnisse, Dateien und Links der Bots erscheinen hier.',
+    leereDaten: 'Noch nichts hereingegeben. Dateien, Links und Ordner aus dem Gespräch erscheinen hier.',
+    leereTodos: 'Noch keine Aufgaben an der Wand. Der Raumleiter hängt sie auf, sobald er plant.',
+    output: 'Output-Screen',
+    todoWand: 'To-do-Wand',
+    zurueck: 'Zur Lobby',
     betreten: 'Betreten',
     einfuehrung:
       'Eine Suite ist ein eigener Raum für ein Vorhaben. Der Raumleiter sitzt von Anfang an am Tisch, bespricht mit dir das Ziel und holt die Bots dazu, die er braucht. Alles, was zur Suite gehört, bleibt in der Suite.',
@@ -303,8 +321,17 @@ const en: AreaLabels = {
   raum: { bot: 'Bot', fertig: 'Done', fehler: 'Failed', unvollstaendig: 'Incomplete' },
   suites: {
     abbrechen: 'Cancel',
+    amTisch: 'At the table',
     anlegen: 'Open suite',
+    arbeitet: 'working',
     ausweich: 'Fallback model',
+    daten: 'Data screen',
+    leereAusgabe: 'Nothing finished yet. Results, files and links from the bots appear here.',
+    leereDaten: 'Nothing handed in yet. Files, links and folders from the conversation appear here.',
+    leereTodos: 'No tasks on the wall yet. The room lead pins them up once it plans.',
+    output: 'Output screen',
+    todoWand: 'To-do wall',
+    zurueck: 'To the lobby',
     betreten: 'Enter',
     einfuehrung:
       'A suite is a room of its own for one undertaking. The room lead sits at the table from the start, works out the goal with you and brings in the bots it needs. Everything that belongs to the suite stays in the suite.',

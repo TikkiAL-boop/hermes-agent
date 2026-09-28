@@ -6,7 +6,8 @@ import { I18nProvider } from '@/i18n'
 const rpc = vi.fn()
 
 vi.mock('@/store/gateway', () => ({ requestGatewayForProfile: (...args: unknown[]) => rpc(...args) }))
-vi.mock('@hermes/plugin-sdk', () => ({ host: { openSession: vi.fn() } }))
+// The lobby is under test; the room pulls the whole chat surface with it.
+vi.mock('./suite-room', () => ({ SuiteRoom: () => null }))
 
 const { SuitesArea } = await import('./suites-area')
 const { $suites, $suitesStatus } = await import('./store')

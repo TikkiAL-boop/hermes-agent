@@ -1,24 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const rpc = vi.fn()
-const openSession = vi.fn()
 const setArea = vi.fn()
 
 vi.mock('@/store/gateway', () => ({
   requestGatewayForProfile: (...args: unknown[]) => rpc(...args)
 }))
-vi.mock('@hermes/plugin-sdk', () => ({ host: { openSession: (...args: unknown[]) => openSession(...args) } }))
 vi.mock('../store', () => ({ setArea: (...args: unknown[]) => setArea(...args) }))
 
-const { $suites, $suitesFehler, $suitesStatus, ladeSuites, neueSuite, SUITE_PROFIL, SUITE_QUELLE } =
+const { $aktiveSuite, $suites, $suitesFehler, $suitesStatus, ladeSuites, neueSuite, SUITE_PROFIL, SUITE_QUELLE } =
   await import('./store')
 
 const calls = () => rpc.mock.calls.map(([profile, method, params]) => [profile, method, params])
 
 beforeEach(() => {
   rpc.mockReset()
-  openSession.mockReset()
   setArea.mockReset()
+  $aktiveSuite.set(null)
   $suites.set([])
   $suitesStatus.set('idle')
   $suitesFehler.set(null)
@@ -112,10 +110,9 @@ describe('neueSuite', () => {
       session_id: 'rt-1',
       text: 'RAUM: Urlaub Ostsee\nZIEL: Ein Plan mit Haus und Kosten.\nBitte plane die erste Runde und melde dich im Raum.'
     })
-    // The chat is on screen before the brief goes out, and the Tikki layer shows it.
-    expect(openSession).toHaveBeenCalledWith('st-1', expect.objectContaining({ profile: SUITE_PROFIL }))
-    expect(openSession.mock.invocationCallOrder[0]).toBeLessThan(rpc.mock.invocationCallOrder[3])
-    expect(setArea).toHaveBeenCalledWith('tikki')
+    // The person stands in the new room before the brief goes out.
+    expect($aktiveSuite.get()).toMatchObject({ id: 'st-1', titel: 'Urlaub Ostsee' })
+    expect(setArea).toHaveBeenCalledWith('suites')
   })
 
   it('adopts an existing suite of the same name instead of forking it', async () => {
@@ -124,6 +121,6 @@ describe('neueSuite', () => {
     await neueSuite('Urlaub Ostsee', '')
 
     expect(calls().map(([, method]) => method)).toEqual(['session.list'])
-    expect(openSession).toHaveBeenCalledWith('alt', expect.anything())
+    expect($aktiveSuite.get()).toMatchObject({ id: 'alt', titel: 'Urlaub Ostsee' })
   })
 })

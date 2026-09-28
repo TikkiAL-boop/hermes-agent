@@ -143,12 +143,14 @@ def einspielen(pfade: list[str]) -> tuple[int, int]:
             )
             for datei in kandidaten:
                 text = datei.read_text(encoding="utf-8", errors="replace")
-                stuecke += rag.aufnehmen("wissen", datei.name, text, schluessel=f"datei:{datei.resolve()}")
+                titel = str(datei.relative_to(wurzel.parent)) if datei != wurzel else datei.name
+                neu = rag.aufnehmen("wissen", titel, text, schluessel=f"datei:{datei.resolve()}")
+                stuecke += neu
                 dateien += 1
-                if system.get("url"):
+                # Nur Neues ins Systemgedächtnis: ein zweites Einspielen erzeugt dort keine Doppel.
+                if system.get("url") and neu:
                     for teil in speicher._stueckeln(text, 3000, 0):
-                        speicher.tencent_merken(system, f"wissen:{datei.name}", "system",
-                                                f"Wissen aus {datei.name}", teil)
+                        speicher.tencent_merken(system, f"wissen:{titel}", "system", f"Wissen aus {titel}", teil)
     finally:
         rag.close()
     return dateien, stuecke

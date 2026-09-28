@@ -9,6 +9,7 @@ import { BrowserArea } from './browser-area'
 import { PostArea } from './post-area'
 import { AreaRail } from './rail'
 import { $area, type Area } from './store'
+import { SuitesArea } from './suites/suites-area'
 import { TerminalArea } from './terminal-area'
 
 function AreaLayer({ active, children, id }: { active: boolean; children: ReactNode; id: Area }) {
@@ -30,7 +31,14 @@ function AreaLayer({ active, children, id }: { active: boolean; children: ReactN
  */
 export function AreaShell({ children }: { children: ReactNode }) {
   const area = useStore($area)
-  const [visited, setVisited] = useState<Record<Area, boolean>>({ admin: false, browser: false, post: false, terminal: false, tikki: true })
+  const [visited, setVisited] = useState<Record<Area, boolean>>({
+    admin: false,
+    browser: false,
+    post: false,
+    suites: false,
+    terminal: false,
+    tikki: true
+  })
 
   useEffect(() => {
     setVisited(prev => (prev[area] ? prev : { ...prev, [area]: true }))
@@ -43,6 +51,11 @@ export function AreaShell({ children }: { children: ReactNode }) {
         <AreaLayer active={area === 'tikki'} id="tikki">
           {children}
         </AreaLayer>
+        {area === 'suites' && (
+          <AreaLayer active id="suites">
+            <SuitesArea />
+          </AreaLayer>
+        )}
         {visited.browser && (
           <AreaLayer active={area === 'browser'} id="browser">
             <BrowserArea active={area === 'browser'} />

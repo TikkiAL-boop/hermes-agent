@@ -58,6 +58,29 @@ interface AreaLabels {
   }
   rail: { label: string }
   raum: { bot: string; fertig: string; fehler: string; unvollstaendig: string }
+  suites: {
+    abbrechen: string
+    anlegen: string
+    ausweich: string
+    betreten: string
+    einfuehrung: string
+    erneut: string
+    fehler: string
+    hauptmodell: string
+    immerDabei: string
+    laedt: string
+    leer: string
+    leerHinweis: string
+    name: string
+    namePlatzhalter: string
+    nachrichten: (n: number) => string
+    neu: string
+    profilFehlt: string
+    verlauf: string
+    wirdEroeffnet: string
+    ziel: string
+    zielPlatzhalter: string
+  }
 }
 
 const de: AreaLabels = {
@@ -76,7 +99,7 @@ const de: AreaLabels = {
       schluessel: 'Alle Anbieter-Schlüssel an einer Stelle. Sie liegen beim Backend, nie in der App.',
       modelle: 'Welches Modell wofür: Tikki im Vorzimmer, der Raumleiter, die Bots. Mit Ausweichkette.',
       regeln: 'Die festen Prompts (SOUL) jeder Rolle. Änderungen gelten sofort für neue Gespräche.',
-      bots: 'Die Truppe: fertige Rollen, die der Raumleiter nach Bedarf in einen Raum holt.',
+      bots: 'Die Truppe: fertige Rollen, die der Raumleiter nach Bedarf in eine Suite holt.',
       nutzer: 'Die Familie. Jeder sieht nur seine Räume, der Admin alle.',
       rechner: 'Die Rechnerflotte hinter Tikki. Grundlage für die Bot-Armee.',
       gedaechtnis: 'Was Tikki sich merkt: getrennt nach Nutzer, System und Projekt.',
@@ -123,7 +146,7 @@ const de: AreaLabels = {
       note: 'Rechner melden sich später selbst an. Bis dahin ist das die geplante Flotte.'
     }
   },
-  areas: { admin: 'Admin', browser: 'Browser', post: 'Post', terminal: 'Terminal', tikki: 'Tikki' },
+  areas: { admin: 'Admin', browser: 'Browser', post: 'Post', suites: 'Suites', terminal: 'Terminal', tikki: 'Tikki' },
   browser: { close: 'Tab schließen', newTab: 'Neuer Tab', untitled: 'Neue Seite' },
   post: {
     address: 'Adresse',
@@ -155,7 +178,32 @@ const de: AreaLabels = {
     unread: 'ungelesen'
   },
   rail: { label: 'Bereiche' },
-  raum: { bot: 'Bot', fertig: 'Fertig', fehler: 'Fehlgeschlagen', unvollstaendig: 'Unvollständig' }
+  raum: { bot: 'Bot', fertig: 'Fertig', fehler: 'Fehlgeschlagen', unvollstaendig: 'Unvollständig' },
+  suites: {
+    abbrechen: 'Abbrechen',
+    anlegen: 'Suite eröffnen',
+    ausweich: 'Ausweichmodell',
+    betreten: 'Betreten',
+    einfuehrung:
+      'Eine Suite ist ein eigener Raum für ein Vorhaben. Der Raumleiter sitzt von Anfang an am Tisch, bespricht mit dir das Ziel und holt die Bots dazu, die er braucht. Alles, was zur Suite gehört, bleibt in der Suite.',
+    erneut: 'Erneut versuchen',
+    fehler: 'Die Suites konnten nicht geladen werden.',
+    hauptmodell: 'Hauptmodell',
+    immerDabei: 'Immer am Tisch',
+    laedt: 'Suites werden geladen …',
+    leer: 'Noch keine Suites.',
+    leerHinweis: 'Die erste entsteht, wenn du hier eine eröffnest oder Tikki im Vorzimmer einen Auftrag bekommt.',
+    name: 'Name der Suite',
+    namePlatzhalter: 'z. B. Urlaub Ostsee',
+    nachrichten: n => (n === 1 ? '1 Nachricht' : `${n} Nachrichten`),
+    neu: 'Neue Suite',
+    profilFehlt:
+      'Das Profil „raumleiter“ gibt es auf diesem Backend noch nicht. Auf dem Rechner tikki/werkzeuge/rollen-einrichten.sh ausführen.',
+    verlauf: 'Verlauf',
+    wirdEroeffnet: 'Suite wird eröffnet …',
+    ziel: 'Ziel',
+    zielPlatzhalter: 'Ein Satz: Was muss am Ende fertig sein?'
+  }
 }
 
 const en: AreaLabels = {
@@ -174,7 +222,7 @@ const en: AreaLabels = {
       schluessel: 'Every provider key in one place. They live with the backend, never in the app.',
       modelle: 'Which model for what: Tikki at the front desk, the room lead, the bots. With fallbacks.',
       regeln: 'The fixed prompt (SOUL) of every role. Changes apply to new conversations right away.',
-      bots: 'The troop: ready-made roles the room lead pulls into a room on demand.',
+      bots: 'The troop: ready-made roles the room lead pulls into a suite on demand.',
       nutzer: 'The family. Everyone sees only their rooms, the admin sees all.',
       rechner: 'The machine fleet behind Tikki. Foundation for the bot army.',
       gedaechtnis: 'What Tikki remembers: separated by user, system and project.',
@@ -220,7 +268,7 @@ const en: AreaLabels = {
       note: 'Machines will register themselves later. Until then this is the planned fleet.'
     }
   },
-  areas: { admin: 'Admin', browser: 'Browser', post: 'Mail', terminal: 'Terminal', tikki: 'Tikki' },
+  areas: { admin: 'Admin', browser: 'Browser', post: 'Mail', suites: 'Suites', terminal: 'Terminal', tikki: 'Tikki' },
   browser: { close: 'Close tab', newTab: 'New tab', untitled: 'New page' },
   post: {
     address: 'Address',
@@ -252,7 +300,32 @@ const en: AreaLabels = {
     unread: 'unread'
   },
   rail: { label: 'Areas' },
-  raum: { bot: 'Bot', fertig: 'Done', fehler: 'Failed', unvollstaendig: 'Incomplete' }
+  raum: { bot: 'Bot', fertig: 'Done', fehler: 'Failed', unvollstaendig: 'Incomplete' },
+  suites: {
+    abbrechen: 'Cancel',
+    anlegen: 'Open suite',
+    ausweich: 'Fallback model',
+    betreten: 'Enter',
+    einfuehrung:
+      'A suite is a room of its own for one undertaking. The room lead sits at the table from the start, works out the goal with you and brings in the bots it needs. Everything that belongs to the suite stays in the suite.',
+    erneut: 'Try again',
+    fehler: 'The suites could not be loaded.',
+    hauptmodell: 'Primary model',
+    immerDabei: 'Always at the table',
+    laedt: 'Loading suites …',
+    leer: 'No suites yet.',
+    leerHinweis: 'The first one appears when you open one here or Tikki is given a task at the front desk.',
+    name: 'Suite name',
+    namePlatzhalter: 'e.g. Baltic Sea holiday',
+    nachrichten: n => (n === 1 ? '1 message' : `${n} messages`),
+    neu: 'New suite',
+    profilFehlt:
+      'The profile "raumleiter" does not exist on this backend yet. Run tikki/werkzeuge/rollen-einrichten.sh on the machine.',
+    verlauf: 'History',
+    wirdEroeffnet: 'Opening suite …',
+    ziel: 'Goal',
+    zielPlatzhalter: 'One sentence: what has to be done in the end?'
+  }
 }
 
 /** Tikki is a German-first product; every other locale falls back to English. */

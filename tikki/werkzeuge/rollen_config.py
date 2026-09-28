@@ -109,6 +109,9 @@ def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None
             str(repo / "tikki" / "skills"),
             str(repo / "skills" / "autonomous-ai-agents"),
             str(profile / "openclaw" / "skills"),
+            # Dauer-Recherche: Videos/Shorts per Transkript, Paper, Nachrichtenlagen, Wiki.
+            str(repo / "skills" / "media" / "youtube-content"),
+            str(repo / "skills" / "research"),
         ]
     _einmischen(cfg, rolle.get("einstellungen") or {})
 

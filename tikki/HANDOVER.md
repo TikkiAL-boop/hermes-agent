@@ -408,8 +408,10 @@ Bot-Werkzeuge, und seine SOUL listet je Rolle die `toolsets`, die er mitgibt. Te
 - Als Werkzeug der Bots: Skills `claude-code`, `codex` (aus `skills/autonomous-ai-agents/`), `grok`
   (offizieller optionaler Skill, in die Bibliothek installiert), `gemini-cli`, `notebooklm`
   (Browser mit angemeldetem Google-Konto, NotebookLM hat keine private CLI), `openclaw-skills`.
-  Jede Rolle mit dem Werkzeug `skills` sieht `tikki/skills`, die Coding-Agenten und die
-  OpenClaw-Bibliothek über `skills.external_dirs` (von `rollen_config.py` gesetzt).
+  Jede Rolle mit dem Werkzeug `skills` sieht `tikki/skills`, die Coding-Agenten, die
+  OpenClaw-Bibliothek und für Dauer-Recherche `skills/media/youtube-content` (Videos und Shorts
+  über Transkripte) sowie `skills/research` (arXiv, Nachrichtenlage, Wiki) über
+  `skills.external_dirs` (von `rollen_config.py` gesetzt).
 - Perplexity: keine kostenlose CLI, nicht angebunden.
 
 ### 4.11 OpenClaw-Skills (`tikki/werkzeuge/openclaw_skills.py`, `openclaw-einrichten.sh`)
@@ -695,7 +697,8 @@ Bereich Browser), Post, Terminal.
 | `4d2291d9` | Dauerräume mit Takt (`suite_takt.py`), Wachhalter, Übungsläufe im Backend, Plugin `gedaechtnis` |
 | `de40222d` | TencentDB Agent Memory als Dienst je Mensch und fürs System |
 | `ed8ee494` | Vorzimmer öffnet Suiten selbst, Übungsläufe in der App, Takt-Auswahl, Raumbild, Markenwache |
-| (dieser) | Bots bekommen ihre Werkzeuge, Abos/Skills, OpenClaw-Katalog, Update-Skript, Handover |
+| `8ce52252` | Bots bekommen ihre Werkzeuge, Abos/Skills, OpenClaw-Katalog, Update-Skript, Handover |
+| (dieser) | Recherche-Skills für alle Rollen (YouTube-Transkripte, arXiv, Nachrichtenlage, Wiki) |
 
 Dieses Dokument: `tikki/HANDOVER.md`. Bitte bei jedem größeren Schritt fortschreiben,
 damit die nächste Übergabe wieder vollständig ist.

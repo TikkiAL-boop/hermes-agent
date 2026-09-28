@@ -72,6 +72,15 @@ delegation:
   max_concurrent_children: 30
   max_spawn_depth: 1
 
+# Gedächtnis: Honcho ist der eine externe Gedächtnis-Anbieter jedes Tikki-Profils
+# (Hermes erlaubt genau einen je Profil). Ein Workspace „tikki“ für das System, ein
+# Peer je Mensch, ein AI-Peer je Rolle, eine Honcho-Sitzung je Suite (siehe
+# vorlage-honcho.json). Ohne HONCHO_API_KEY bzw. baseUrl bleibt das Plugin inaktiv.
+# Weitere Speicher (TencentDB Agent Memory, RAG) kommen als Werkzeuge dazu, nicht
+# als zweiter Anbieter – siehe HANDOVER.md, Abschnitt Gedächtnis.
+memory:
+  provider: "honcho"
+
 # Unnötige Anzeige im Terminal abschalten.
 display:
   compact: true

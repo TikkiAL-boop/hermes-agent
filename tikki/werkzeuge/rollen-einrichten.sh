@@ -15,6 +15,7 @@ TIKKI="$(cd "$HIER/.." && pwd)"
 REPO="$(cd "$TIKKI/.." && pwd)"
 KATALOG="$TIKKI/rollen/KATALOG.json"
 VORLAGE="$TIKKI/hermes/vorlage-rolle.yaml"
+VORLAGE_HONCHO="$TIKKI/hermes/vorlage-honcho.json"
 HERMES_HOME_BASIS="${HERMES_HOME_BASIS:-$HOME/.hermes}"
 PROFILE_DIR="$HERMES_HOME_BASIS/profiles"
 MODUL="tikki.werkzeuge.rollen_config"
@@ -34,6 +35,7 @@ done
 
 [ -f "$KATALOG" ] || { echo "FEHLER: $KATALOG fehlt." >&2; exit 1; }
 [ -f "$VORLAGE" ] || { echo "FEHLER: $VORLAGE fehlt." >&2; exit 1; }
+[ -f "$VORLAGE_HONCHO" ] || { echo "FEHLER: $VORLAGE_HONCHO fehlt." >&2; exit 1; }
 
 # hermes-Befehl: im PATH oder im Repo-venv.
 HERMES_BIN="$(command -v hermes || true)"
@@ -123,9 +125,16 @@ while IFS=$'\t' read -r SLUG NAME PORT; do
     konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml"
   fi
 
+  # 3b) honcho.json: Workspace tikki, AI-Peer = Rolle, eine Honcho-Sitzung je Suite
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "  [dry-run] honcho.json: workspace=tikki aiPeer=$SLUG sessionStrategy=per-session"
+  else
+    konfig honcho "$VORLAGE_HONCHO" "$SLUG" "$ZIEL/honcho.json"
+  fi
+
   # 4) .env-Hinweis (wird nie vom Skript befüllt)
   if [ "$DRY_RUN" = 0 ] && [ ! -f "$ZIEL/.env" ]; then
-    printf '# Tikki-Rolle %s – Schlüssel hier eintragen (Datei bleibt lokal, nie ins Repo)\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n' "$SLUG" > "$ZIEL/.env"
+    printf '# Tikki-Rolle %s – Schlüssel hier eintragen (Datei bleibt lokal, nie ins Repo)\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n# HONCHO_API_KEY=\n' "$SLUG" > "$ZIEL/.env"
     chmod 600 "$ZIEL/.env"
     sagen ".env-Vorlage angelegt (ohne Werte): $ZIEL/.env"
   fi
@@ -147,7 +156,8 @@ if [ "$FEHLER" -gt 0 ]; then exit 1; fi
 if [ "$DRY_RUN" = 0 ]; then
   echo
   echo "Nächste Schritte:"
-  echo "  1. XAI_API_KEY, CURSOR_API_KEY und je Profil API_SERVER_KEY setzen (Umgebung oder ~/.hermes/profiles/<slug>/.env)."
+  echo "  1. XAI_API_KEY, CURSOR_API_KEY, HONCHO_API_KEY und je Profil API_SERVER_KEY setzen (Umgebung oder ~/.hermes/profiles/<slug>/.env)."
+  echo "     Honcho-SDK einmal bereitstellen: hermes pm install --extra honcho"
   echo "  2. Pro Rolle starten:  hermes -p <slug> gateway"
   echo "  3. Prüfen:             tikki/werkzeuge/rollen-status.sh"
 fi

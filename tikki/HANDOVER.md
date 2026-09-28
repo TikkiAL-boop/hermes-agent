@@ -419,6 +419,31 @@ Vorgeschlagene Architektur (Vorschlag, noch nicht abgestimmt im Detail):
 - **Modi**: Small Talk / Brainstorming / Planning / Get Work Done als Auswahl beim Start
   des Vorzimmer-Gesprächs; steuern SOUL-Zusatz oder Systemprompt-Präfix.
 
+### 8.1a Gedächtnis: Honcho + TencentDB Agent Memory + Hindsight + RAG (Plan 28.09., Thorsten)
+
+**Ziel:** Kein Wissen, kein Workflow geht verloren. Tikki kann in vier Speichern nachschlagen.
+
+| Speicher | Wofür | Anbindung an Hermes | Stand |
+|---|---|---|---|
+| **Honcho** | System, jeder Mensch, jede Suite: dialektisches Nutzermodell, Sitzungszusammenfassungen | Eingebautes Hermes-Plugin `plugins/memory/honcho`, **der eine** `memory.provider` jedes Tikki-Profils. Workspace `tikki`, `peerName` = Mensch (heute `thorsten`, später per Login-Alias), `aiPeer` = Rolle, `sessionStrategy: per-session` → **eine Honcho-Sitzung je Suite** | **Verdrahtet**: `vorlage-rolle.yaml` (`memory.provider: honcho`), `vorlage-honcho.json`, `rollen_config.py honcho`, Skript-Schritt 3b. Ohne `HONCHO_API_KEY` inaktiv (`hermes doctor` sagt es). SDK: `hermes pm install --extra honcho`. Offen: Cloud (app.honcho.dev) oder selbst gehostet auf `consai`? |
+| **TencentDB Agent Memory** (Tencent Cloud, Open Source, Mai 2026) | Vierschichtiges Langzeitgedächtnis (L0 Rohgespräch → L1 Fakten → L2 Szenen → L3 Persona) plus Skill / Wiki / CodeGraph; lokal (Node ≥ 22.16, SQLite, Port 8420). Thorsten: **eine Instanz je Mensch, eine für alles Systemwissen** | Liefert selbst ein Hermes-Memory-Provider-Plugin (`hermes-plugin/memory/memory_tencentdb`, `memory.provider: memory_tencentdb`, Tools `memory_tencentdb_memory_search` / `_conversation_search`, Umgebung `TDAI_LLM_*`, `MEMORY_TENCENTDB_GATEWAY_*`, `TDAI_DATA_DIR`). **Konflikt:** Hermes erlaubt nur einen Provider je Profil, und der ist Honcho. Weg: nicht als Provider, sondern als **Werkzeug-Quelle** über ein kleines Tikki-Plugin (unten). Keine Mandanten im Gateway dokumentiert → je Mensch ein eigener Gateway-Prozess mit eigenem `TDAI_DATA_DIR` und Port, plus einer für das Systemwissen | Noch nicht begonnen. Repo: <https://github.com/TencentCloud/TencentDB-Agent-Memory> |
+| **Hindsight** (Vectorize) | Wissensgraph, Entitäten, recall/reflect/retain | Katalog-Plugin (`plugin-catalog/hindsight.yaml`), ebenfalls ein Memory-Provider → gleicher Konflikt; als Quelle über seine HTTP-API im Tikki-Plugin, oder weglassen, wenn Honcho + Tencent reichen | Offen, Entscheidung Thorsten |
+| **RAG je Mensch** | Eigene Dokumente, Projekte, Mails: klassisches Nachschlagen | Lokaler Vektorspeicher je Mensch (Kandidaten im Katalog: `lancedb`, `memory-zvec`, `corpus`), gefüttert aus `~/Tikki/<name>/` und den Suite-Ausgaben; als Werkzeug im Tikki-Plugin | Offen, Wahl des Speichers |
+
+**Tikki-Plugin `gedaechtnis`** (Rung 4 der Footprint-Leiter, kein Hermes-Kern): liegt in
+`tikki/plugins/gedaechtnis/` und wird nach `~/.hermes/plugins/` verlinkt. Zwei Aufgaben:
+1. **Spiegeln**: `on_session_end` / `post_llm_call` schreiben jeden Turn zusätzlich in TencentDB
+   (`POST /capture`) und in den RAG des Menschen. Honcho schreibt ohnehin als Provider.
+2. **Nachschlagen**: ein Werkzeug `nachschlagen(quelle, frage)` mit `quelle ∈ {rag, tencent, hindsight,
+   honcho}`; Honcho über die Provider-Tools, Tencent über `/recall`, RAG lokal, Hindsight über API.
+Das Werkzeug kommt nur in die Profile `tikki` und `raumleiter` (`platform_toolsets` im Katalog).
+
+**Nicht dabei:** Paperclip (Thorsten). **Dabei:** Browser (Hermes-Toolset `browser`, in der App der
+Bereich Browser), Post, Terminal.
+
+**Modelle über API-Schlüssel** für Vorzimmer und Suiten: unverändert aus `KATALOG.json`
+(Tikki: xAI Grok 4.7 → Cursor Opus 5.5; Raumleiter: Cursor Opus 5.5 → Grok 4.7).
+
 ### 8.2 PA-Vorzimmer
 
 - Profil `tikki` (8650) ist das Vorzimmer. Braucht: User-RAG (Hermes-Gedächtnis + Honcho
@@ -493,6 +518,10 @@ Vorgeschlagene Architektur (Vorschlag, noch nicht abgestimmt im Detail):
 | `d18ef6cd` | Rollenkonfiguration in der Hermes-Umgebung erzeugen, mit Versionsstempel (`rollen_config.py`) |
 | `dd10491a` | Handover: `rollen_config.py`, Installationsnotizen |
 | `cb635e8b` | Räume, Schritt 1: Bots sprechen im Chat unter ihrem Namen (`areas/tikki/`) |
+| `09d647c0` | Wortmarke „TIKKI“ im leeren Chat |
+| `aa2fcf6a` | Composer-Statusfach bleibt in versteckten Bereichen unsichtbar |
+| `ad23fc29` | Bereich „Suites“: Lobby mit Verlauf, Neue Suite, Raumleiter |
+| `0a236537` | Die Suite als Raum: runder Tisch, To-do-Wand, Daten- und Output-Screen |
 
 Dieses Dokument: `tikki/HANDOVER.md`. Bitte bei jedem größeren Schritt fortschreiben,
 damit die nächste Übergabe wieder vollständig ist.

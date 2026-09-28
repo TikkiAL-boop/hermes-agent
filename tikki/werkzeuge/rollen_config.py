@@ -12,6 +12,7 @@ Unterbefehle (alle Pfade absolut):
     zeilen <katalog>                               slug<TAB>name<TAB>port je Rolle
     vorschau <katalog> <vorlage> <slug>            eine Zeile, was geschrieben würde
     schreiben <katalog> <vorlage> <slug> <ziel>    config.yaml schreiben, wenn abweichend
+    honcho <vorlage-honcho> <slug> <ziel>         honcho.json der Rolle schreiben, wenn abweichend
 """
 
 from __future__ import annotations
@@ -104,6 +105,28 @@ def schreiben(katalog: str, vorlage: str, slug: str, ziel: str) -> bool:
     return True
 
 
+def honcho_config(vorlage: str, slug: str) -> str:
+    """Die Honcho-Vorlage mit dem AI-Peer der Rolle; der Rest gilt für alle Rollen gleich."""
+    with open(vorlage, encoding="utf-8") as f:
+        cfg = json.load(f)
+    cfg.pop("_hinweis", None)
+    cfg["aiPeer"] = slug
+    return json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
+
+
+def honcho_schreiben(vorlage: str, slug: str, ziel: str) -> bool:
+    """Schreibt honcho.json nur, wenn sich der Inhalt ändert. True = geschrieben."""
+    neu = honcho_config(vorlage, slug)
+    zielpfad = Path(ziel)
+    alt = zielpfad.read_text(encoding="utf-8") if zielpfad.exists() else None
+    if alt == neu:
+        return False
+    tmp = zielpfad.with_name(zielpfad.name + ".tmp")
+    tmp.write_text(neu, encoding="utf-8")
+    os.replace(tmp, zielpfad)
+    return True
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__, file=sys.stderr)
@@ -134,6 +157,13 @@ def main(argv: list[str]) -> int:
             print(f"  config.yaml geschrieben: {ziel}")
         else:
             print("  config.yaml unverändert")
+        return 0
+    if befehl == "honcho":
+        vorlage, slug, ziel = rest
+        if honcho_schreiben(vorlage, slug, ziel):
+            print(f"  honcho.json geschrieben: {ziel}")
+        else:
+            print("  honcho.json unverändert")
         return 0
     print(f"Unbekannter Befehl: {befehl}", file=sys.stderr)
     return 2

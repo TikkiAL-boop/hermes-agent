@@ -15,6 +15,7 @@ from tikki.werkzeuge import rollen_config
 TIKKI = Path(__file__).resolve().parents[2] / "tikki"
 KATALOG = TIKKI / "rollen" / "KATALOG.json"
 VORLAGE = TIKKI / "hermes" / "vorlage-rolle.yaml"
+VORLAGE_HONCHO = TIKKI / "hermes" / "vorlage-honcho.json"
 
 
 def _rollen():
@@ -41,3 +42,15 @@ def test_second_write_is_a_no_op(tmp_path):
     before = ziel.read_bytes()
     assert not rollen_config.schreiben(str(KATALOG), str(VORLAGE), "raumleiter", str(ziel))
     assert ziel.read_bytes() == before
+
+
+def test_honcho_config_names_the_role_as_ai_peer_in_the_shared_workspace(tmp_path):
+    ziel = tmp_path / "honcho.json"
+    assert rollen_config.honcho_schreiben(str(VORLAGE_HONCHO), "raumleiter", str(ziel))
+    cfg = json.loads(ziel.read_text(encoding="utf-8"))
+
+    assert cfg["aiPeer"] == "raumleiter"
+    assert cfg["workspace"] == "tikki"
+    assert cfg["sessionStrategy"] == "per-session"
+    assert "_hinweis" not in cfg
+    assert not rollen_config.honcho_schreiben(str(VORLAGE_HONCHO), "raumleiter", str(ziel))

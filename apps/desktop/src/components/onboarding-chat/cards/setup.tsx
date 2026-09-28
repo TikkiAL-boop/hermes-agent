@@ -32,6 +32,7 @@ import { type OnboardingPlugin, pluginNeedsApp, useOnboardingPlugins } from '@/s
 import { useTheme } from '@/themes'
 import { setAccentOverride } from '@/themes/accent-override'
 import { normalizeHex } from '@/themes/color'
+import { BRAND_NAME } from '@/i18n/brand'
 
 export function ConnectorsCard({ locked }: CardProps) {
   const view = useSessionView()
@@ -170,8 +171,8 @@ export function ConnectorPicks({ catalog, commit, done, locked, plugins }: Conne
           here. Saying so is what keeps the Connect cards later from reading as
           a second ask for the same thing. */}
       <p className="text-xs text-muted-foreground">
-        <strong className="font-medium text-foreground">Nothing connects or installs yet.</strong> Tikki will offer to
-        link these, or install a plugin, when a task needs them, and asks first.
+        <strong className="font-medium text-foreground">Nothing connects or installs yet.</strong> {BRAND_NAME} will
+        offer to link these, or install a plugin, when a task needs them, and asks first.
       </p>
     </CardFrame>
   )

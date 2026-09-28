@@ -9,6 +9,7 @@ import {
   quickComposerReducer,
   type QuickComposerState
 } from '@/store/quick-entry'
+import { BRAND_NAME } from '@/i18n/brand'
 
 /**
  * The Quick Entry composer — the whole renderer surface of the global-hotkey
@@ -136,7 +137,7 @@ export function QuickEntryApp() {
                 dispatch({ type: 'dismiss' })
               }
             }}
-            placeholder={state.connected ? 'Ask Tikki…' : 'Not connected — open Tikki to reconnect'}
+            placeholder={state.connected ? `Ask ${BRAND_NAME}…` : `Not connected — open ${BRAND_NAME} to reconnect`}
             ref={inputRef}
             spellCheck={false}
             style={{

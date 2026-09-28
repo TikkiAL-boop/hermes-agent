@@ -11,6 +11,7 @@ import { activeGatewayConnectionId } from '@/store/gateway'
 import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
 
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
+import { BRAND_NAME } from '@/i18n/brand'
 
 interface ScopeOption {
   key: string
@@ -126,7 +127,7 @@ export function useCapabilityScope({
 
     return (profilesData?.profiles ?? []).map(p => ({
       key: p.name,
-      label: p.is_default ? 'Tikki (default)' : p.name,
+      label: p.is_default ? `${BRAND_NAME} (default)` : p.name,
       value: p.name
     }))
   }, [multiConnection, profilesData, rosterData])

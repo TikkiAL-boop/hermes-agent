@@ -1,11 +1,22 @@
-import { describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test, vi } from 'vitest'
 
-import { brandString, brandTranslations } from './brand'
-import { TRANSLATIONS } from './catalog'
-import { en } from './en'
+// The UI test project runs with TIKKI_BRANDING=off so upstream tests keep
+// their Hermes wording; this file is about the filter itself, so turn it on
+// and load a fresh module graph.
+vi.stubEnv('TIKKI_BRANDING', 'on')
+vi.resetModules()
+
+const { brandString, brandTranslations, BRAND_NAME } = await import('./brand')
+const { TRANSLATIONS } = await import('./catalog')
+const { en } = await import('./en')
+
+afterAll(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('brand filter', () => {
   test('renames the product but leaves the CLI, paths and URLs alone', () => {
+    expect(BRAND_NAME).toBe('Tikki')
     expect(brandString('Hermes Agent keeps learning')).toBe('Tikki keeps learning')
     expect(brandString('Hermes Desktop and Hermes Light')).toBe('Tikki and Tikki')
     expect(brandString('Im Hermes-Katalog')).toBe('Im Tikki-Katalog')
@@ -14,7 +25,9 @@ describe('brand filter', () => {
   })
 
   test('function-valued strings are branded too', () => {
-    const branded = brandTranslations({ a: { b: (name: string) => `Hermes darf ${name} verwenden` } } as never) as never as {
+    const branded = brandTranslations({
+      a: { b: (name: string) => `Hermes darf ${name} verwenden` }
+    } as never) as never as {
       a: { b: (name: string) => string }
     }
     expect(branded.a.b('Slack')).toBe('Tikki darf Slack verwenden')
@@ -37,5 +50,14 @@ describe('brand filter', () => {
     expect(leaks).toEqual([])
     // Sanity: the upstream file itself still says Hermes, so the filter did real work.
     expect(JSON.stringify(en)).toMatch(/Hermes/)
+  })
+
+  test('with TIKKI_BRANDING=off the filter is a no-op (what upstream tests run against)', async () => {
+    vi.stubEnv('TIKKI_BRANDING', 'off')
+    vi.resetModules()
+    const off = await import('./brand')
+    expect(off.BRAND_NAME).toBe('Hermes')
+    expect(off.brandString('Hermes Desktop')).toBe('Hermes Desktop')
+    vi.stubEnv('TIKKI_BRANDING', 'on')
   })
 })

@@ -8,6 +8,7 @@ import { Plus } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { QUICK_REACTIONS } from '@/store/reactions'
 import type { MessageReaction } from '@/types/hermes'
+import { BRAND_NAME } from '@/i18n/brand'
 
 // Served from the app's own origin (vite.config.ts `hermes:emojibase-assets`
 // plugin bundles emojibase-data): Electron must work offline, and the app
@@ -197,7 +198,7 @@ export const ReactionBadge: FC<{
           <span
             className="reaction-pop leading-none"
             key={`${reaction.author}-${reaction.emoji}`}
-            title="Reacted by Tikki"
+            title={`Reacted by ${BRAND_NAME}`}
           >
             {reaction.emoji}
           </span>

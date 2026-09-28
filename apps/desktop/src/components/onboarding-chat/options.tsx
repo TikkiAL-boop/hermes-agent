@@ -5,6 +5,7 @@ import { IS_MAC } from '@/lib/keybinds/combo'
 import { cn } from '@/lib/utils'
 import type { InterfaceMode } from '@/store/interface-mode'
 import { readableInk } from '@/themes/color'
+import { BRAND_NAME } from '@/i18n/brand'
 
 // Curated leaders for the first-run picker. Other enabled catalog entries
 // remain searchable, so newly deployed connectors need no client list update.
@@ -128,7 +129,7 @@ export const ELITE_LAYOUT_ID = 'terminal-deck'
 // preset so its shelf shows the pick as active.
 export const LAYOUTS: Array<{ description: string; id: string; mode: InterfaceMode; name: string; tree: MiniNode }> = [
   {
-    description: 'For talking to Tikki.',
+    description: `For talking to ${BRAND_NAME}.`,
     id: 'sidebar-left',
     mode: 'simple',
     name: 'Basic',

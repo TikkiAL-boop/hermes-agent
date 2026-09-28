@@ -184,7 +184,6 @@ function Mailbox({ address, labels }: { address: string; labels: PostLabels }) {
             disabled={busy === 'list'}
             onClick={() => void loadMessages()}
             size="icon-sm"
-            title={labels.refresh}
             variant="ghost"
           >
             <RefreshCw aria-hidden className={cn(busy === 'list' && 'animate-spin')} />
@@ -284,14 +283,18 @@ function Reader({ labels }: { labels: PostLabels }) {
             <Button onClick={() => startReply(message)} size="sm" variant="secondary">
               <Send aria-hidden /> {labels.reply}
             </Button>
-            <Button onClick={() => void markUnread(message.uid)} size="sm" title={labels.markUnread} variant="ghost">
+            <Button
+              aria-label={labels.markUnread}
+              onClick={() => void markUnread(message.uid)}
+              size="sm"
+              variant="ghost"
+            >
               <Mail aria-hidden />
             </Button>
             <Button
               aria-label={labels.delete}
               onClick={() => void removeMessage(message.uid)}
               size="icon-sm"
-              title={labels.delete}
               variant="ghost"
             >
               <Trash2 aria-hidden />

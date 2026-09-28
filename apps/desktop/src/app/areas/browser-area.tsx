@@ -87,7 +87,6 @@ export function BrowserArea({ active }: { active: boolean }) {
                 className="min-w-0 flex-1 truncate text-left"
                 onClick={() => $activeTab.set(tab.id)}
                 role="tab"
-                title={page?.url || tab.target.url}
                 type="button"
               >
                 {title}
@@ -109,7 +108,6 @@ export function BrowserArea({ active }: { active: boolean }) {
           onClick={() => {
             newBrowserTab()
           }}
-          title={labels.newTab}
           type="button"
         >
           <Plus aria-hidden className="size-4" />

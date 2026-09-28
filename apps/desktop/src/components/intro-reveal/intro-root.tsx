@@ -6,13 +6,14 @@ import { OverlayErrorBoundary } from '@/components/overlay-error-boundary'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 
 import { IntroRevealSurface } from './intro-reveal-surface'
+import { BRAND_NAME } from '@/i18n/brand'
 
 export function mountIntroReveal(): void {
   if (!isOnboardingEnabled()) {
     return
   }
 
-  document.title = 'Tikki'
+  document.title = BRAND_NAME
   // Every intro measure is in rem, so this one root size scales the whole
   // composition. The app's default 16 px root is sized for a working window, which
   // is too small on a display the user sits back from.

@@ -8,7 +8,14 @@
 
 import type { Translations } from './types'
 
-export const BRAND_NAME = 'Tikki'
+// Upstream's own test-suite asserts the Hermes wording. `TIKKI_BRANDING=off`
+// (set for the vitest UI project) turns this filter into a no-op so those
+// tests keep proving the logic underneath; the shipped app never sets it.
+const brandingOff = typeof process !== 'undefined' && process.env?.TIKKI_BRANDING === 'off'
+
+export const BRANDING_ENABLED = !brandingOff
+
+export const BRAND_NAME = BRANDING_ENABLED ? 'Tikki' : 'Hermes'
 
 const RULES: ReadonlyArray<readonly [RegExp, string]> = [
   // Longer product phrases first so they collapse to the single brand name.
@@ -17,6 +24,10 @@ const RULES: ReadonlyArray<readonly [RegExp, string]> = [
 ]
 
 export function brandString(value: string): string {
+  if (!BRANDING_ENABLED) {
+    return value
+  }
+
   let out = value
   for (const [pattern, replacement] of RULES) {
     out = out.replace(pattern, replacement)

@@ -61,6 +61,21 @@ Das Einrichten ist wiederholbar: vorhandene Profile werden nicht neu angelegt, `
 `config.yaml` werden nur geschrieben, wenn sie sich unterscheiden. `--nur <slug>` beschränkt
 den Lauf auf eine Rolle.
 
+## Dauerbetrieb, Gedächtnis, Abos, Skills
+
+| Skript | Wofür |
+|---|---|
+| `werkzeuge/suite_takt.py` | Räume mit `TAKT:` fahren Runden im Backend (Cronjob `tikki-takt`), Raumbericht für den Wachhalter, Übungsergebnisse an den Hauptraum |
+| `werkzeuge/abos-einrichten.sh` | Claude-, Codex-, Grok-Abo als Modelle anmelden; Kommandozeilen der Abos prüfen |
+| `werkzeuge/openclaw-einrichten.sh` | ClawHub-Katalog (OpenClaw) lokal, Skills auf Abruf in die Bibliothek `openclaw` |
+| `werkzeuge/hermes-aktualisieren.sh` | Neue Hermes-Version per Merge übernehmen, danach alle Tikki-Prüfungen |
+| `dienste/honcho/honcho.sh` | Honcho als eigener Dienst (Docker) |
+| `dienste/tencentdb/tencentdb.sh` | TencentDB Agent Memory je Mensch und fürs System (Docker) |
+| `plugins/gedaechtnis/` | Spiegelt jede Runde in TencentDB und die RAG-Sammlung; Werkzeug `nachschlagen` |
+| `skills/` | Tikki-Skills: `gemini-cli`, `notebooklm`, `openclaw-skills` |
+
+Reihenfolge und Einzelheiten: `HANDOVER.md`, Abschnitte 3 und 4.8–4.12.
+
 ## Modelle und Ersatz
 
 Die Zuordnung steht im Katalog unter `modell.primary` / `modell.fallback` in der Form

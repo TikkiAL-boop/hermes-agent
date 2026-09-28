@@ -1,4 +1,4 @@
-# Tikki – Handover (Stand 28.09.2026, Commit `f4a3b983` auf `tikki-app`)
+# Tikki – Handover (Stand 28.09.2026 abends, Zweig `tikki-app`)
 
 Dieses Dokument ist für die nächste Entwicklerin oder das nächste Claude Code, das auf dem
 Zielrechner (Mac Studio) weiterarbeitet. Es beschreibt **was Tikki ist**, **was bereits
@@ -15,14 +15,24 @@ Alles darin ist gegen den Code geprüft; Vermutungen sind als solche markiert.
 - **Eine App** (Electron, `apps/desktop`) mit fünf Bereichen in einer linken Leiste:
   **Tikki** (der Hermes-Chat) · **Browser** (mit Cookie-Auto-Klick) · **Post** (eigener
   IMAP/SMTP-Client für `name@tikki.team`) · **Terminal** · **Admin**.
-- **Bot-Truppe**: 12 fertige Rollen (`tikki/rollen/`), je ein Hermes-Profil mit eigenem
-  Port, Modell und Ausweichmodell, per Skript einrichtbar.
+- **Bot-Truppe**: 13 Rollen (`tikki/rollen/`), je ein Hermes-Profil mit eigenem Port, Modell
+  und Ausweichkette, per Skript einrichtbar; neu der **Wachhalter** (Rundgang durch alle Räume).
 - **Hermes-Kern (Python) hat keine geänderte Zeile.** Alle Tikki-Änderungen liegen in
-  `apps/desktop` und `tikki/`. Upstream-Updates sollen weiter sauber einspielbar sein.
-- **Suites (Räume)**: erster Stand gebaut (Abschnitt 4.7a): Lobby mit leerem Verlauf, Raum mit
-  rundem Tisch, To-do-Wand, Am Tisch, Daten- und Output-Screen.
-- **Noch nicht gebaut**: das PA-Vorzimmer mit den vier Modi, Nutzer-Login, Honcho-Trennung,
-  Rechnerflotte, Web auf tikki.team.
+  `apps/desktop` und `tikki/`. Updates übernimmt `tikki/werkzeuge/hermes-aktualisieren.sh`
+  (Merge, nie Rebase; Abschnitt 4.12).
+- **Suites (Räume)** (4.7a): Lobby, Raum mit sichtbaren Wänden (Raumbild), rundem Tisch,
+  To-do-Wand, Daten- und Output-Screen. **Das Vorzimmer öffnet Suiten selbst**, sobald Tikki mit
+  `RAUM:`/`ZIEL:` antwortet.
+- **Dauerbetrieb** (4.8): Räume mit `TAKT:` laufen im Backend rund um die Uhr weiter, auch ohne
+  App; der Wachhalter weckt alle 15 Minuten stille Räume. **Übungsläufe** (Standard 4): jeder
+  Auftrag läuft parallel mit anderen Modellen, das erste fertige Ergebnis gewinnt, danach lernt
+  der Raumleiter aus dem Vergleich.
+- **Gedächtnis** (4.9): Honcho als Anbieter, dazu das Tikki-Plugin `gedaechtnis` (TencentDB je
+  Mensch + System, RAG je Mensch, Hindsight optional, Werkzeug `nachschlagen`).
+- **Abos und Skills** (4.10, 4.11): Claude, Codex, Grok, Gemini, NotebookLM ohne Zusatzkosten;
+  der ganze ClawHub-Katalog (OpenClaw) durchsuchbar, Skills auf Abruf.
+- **Noch nicht gebaut**: PA-Modi im Vorzimmer, Nutzer-Login (heute fest `thorsten`),
+  Rechnerflotte/Verteilung der Bots auf 40 Rechner, Web auf tikki.team.
 - Offener Draft-PR: <https://github.com/TikkiAL-boop/hermes-agent/pull/1> (konfliktfrei,
   keine CI, wartet nur auf Merge-Entscheidung von Thorsten).
 
@@ -64,6 +74,25 @@ es ausdrücklich.
     Anregung“, nicht als Vorgabe.
 
 ---
+
+
+**Nachträge vom 28.09. (Thorsten, im Gespräch):**
+
+13. **Oberfläche wie Menschen denken**: ein Projekt ist ein Raum mit Wänden; man sieht, dass alles
+    darin nur hierher gehört. Futuristisch, ein Hintergrundbild reicht. Kein Mensch sieht „Hermes“.
+14. **Vorzimmer**: Small Talk muss schnell gehen, Latenz ist Trumpf.
+15. **Räume rund um die Uhr**: der Raumleiter läuft durch, alle berichten ihm, bis zu **50 Bots** je
+    Raum; bald **hunderte Suiten** mit Cronjobs und Dauer-Recherche („jedes YouTube-Short checken“);
+    auch nach Stromausfall muss es weitergehen.
+16. **Wachhalter** („Stream-Agent“): geht Raum für Raum durch, weckt, kontrolliert Ergebnisse; ein
+    Frontier-Modell per Abo-CLI oder lokal. Vorbereiten auf **Claude, Gemini, NotebookLM, Codex,
+    Grok Build** (alles Abos); Perplexity hat keine kostenlose CLI.
+17. **Übungsläufe**: Admin-Zahl „Taskrepeat“, Standard **4**: derselbe Auftrag vier Mal mit anderen
+    KI-APIs und Ansätzen, daraus lernen. Der Mensch bekommt das Ergebnis **nicht langsamer** (der
+    erste fertige Ansatz zählt), die Extras nur, wenn Ressourcen frei sind. Namen
+    `Projektname-username-<nr>@tikki.team`.
+18. **OpenClaw mit allen Skills**, **unser Wissen sauber in TencentDB**, Hermes muss **updatefähig**
+    bleiben. Geplant: ein lokaler Hauptresearcher (~180 GB), über 40 KI-Rechner ≥ 128 GB.
 
 ## 2. Repo, Zweige, Zugriff
 
@@ -118,6 +147,22 @@ Komplette Suite: `npx vitest run` (ca. 16 Minuten, 12.3k Tests). Bekannte Fehlsc
 `src/store/voice-prefs.test.ts` (2 Tests), `electron/source-backend.test.ts` (Modul `ws`
 fehlt im Workspace). ESLint startet nicht (`globals` fehlt im Workspace); noch nicht
 untersucht.
+
+**Tikki komplett einrichten (Reihenfolge, auf dem Mac):**
+
+```bash
+tikki/werkzeuge/rollen-einrichten.sh              # 13 Rollen, Plugin, Skill-Ordner, Cronjobs
+hermes profile use tikki                          # Vorzimmer = Profil tikki
+tikki/werkzeuge/abos-einrichten.sh --anmelden     # Claude-/Codex-/Grok-Abo je Rolle
+tikki/dienste/honcho/honcho.sh start              # Honcho (Docker)
+tikki/dienste/tencentdb/tencentdb.sh start system # TencentDB fürs Systemwissen
+tikki/dienste/tencentdb/tencentdb.sh start thorsten
+hermes -p tikki gedaechtnis einspielen tikki/     # unser Wissen ins Gedächtnis
+hermes -p tikki gedaechtnis verlauf               # bisherige Gespräche nachholen
+tikki/werkzeuge/openclaw-einrichten.sh --vorab 25 # ClawHub-Katalog + erste Skills
+hermes -p raumleiter gateway install              # Takt läuft auch nach Neustart weiter
+hermes -p wachhalter gateway install              # Rundgang alle 15 Minuten
+```
 
 **Hermes-Backend**: Die App erwartet ein `hermes serve` (FastAPI, `/api/*`, Bearer-Token
 `HERMES_DASHBOARD_SESSION_TOKEN`). Beim ersten Start bietet die App an, Hermes lokal zu
@@ -277,7 +322,10 @@ Dokumente). Physisch/virtuell getrennt von allem anderen. Chats heißen **Suites
 | `suite-room.tsx` | Der Raum: Kopf (Zur Lobby, Titel, Raumleiter, „arbeitet“), links **To-do-Wand** (`$todosBySession`, sonst `$retainedTodosBySession`, `todoTree`) und **Am Tisch** (Raumleiter + `$subagentsBySession`, Rolle per `AN:`-Zeile), Mitte **der Chat der Suite** (`TileChat` aus `app/chat/session-tile.tsx`, jetzt exportiert und mit festgenageltem `ownerRoute` auf `raumleiter`), rechts **Daten-Screen** und **Output-Screen**. |
 | `suite-runtime.ts` | `useSuiteRuntime(storedId)`: Owner-Hinweis für gespeicherte **und** Laufzeit-Id setzen (ohne den zweiten schlagen alle sitzungsgebundenen RPCs auf der Laufzeit-Id fehl), `sessionTileDelegate().resumeTile(storedId, {refreshTranscript})`, bei leerem Transkript einmal `getLatestSessionMessages` nachladen, daraus eine `SessionView` über `$sessionStates[runtimeId]`. Solange der Raum gemountet ist, hält er sein Transkript per `holdSessionTranscript(storedId)` (`store/session-states.ts`): der Zustandsspeicher wirft sonst beim ersten „fertig“-Publish jedes Transkript weg, das weder Hauptansicht noch Kachel ist, und der Raum ist keins von beiden. Kein zweiter Resume-Pfad, kein Layoutbaum, keine Seitenleiste. |
 | `suite-daten.ts` | Reine Funktionen: `eingabenAusNachrichten` (Anhänge und `@file:/@url:/…`-Nennungen aus Nutzer-Nachrichten), `ausgabenAusNachrichten` (Markdown-Links, URLs, absolute Pfade mit Endung aus Bot-Antworten). Der Output-Screen mischt dazu `$previewStatusBySession`, `artifactsForSession` und `filesWritten` der Bots. |
-| Tests | `store.test.ts`, `suites-area.test.tsx`, `suite-daten.test.ts`. |
+| `uebung.ts` | Übungsläufe: Ansätze (Modell + Arbeitsweise), Titel `<Projekt>-<mensch>-<nr>@tikki.team`, `freieUebungen` (Kapazität), Eröffnungstext `ÜBUNG k/N` + `ANSATZ:`. |
+| `../tikki/vorzimmer.ts` | Vorzimmer-Wache: kippt eine Sitzung von „arbeitet“ auf „fertig“ und trägt Tikkis letzte Antwort `RAUM:` + `ZIEL:` (dazu `ANNAHMEN`, `TAKT`), öffnet `neueSuite(…, {oeffnen: false})` die Suite im Hintergrund und zeigt „Suite betreten“. Suiten und Raumleiter-Sitzungen lösen nichts aus. |
+| Raumbild | `src/assets/tikki/suite-raum.svg`: Raum in Zentralperspektive (Rückwand mit Screen, Seitenwände mit To-do- und Daten-Tafeln, Bodenraster, runder Tisch), Hintergrund von Raum und Lobby; die Zonen liegen als Glas davor. |
+| Tests | `store.test.ts` (Reihenfolge, Übungsläufe, Kapazität, Takt), `suites-area.test.tsx` (`verlaufGruppen`), `suite-daten.test.ts` (`taktAusNachrichten`), `tikki/vorzimmer.test.ts`. |
 
 Hermes-Änderungen dafür: `TileChat` in `app/chat/session-tile.tsx` ist exportiert und nimmt
 optional `ownerRoute` (vorher nur Tile-intern); `store/session-states.ts` hat den gezählten
@@ -288,12 +336,119 @@ Offen an den Suites: Räume aus dem Vorzimmer heraus öffnen (Tikkis `RAUM:`-Ant
 Vorschau von Dateien direkt im Output-Screen (heute öffnen Links extern, Dateien sind nur
 gelistet), Umbenennen, Archivieren, Nutzerrechte je Suite, Raum-Postfach.
 
+### 4.8 Dauerbetrieb: Takt, Wachhalter, Übungsläufe (`tikki/werkzeuge/suite_takt.py`)
+
+**Takt steht im Raum.** Die letzte Zeile `TAKT: …` im Raum (vom Menschen im Eröffnungstext, von
+Tikki im Vorzimmer oder vom Raumleiter bestätigt) gilt; `TAKT: aus` beendet ihn. Verstanden:
+stündlich, halbstündlich, alle N Minuten/Stunden, täglich [HH:MM], werktags [HH:MM], montags …
+sonntags [HH:MM], Cron mit fünf Feldern und alles, was Hermes' `parse_schedule` kennt.
+
+**Runden im Backend.** Ein Hermes-Cronjob `tikki-takt` im Profil `raumleiter` (alle 5 Minuten,
+ohne Modell, Skript `scripts/tikki-takt.sh`) ruft `suite_takt takt`. Der liest `state.db`
+read-only, findet fällige Räume (Hermes' `compute_next_run` ab der letzten Runde; ein neuer Takt
+beginnt beim ersten Sehen) und startet je Raum einen eigenen Prozess
+`hermes -p raumleiter chat --resume <sitzung> -Q --query-file …`. Zustand in
+`<profil>/tikki/takt.json` (Dateisperre), Protokolle in `<profil>/tikki/runden/<id>.log`,
+höchstens 8 Runden gleichzeitig (`--parallel`). **Ein Schreiber je Sitzung:** Hermes lehnt die
+Runde ab, solange der Raum in der App offen ist; die Runde wartet bis 30 Minuten. Deshalb gibt
+der Raum beim Verlassen die ruhende Sitzung frei (`session.close` in `suite-runtime.ts`). Nach
+Stromausfall holt der nächste Takt die versäumte Runde einmal nach; drei Fehlschläge hintereinander
+verschieben auf die nächste Gelegenheit. Damit das nach einem Neustart weiterläuft, muss das
+Gateway des Raumleiters als Dienst laufen: `hermes -p raumleiter gateway install`.
+
+**Wachhalter** (Rolle `wachhalter`, Port 8662, Claude-Abo → Codex-Abo → lokal): Cronjob
+`tikki-rundgang` alle 15 Minuten, Vorlauf-Skript `tikki-raumbericht.sh` (= `suite_takt bericht`:
+je Suite Zustand, Stille, Takt, offene To-dos, `BRAUCHE:`, `STAND:`). Er weckt stille Räume mit
+`suite_takt runde <id> --text "WACHHALTER: …"`, lässt Ergebnisse prüfen, beantwortet nie
+`BRAUCHE:`-Fragen. SOUL: `tikki/rollen/wachhalter/SOUL.md`.
+
+**Übungsläufe.** Admin → Betrieb: „Übungsläufe je Auftrag“ (Standard 4, 1 = aus), „Gleichzeitige
+Räume“ (Standard 40), „Name des Menschen“ (`areas/admin/betrieb-store.ts`, je Installation
+gespeichert). `neueSuite()` legt zuerst den Raum des Menschen an, betritt ihn und gibt den Auftrag;
+erst danach, im Hintergrund, die Übungsräume `<Projekt>-<mensch>-<nr>@tikki.team` mit anderem Modell
+und Ansatz (`suites/uebung.ts`: xAI schnell, Claude gründlich, Codex breit, lokal, …), nur so viele,
+wie die Kapazität minus laufende Räume erlaubt, nie bei Daueraufträgen. Das Backend (`takt`) leitet
+das **erste fertige** Übungsergebnis als `ÜBUNGSERGEBNIS …` in den Hauptraum, solange der nicht
+selbst fertig ist; sind alle durch, schreibt der Hauptraum nach `LERNEN: …` seine
+`ERFAHRUNG:`-Zeilen (landen über das Gedächtnis-Plugin in TencentDB und RAG). Die Lobby hängt
+Übungsräume unter ihr Projekt.
+
+**Wichtig – Werkzeuge der Bots:** Hermes gibt einem delegierten Kind nie mehr Werkzeuge als dem
+Elternteil (`tools/delegate_tool_toolsets.py`). Der Raumleiter hatte nur `delegation, todo` –
+seine Bots hätten weder Web noch Browser noch Terminal gehabt. Jetzt trägt er die Vereinigung aller
+Bot-Werkzeuge, und seine SOUL listet je Rolle die `toolsets`, die er mitgibt. Test:
+`test_room_lead_carries_every_bot_toolset_and_its_soul_names_them`.
+
+### 4.9 Gedächtnis-Plugin und TencentDB (`tikki/plugins/gedaechtnis/`, `tikki/dienste/tencentdb/`)
+
+- Plugin (in jedem Profil unter `plugins/gedaechtnis` verlinkt, `plugins.enabled`): nach jeder
+  Runde (`post_llm_call`) im Hintergrund (`spawn_context_thread`, die Runde wartet nicht) an
+  TencentDB (Instanz des Menschen und `system`, `POST /capture`), Hindsight (falls Adresse
+  eingetragen) und die RAG-Sammlung des Menschen. RAG = SQLite FTS5 je Mensch unter
+  `~/.tikki/rag/<mensch>.sqlite`, optional Vektoren über `rag.embedding` (OpenAI-kompatibel).
+- Werkzeug `nachschlagen(frage, quelle=alle|rag|tencent|hindsight)` im Toolset `gedaechtnis`
+  (Profile `tikki`, `raumleiter`, `wachhalter`). Honcho hat eigene Werkzeuge über den Anbieter.
+- CLI: `hermes -p tikki gedaechtnis einspielen <pfade>` (Markdown/Text, ohne Doppel),
+  `… gedaechtnis verlauf` (alle bisherigen Gespräche aller Profile), `… gedaechtnis status`.
+- Einstellungen `~/.tikki/gedaechtnis.json` (nur Adressen, Pfade zu Schlüsseldateien, Namen von
+  Umgebungsvariablen). `tencentdb.sh start system|<mensch>` baut das Docker-Bild (Pin `29bb8dff`),
+  startet je Instanz einen Container (system 8420, Menschen ab 8421, eigener Schlüssel und
+  Datenordner) und trägt sie dort ein.
+- **Geprüft** gegen den echten TencentDB-Gateway (aus dem Quellstand mit Node gestartet, weil die
+  Cloud kein Docker hat): Aufnahme, Suche über `/search/conversations`, Einspielen von `tikki/`.
+  L1-Fakten brauchen den LLM-Schlüssel (`XAI_API_KEY`) und waren deshalb leer.
+- Hindsight ist vorbereitet (Adresse + Bank in der Einstellung), aber nicht getestet.
+
+### 4.10 Abos statt Schlüssel (`tikki/werkzeuge/abos-einrichten.sh`, `tikki/skills/`)
+
+- Als Rollen-Modell: `anthropic` (Claude-Abo; Hermes liest auch `~/.claude/.credentials.json`),
+  `openai-codex` (ChatGPT/Codex-Abo), `xai-oauth` (SuperGrok), `lokal` (eigener Modellserver,
+  `providers.lokal` in der Vorlage, `http://127.0.0.1:8080/v1`). Anmeldung je Profil:
+  `abos-einrichten.sh --anmelden`.
+- Als Werkzeug der Bots: Skills `claude-code`, `codex` (aus `skills/autonomous-ai-agents/`), `grok`
+  (offizieller optionaler Skill, in die Bibliothek installiert), `gemini-cli`, `notebooklm`
+  (Browser mit angemeldetem Google-Konto, NotebookLM hat keine private CLI), `openclaw-skills`.
+  Jede Rolle mit dem Werkzeug `skills` sieht `tikki/skills`, die Coding-Agenten und die
+  OpenClaw-Bibliothek über `skills.external_dirs` (von `rollen_config.py` gesetzt).
+- Perplexity: keine kostenlose CLI, nicht angebunden.
+
+### 4.11 OpenClaw-Skills (`tikki/werkzeuge/openclaw_skills.py`, `openclaw-einrichten.sh`)
+
+ClawHub hat rund 50 000 Skills. Alle in jedes Profil zu installieren würde jeden Aufruf aufblähen
+und fremde Anweisungen ungeprüft verteilen. Stattdessen: Profil `openclaw` als gemeinsame
+Bibliothek; `openclaw-einrichten.sh` legt den ganzen Katalog lokal ab
+(`~/.tikki/openclaw-katalog.json`), `--vorab N` installiert die ersten N gleich; Bots suchen mit
+dem Skill `openclaw-skills` und installieren auf Abruf (`hermes -p openclaw skills install
+clawhub/<slug> --yes`, mit Hermes' Sicherheitsprüfung). Eine vorhandene `~/.openclaw` zeigt
+`hermes claw migrate --dry-run` als Vorschau. **Nicht live geprüft**: clawhub.ai ist aus der
+Cloud gesperrt.
+
+### 4.12 Update-Fähigkeit und Markenwache
+
+- `tikki/werkzeuge/hermes-aktualisieren.sh [--von <url|remote>]`: prüft Zweig und sauberen Stand,
+  holt Hermes' `main`, merged (nie Rebase), sagt bei Konflikten, was Tikki gehört
+  (`--ours`) und was Hermes gehört, und lässt danach die Tikki-Prüfungen laufen
+  (`--nur-pruefen`: Python-Tests `tests/tikki`, Desktop-Typecheck + Tests, Rollen-Trockenlauf).
+- Eingriffe außerhalb der Tikki-Ordner (bei Konflikten von Hand wieder einsetzen):
+  `electron/` (Produktidentität, Mail-Dienst, Cookie-Klick), `index.html`, `package.json`,
+  `product-identity.cjs`, `app/chat/session-tile.tsx` (`TileChat` exportiert, `ownerRoute`),
+  `store/session-states.ts` (`holdSessionTranscript`), `components/assistant-ui/thread/
+  system-message.tsx` und `tool/delegate.tsx` (Bots unter Namen), `lib/chat-messages/*` und
+  `lib/chat-runtime.ts` (`asyncResultSource`), `i18n/brand.ts` + `catalog.ts`, `lib/icons.ts`,
+  `themes/presets.ts`, `components/chat/intro.tsx`, `drawer.css`, `vitest.config.ts`.
+- **Markenwache** (`areas/markenwache.ts`): die i18n-Texte sind beim Laden umbenannt
+  (`i18n/brand.ts`); für fest verdrahtete Texte und Backend-Meldungen („open in another Hermes
+  window“) beobachtet ein MutationObserver die Seite und ersetzt „Hermes“ durch „Tikki“ in
+  sichtbarem Text, `placeholder` und `aria-label`. Ausgenommen: Nachrichtentexte (`.aui-md`,
+  Nutzer-Nachrichten), Code, Eingaben, Terminal, Browser-Webviews. So bleiben Hermes-Dateien
+  unverändert und Updates konfliktarm.
+
 ### 4.7 Bot-Truppe (`tikki/`)
 
 | Datei | Zweck |
 |---|---|
-| `rollen/KATALOG.json` | Liste von 12 Rollen. Felder: `slug`, `name`, `icon`, `kurz`, `kategorie`, `modell.{primary,fallback}` (Form `anbieter/modell`), `werkzeuge` (Hermes-Toolset-Namen), `freigabe` (`smart`), `port`, `hermes_profil`, `im_raum_ab_start`. |
-| Rollen und Ports | `tikki` 8650 (Vorzimmer, grok-4.7 → opus-5.5, keine Werkzeuge) · `raumleiter` 8651 (opus-5.5 → grok-4.7, Werkzeuge `delegation`, `todo`, im Raum ab Start) · `rechercheur` 8652 · `pruefer` 8653 · `schreiber` 8654 · `frontend-entwickler` 8655 · `backend-entwickler` 8656 · `sicherheitsbeauftragter` 8657 · `datenanalyst` 8658 · `organisator` 8659 · `api-fachmann` 8660 · `uebersetzer` 8661 (alle grok-4.7 → opus-5.5, `smart`). |
+| `rollen/KATALOG.json` | Liste von 13 Rollen. Felder: `slug`, `name`, `icon`, `kurz`, `kategorie`, `modell.{primary,fallback}` (Form `anbieter/modell`), `werkzeuge` (Hermes-Toolset-Namen), `freigabe` (`smart`), `port`, `hermes_profil`, `im_raum_ab_start`. |
+| Rollen und Ports | `tikki` 8650 (Vorzimmer, grok-4.7 → opus-5.5, keine Werkzeuge) · `raumleiter` 8651 (opus-5.5 → grok-4.7, Werkzeuge: `delegation`, `todo`, `gedaechtnis` plus alle Bot-Werkzeuge zum Weitergeben, im Raum ab Start, bis 50 Bots) · `rechercheur` 8652 · `pruefer` 8653 · `schreiber` 8654 · `frontend-entwickler` 8655 · `backend-entwickler` 8656 · `sicherheitsbeauftragter` 8657 · `datenanalyst` 8658 · `organisator` 8659 · `api-fachmann` 8660 · `uebersetzer` 8661 (alle grok-4.7 → opus-5.5, `smart`, alle mit `skills`) · `wachhalter` 8662 (Claude-Abo → Codex-Abo → lokal). Felder neu: `modell.weitere` (weitere Ausweichmodelle), `einstellungen` (tief in die config.yaml gemischt, z. B. Vorzimmer `agent.reasoning_effort: low`, `display.streaming`). |
 | `rollen/<slug>/SOUL.md` | 53–90 Zeilen je Rolle: Was du tust / Was du nie tust / Protokoll. Gemeinsame `## Hausregeln` am Ende jeder Datei: Deutsch, kurz, keine Modellwerbung, Aufgaben zu Ende bringen, Mensch nur per Zeile `BRAUCHE: …` mit Vorschlag, Ergebnisse im Raum-Chat. Der Raumleiter hat zusätzlich Delegationsformat, Rundenschleife, To-do-Listen „Tikki“ und „Du“, Stoppregel. |
 | `hermes/vorlage-rolle.yaml` | Vorlage für `~/.hermes/profiles/<slug>/config.yaml` mit **echten Hermes-Schlüsseln**: `model.{provider,default}`, `fallback_providers`, `providers.{cursor,xai}` (`base_url`, `key_env`, `api_mode: chat_completions`), `approvals.mode: smart`, `platform_toolsets.{api_server,cli}`, `platforms.api_server.{enabled,extra.host,extra.port}`, `delegation.{max_concurrent_children: 30, max_spawn_depth: 1}`, `display.compact`. |
 | `werkzeuge/rollen-einrichten.sh` | Legt je Rolle ein Hermes-Profil an, idempotent (`--dry-run`, `--nur <slug>`). Schreibt SOUL.md und config.yaml, **nie Schlüssel**. Echter Lauf in der Cloud (`d18ef6cd`): 12 Profile angelegt, zweiter Lauf ein No-op, `hermes -p <slug> doctor` meldet „Config version up to date“. |
@@ -428,11 +583,11 @@ Vorgeschlagene Architektur (Vorschlag, noch nicht abgestimmt im Detail):
 | Speicher | Wofür | Anbindung an Hermes | Stand |
 |---|---|---|---|
 | **Honcho** | System, jeder Mensch, jede Suite: dialektisches Nutzermodell, Sitzungszusammenfassungen | Eingebautes Hermes-Plugin `plugins/memory/honcho`, **der eine** `memory.provider` jedes Tikki-Profils. Workspace `tikki`, `peerName` = Mensch (heute `thorsten`, später per Login-Alias), `aiPeer` = Rolle, `sessionStrategy: per-session` → **eine Honcho-Sitzung je Suite** | **Verdrahtet und in der App**: Honcho läuft als **eigener Tikki-Dienst auf dem Rechner** (Thorsten: „muss in die App mit rein“, keine Cloud): `tikki/dienste/honcho/honcho.sh start|stop|status|logs` holt plastic-labs/honcho (Pin v3.2.1, `HONCHO_SHA`), schreibt die `.env` aus Tikkis Umgebung (Deriver/Dialektik über xAI, OpenAI-kompatibel; Embeddings über `TIKKI_EMBEDDING_BASE_URL` oder aus) und startet API, Deriver, Postgres/pgvector, Redis per Docker Compose, nur auf 127.0.0.1:8000. Profile: `vorlage-rolle.yaml` (`memory.provider: honcho`), `vorlage-honcho.json` (`baseUrl: http://127.0.0.1:8000`, lokal ohne Schlüssel), `rollen_config.py honcho`, Skript-Schritt 3b. Admin → Gedächtnis zeigt „läuft / nicht erreichbar“ per `/health` und nennt den Startbefehl (`areas/admin/gedaechtnis.tsx`). SDK: `hermes pm install --extra honcho`. Noch nicht: Start/Stop aus der App heraus (bräuchte eine Electron-IPC für den Dienst). |
-| **TencentDB Agent Memory** (Tencent Cloud, Open Source, Mai 2026) | Vierschichtiges Langzeitgedächtnis (L0 Rohgespräch → L1 Fakten → L2 Szenen → L3 Persona) plus Skill / Wiki / CodeGraph; lokal (Node ≥ 22.16, SQLite, Port 8420). Thorsten: **eine Instanz je Mensch, eine für alles Systemwissen** | Liefert selbst ein Hermes-Memory-Provider-Plugin (`hermes-plugin/memory/memory_tencentdb`, `memory.provider: memory_tencentdb`, Tools `memory_tencentdb_memory_search` / `_conversation_search`, Umgebung `TDAI_LLM_*`, `MEMORY_TENCENTDB_GATEWAY_*`, `TDAI_DATA_DIR`). **Konflikt:** Hermes erlaubt nur einen Provider je Profil, und der ist Honcho. Weg: nicht als Provider, sondern als **Werkzeug-Quelle** über ein kleines Tikki-Plugin (unten). Keine Mandanten im Gateway dokumentiert → je Mensch ein eigener Gateway-Prozess mit eigenem `TDAI_DATA_DIR` und Port, plus einer für das Systemwissen | Noch nicht begonnen. Repo: <https://github.com/TencentCloud/TencentDB-Agent-Memory> |
-| **Hindsight** (Vectorize) | Wissensgraph, Entitäten, recall/reflect/retain | Katalog-Plugin (`plugin-catalog/hindsight.yaml`), ebenfalls ein Memory-Provider → gleicher Konflikt; als Quelle über seine HTTP-API im Tikki-Plugin, oder weglassen, wenn Honcho + Tencent reichen | Offen, Entscheidung Thorsten |
-| **RAG je Mensch** | Eigene Dokumente, Projekte, Mails: klassisches Nachschlagen | Lokaler Vektorspeicher je Mensch (Kandidaten im Katalog: `lancedb`, `memory-zvec`, `corpus`), gefüttert aus `~/Tikki/<name>/` und den Suite-Ausgaben; als Werkzeug im Tikki-Plugin | Offen, Wahl des Speichers |
+| **TencentDB Agent Memory** (Tencent Cloud, Open Source, Mai 2026) | Vierschichtiges Langzeitgedächtnis (L0 Rohgespräch → L1 Fakten → L2 Szenen → L3 Persona) plus Skill / Wiki / CodeGraph; lokal (Node ≥ 22.16, SQLite, Port 8420). Thorsten: **eine Instanz je Mensch, eine für alles Systemwissen** | Liefert selbst ein Hermes-Memory-Provider-Plugin (`hermes-plugin/memory/memory_tencentdb`, `memory.provider: memory_tencentdb`, Tools `memory_tencentdb_memory_search` / `_conversation_search`, Umgebung `TDAI_LLM_*`, `MEMORY_TENCENTDB_GATEWAY_*`, `TDAI_DATA_DIR`). **Konflikt:** Hermes erlaubt nur einen Provider je Profil, und der ist Honcho. Weg: nicht als Provider, sondern als **Werkzeug-Quelle** über ein kleines Tikki-Plugin (unten). Keine Mandanten im Gateway dokumentiert → je Mensch ein eigener Gateway-Prozess mit eigenem `TDAI_DATA_DIR` und Port, plus einer für das Systemwissen | **Gebaut** (4.9): `tencentdb.sh`, Plugin `gedaechtnis`, gegen den echten Gateway geprüft. Repo: <https://github.com/TencentCloud/TencentDB-Agent-Memory> |
+| **Hindsight** (Vectorize) | Wissensgraph, Entitäten, recall/reflect/retain | Katalog-Plugin (`plugin-catalog/hindsight.yaml`), ebenfalls ein Memory-Provider → gleicher Konflikt; als Quelle über seine HTTP-API im Tikki-Plugin, oder weglassen, wenn Honcho + Tencent reichen | Vorbereitet (Adresse in `gedaechtnis.json`), ungetestet; Entscheidung Thorsten, ob dauerhaft |
+| **RAG je Mensch** | Eigene Dokumente, Projekte, Mails: klassisches Nachschlagen | Lokaler Vektorspeicher je Mensch (Kandidaten im Katalog: `lancedb`, `memory-zvec`, `corpus`), gefüttert aus `~/Tikki/<name>/` und den Suite-Ausgaben; als Werkzeug im Tikki-Plugin | **Gebaut** (4.9): SQLite FTS5 je Mensch ohne Server, optional Vektoren |
 
-**Tikki-Plugin `gedaechtnis`** (Rung 4 der Footprint-Leiter, kein Hermes-Kern): liegt in
+**Tikki-Plugin `gedaechtnis`** (gebaut, siehe 4.9; Rung 4 der Footprint-Leiter, kein Hermes-Kern): liegt in
 `tikki/plugins/gedaechtnis/` und wird nach `~/.hermes/plugins/` verlinkt. Zwei Aufgaben:
 1. **Spiegeln**: `on_session_end` / `post_llm_call` schreiben jeden Turn zusätzlich in TencentDB
    (`POST /capture`) und in den RAG des Menschen. Honcho schreibt ohnehin als Provider.
@@ -496,6 +651,15 @@ Bereich Browser), Post, Terminal.
   unter `xvfb-run`; `--remote-debugging-port` geht nur mit Dev-Server → Playwright
   `_electron.launch`.
 - `uv sync` mit altem uv scheitert am Lockfile-Format; uv ≥ 0.12 nötig.
+- `set -o pipefail` + `cmd | grep -q …`: grep beendet die Pipe früh, `cmd` stirbt an SIGPIPE, die
+  Bedingung gilt als falsch (so wurden Cronjobs doppelt angelegt). Erst in eine Variable, dann
+  `grep -q … <<< "$var"`.
+- Delegierte Bots erben höchstens die Werkzeuge des Raumleiters (4.8).
+- `hermes chat -Q` ohne Modellzugang hängt minutenlang in Wiederholungen; Takt-Runden haben eine
+  Obergrenze von zwei Stunden.
+- Cloud-Container: kein Docker-Daemon, clawhub.ai gesperrt. TencentDB lässt sich aus dem
+  Quellstand mit Node starten (`npm install --ignore-scripts --legacy-peer-deps`, dann
+  `node --import tsx src/gateway/server.ts`, Umgebung `TDAI_*`).
 - `JSX.Element` als Typ gibt Namespace-Fehler → `ReactElement`.
 - Der Hermes-Setup-Gate („Let's get you setup with Tikki“) liegt über der ganzen App, bis
   ein Backend verbunden ist. Zum reinen Anschauen der Bereiche im Test: Gate-Element aus dem
@@ -527,6 +691,11 @@ Bereich Browser), Post, Terminal.
 | `e14a704f` | Honcho als Gedächtnis-Anbieter jeder Rolle (`vorlage-rolle.yaml`, `vorlage-honcho.json`), Gedächtnis-Plan 8.1a |
 | `1af2ff35` | Honcho als eigener Dienst (`tikki/dienste/honcho/`), Status-Karte im Admin-Bereich |
 | `eabca897` | Suite-Raum hält sein Transkript (`holdSessionTranscript`); vorher blieb der Chat im Raum leer |
+| `52d8d32f` | Handover: Transkript-Halt, Commit-Tabelle |
+| `4d2291d9` | Dauerräume mit Takt (`suite_takt.py`), Wachhalter, Übungsläufe im Backend, Plugin `gedaechtnis` |
+| `de40222d` | TencentDB Agent Memory als Dienst je Mensch und fürs System |
+| `ed8ee494` | Vorzimmer öffnet Suiten selbst, Übungsläufe in der App, Takt-Auswahl, Raumbild, Markenwache |
+| (dieser) | Bots bekommen ihre Werkzeuge, Abos/Skills, OpenClaw-Katalog, Update-Skript, Handover |
 
 Dieses Dokument: `tikki/HANDOVER.md`. Bitte bei jedem größeren Schritt fortschreiben,
 damit die nächste Übergabe wieder vollständig ist.

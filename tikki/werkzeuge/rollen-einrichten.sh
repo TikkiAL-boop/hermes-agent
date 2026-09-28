@@ -217,5 +217,6 @@ if [ "$DRY_RUN" = 0 ]; then
   echo "     Honcho-SDK einmal bereitstellen: hermes pm install --extra honcho"
   echo "  2. Pro Rolle starten:  hermes -p <slug> gateway   (als Dienst: hermes -p <slug> gateway install)"
   echo "     raumleiter und wachhalter tragen die Cronjobs tikki-takt und tikki-rundgang – ihr Gateway muss immer laufen."
-  echo "  3. Prüfen:             tikki/werkzeuge/rollen-status.sh"
+  echo "  3. Vorzimmer = Profil tikki (Tikkis SOUL, Gedächtnis, schnelle Antworten):  hermes profile use tikki"
+  echo "  4. Prüfen:             tikki/werkzeuge/rollen-status.sh"
 fi

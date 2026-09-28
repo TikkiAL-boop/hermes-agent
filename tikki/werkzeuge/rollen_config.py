@@ -66,8 +66,12 @@ def aktuelle_config_version() -> int | None:
     return int(version) if isinstance(version, int) else None
 
 
-def rollen_config(katalog: str, vorlage: str, slug: str):
-    """Vorlage laden und mit Modellen, Werkzeugen und Port der Rolle füllen."""
+def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None):
+    """Vorlage laden und mit Modellen, Werkzeugen und Port der Rolle füllen.
+
+    ``ziel`` (Pfad der config.yaml) verankert die Skill-Ordner: die Tikki-Skills und die
+    Coding-Agenten aus dem Repo, dazu die OpenClaw-Bibliothek im Profil ``openclaw``.
+    """
     from ruamel.yaml import YAML
 
     rolle = _rolle(katalog, slug)
@@ -98,6 +102,14 @@ def rollen_config(katalog: str, vorlage: str, slug: str):
     # Delegation nur für Rollen, die sie im Katalog haben
     if "delegation" not in werkzeuge:
         cfg.pop("delegation", None)
+    if "skills" in werkzeuge and ziel:
+        repo = Path(katalog).resolve().parents[2]
+        profile = Path(ziel).resolve().parent.parent
+        cfg.setdefault("skills", {})["external_dirs"] = [
+            str(repo / "tikki" / "skills"),
+            str(repo / "skills" / "autonomous-ai-agents"),
+            str(profile / "openclaw" / "skills"),
+        ]
     _einmischen(cfg, rolle.get("einstellungen") or {})
 
     buf = io.StringIO()
@@ -107,7 +119,7 @@ def rollen_config(katalog: str, vorlage: str, slug: str):
 
 def schreiben(katalog: str, vorlage: str, slug: str, ziel: str) -> bool:
     """Schreibt config.yaml nur, wenn sich der Inhalt ändert. True = geschrieben."""
-    neu = rollen_config(katalog, vorlage, slug)
+    neu = rollen_config(katalog, vorlage, slug, ziel)
     zielpfad = Path(ziel)
     alt = zielpfad.read_text(encoding="utf-8") if zielpfad.exists() else None
     if alt == neu:

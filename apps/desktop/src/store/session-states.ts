@@ -715,11 +715,48 @@ export function confirmReconnectSettlesExcept(workingStoredIds: ReadonlySet<stri
   }
 }
 
-/** Is any surface on THIS window still holding the runtime — the primary view
- *  or an open tile? (A tile mid-resume references by stored id only; its
- *  runtime binding is patched in after `resumeTile` returns.) */
+/** Stored ids a surface OUTSIDE the layout tree keeps on screen (a Tikki suite
+ *  room renders a session's chat with no tile and no primary route). Counted,
+ *  so two holders of one session release independently. */
+const transcriptHolds = new Map<string, number>()
+
+/** Keep `storedSessionId`'s transcript alive while the returned release is not
+ *  called — the same reference an open tile gives its session. */
+export function holdSessionTranscript(storedSessionId: string): () => void {
+  const id = storedSessionId.trim()
+
+  if (!id) {
+    return () => undefined
+  }
+
+  transcriptHolds.set(id, (transcriptHolds.get(id) ?? 0) + 1)
+  let released = false
+
+  return () => {
+    if (released) {
+      return
+    }
+
+    released = true
+    const count = (transcriptHolds.get(id) ?? 1) - 1
+
+    if (count > 0) {
+      transcriptHolds.set(id, count)
+    } else {
+      transcriptHolds.delete(id)
+    }
+  }
+}
+
+/** Is any surface on THIS window still holding the runtime — the primary view,
+ *  an open tile, or a transcript hold? (A tile mid-resume references by stored
+ *  id only; its runtime binding is patched in after `resumeTile` returns.) */
 function runtimeReferenced(runtimeId: string, storedSessionId: null | string): boolean {
   if (runtimeId === $activeSessionId.get()) {
+    return true
+  }
+
+  if (storedSessionId !== null && transcriptHolds.has(storedSessionId)) {
     return true
   }
 

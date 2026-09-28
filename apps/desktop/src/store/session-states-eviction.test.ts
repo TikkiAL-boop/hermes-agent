@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { $activeSessionId, $selectedStoredSessionId, $sessions, $unreadFinishedSessionIds } from '@/store/session'
-import { $sessionStates, $sessionTiles, closeSessionTile, publishSessionState } from '@/store/session-states'
+import {
+  $sessionStates,
+  $sessionTiles,
+  closeSessionTile,
+  holdSessionTranscript,
+  publishSessionState
+} from '@/store/session-states'
 
 /**
  * The closed-tile leak: gateway events keep publishing for sessions whose
@@ -66,6 +72,17 @@ describe('publish-time eviction', () => {
     publishSessionState('rt-2', state('stored-2', { busy: true }))
     publishSessionState('rt-2', state('stored-2', { busy: false }))
     expect($sessionStates.get()['rt-2']).toBeDefined()
+  })
+
+  it('keeps a settled session a transcript hold references, until the hold is released', () => {
+    const release = holdSessionTranscript('stored-1')
+    publishSessionState('rt-1', state('stored-1', { busy: true }))
+    publishSessionState('rt-1', state('stored-1', { busy: false }))
+    expect($sessionStates.get()['rt-1']?.messages).toHaveLength(1)
+
+    release()
+    publishSessionState('rt-1', state('stored-1', { busy: false, model: 'm2' }))
+    expect($sessionStates.get()['rt-1']?.messages).toEqual([])
   })
 
   it("keeps the primary view's settled session", () => {

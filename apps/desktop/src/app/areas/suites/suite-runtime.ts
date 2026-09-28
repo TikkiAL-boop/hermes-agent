@@ -12,7 +12,7 @@ import { type ChatMessage, toChatMessages } from '@/lib/chat-messages'
 import { activeGatewayConnectionId } from '@/store/gateway'
 import { $connection, $gatewayState, setSessionOwnerHint } from '@/store/session'
 import type { SessionOwnerRoute } from '@/store/session-request-router'
-import { $sessionStates, publishSessionState, sessionTileDelegate } from '@/store/session-states'
+import { $sessionStates, holdSessionTranscript, publishSessionState, sessionTileDelegate } from '@/store/session-states'
 
 import { fehlertext, SUITE_PROFIL } from './store'
 
@@ -95,6 +95,10 @@ export function useSuiteRuntime(storedId: string): SuiteRuntime {
   const ownerRoute = useMemo(() => suiteOwnerRoute(), [])
 
   useEffect(() => $gatewayState.subscribe(state => setGatewayOpen(state === 'open')), [])
+
+  // The room is neither a tile nor the primary route: without this hold the
+  // state cache releases the suite's transcript on the first settled publish.
+  useEffect(() => holdSessionTranscript(storedId), [storedId])
 
   useEffect(() => {
     setRuntimeId(null)

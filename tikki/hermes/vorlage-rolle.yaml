@@ -42,6 +42,13 @@ providers:
     base_url: "https://api.x.ai/v1"
     key_env: "XAI_API_KEY"
     api_mode: "chat_completions"
+  lokal:
+    # Eigener Modellserver im Haus (llama.cpp, vLLM, MLX, Ollama – alles mit
+    # OpenAI-kompatibler Schnittstelle). Adresse je Rechner anpassen; der Schlüssel
+    # ist meist beliebig, muss aber gesetzt sein (LOKAL_API_KEY in der .env).
+    base_url: "http://127.0.0.1:8080/v1"
+    key_env: "LOKAL_API_KEY"
+    api_mode: "chat_completions"
 
 # Freigaben für gefährliche Befehle: manual | smart | off.
 # "smart" lässt einen Hilfsprüfer risikoarme Befehle automatisch freigeben.
@@ -67,9 +74,10 @@ platforms:
       port: 8650
 
 # Delegation (nur für den Raumleiter relevant; für andere Rollen unschädlich).
-# max_concurrent_children: Standard 10, ohne Obergrenze – der Raumleiter darf bis 30.
+# max_concurrent_children: Standard 10, ohne Obergrenze – der Raumleiter holt bis zu 50
+# Bots gleichzeitig an den Tisch (große Recherche-Pipelines).
 delegation:
-  max_concurrent_children: 30
+  max_concurrent_children: 50
   max_spawn_depth: 1
 
 # Gedächtnis: Honcho ist der eine externe Gedächtnis-Anbieter jedes Tikki-Profils
@@ -80,6 +88,13 @@ delegation:
 # als zweiter Anbieter – siehe HANDOVER.md, Abschnitt Gedächtnis.
 memory:
   provider: "honcho"
+
+# Tikki-Plugins (Hermes lädt Plugins nur, wenn sie hier stehen). „gedaechtnis“ spiegelt
+# jede Runde in TencentDB und die Wissenssammlung des Menschen und gibt das Werkzeug
+# „nachschlagen“ (tikki/plugins/gedaechtnis/, von rollen-einrichten.sh verlinkt).
+plugins:
+  enabled:
+    - "gedaechtnis"
 
 # Unnötige Anzeige im Terminal abschalten.
 display:

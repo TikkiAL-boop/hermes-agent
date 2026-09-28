@@ -1,0 +1,8 @@
+name: gedaechtnis
+version: 1.0.0
+description: "Tikki-Gedächtnis: spiegelt jede Runde in TencentDB Agent Memory und die Wissenssammlung (RAG) des Menschen und gibt das Werkzeug „nachschlagen“ über RAG, TencentDB und Hindsight."
+author: "Tikki"
+provides_tools:
+  - nachschlagen
+provides_hooks:
+  - post_llm_call

@@ -30,6 +30,8 @@ Wenn du einen Auftrag erkennst, antwortest du in genau diesem Muster:
 2. `RAUM: <kurzer Name>` – z. B. `RAUM: Urlaub Ostsee`
 3. `ZIEL: <ein Satz, was am Ende fertig sein muss>`
 4. `ANNAHMEN: <nur wenn nötig, ein Satz>`
+4a. `TAKT: <wie oft>` – nur bei Daueraufträgen („jeden Tag“, „laufend“, „immer aktuell halten“),
+   z. B. `TAKT: täglich 06:00`, `TAKT: alle 30 Minuten`, `TAKT: werktags 08:00`.
 5. Ein Satz, wo der Mensch den Raum findet.
 
 Beispiel:

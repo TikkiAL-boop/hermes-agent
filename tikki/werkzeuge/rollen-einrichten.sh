@@ -63,6 +63,37 @@ else
 fi
 
 sagen() { if [ "$DRY_RUN" = 1 ]; then echo "  [dry-run] $*"; else echo "  $*"; fi; }
+
+# Skript nach <profil>/scripts/ schreiben und den Hermes-Cronjob anlegen, falls er fehlt.
+# skript_und_job <slug> <profilordner> <skriptname> <befehl> <jobname> <zeitplan> (--no-agent | <prompt>)
+skript_und_job() {
+  local slug="$1" ziel="$2" skript="$3" befehl="$4" job="$5" plan="$6" art="$7"
+  if [ -z "$HERMES_BIN" ]; then sagen "hermes fehlt – Cronjob $job übersprungen"; return 0; fi
+  local inhalt
+  inhalt="$(printf '#!/usr/bin/env bash\n# Von tikki/werkzeuge/rollen-einrichten.sh erzeugt – nicht von Hand ändern.\n%s\n' "$befehl")"
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "  [dry-run] scripts/$skript + Cronjob $job ($plan)"; return 0
+  fi
+  mkdir -p "$ziel/scripts"
+  if [ "$(cat "$ziel/scripts/$skript" 2>/dev/null)" != "$inhalt" ]; then
+    printf '%s\n' "$inhalt" > "$ziel/scripts/$skript"
+    chmod 700 "$ziel/scripts/$skript"
+    sagen "scripts/$skript geschrieben"
+  fi
+  # Erst einsammeln, dann suchen: grep -q in der Pipe beendet sie früh, und pipefail
+  # wertet das abgebrochene cron list als Fehler – der Job würde doppelt angelegt.
+  local jobs
+  jobs="$("$HERMES_BIN" -p "$slug" cron list --all 2>/dev/null || true)"
+  if grep -q -- "Name: *$job\$" <<< "$jobs"; then
+    sagen "Cronjob $job vorhanden"
+  elif [ "$art" = "--no-agent" ]; then
+    "$HERMES_BIN" -p "$slug" cron create "$plan" --name "$job" --script "$skript" --no-agent --deliver local >/dev/null \
+      && sagen "Cronjob $job angelegt ($plan, ohne Modell)"
+  else
+    "$HERMES_BIN" -p "$slug" cron create "$plan" "$art" --name "$job" --script "$skript" --deliver local >/dev/null \
+      && sagen "Cronjob $job angelegt ($plan)"
+  fi
+}
 tun()   { if [ "$DRY_RUN" = 1 ]; then echo "  [dry-run] $*"; else "$@"; fi; }
 
 # Katalog als Zeilen: slug<TAB>name<TAB>port
@@ -132,9 +163,35 @@ while IFS=$'\t' read -r SLUG NAME PORT; do
     konfig honcho "$VORLAGE_HONCHO" "$SLUG" "$ZIEL/honcho.json"
   fi
 
+  # 3c) Tikki-Plugin „gedaechtnis“ verlinken (config.yaml schaltet es unter plugins.enabled ein)
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "  [dry-run] plugins/gedaechtnis -> $TIKKI/plugins/gedaechtnis"
+  else
+    mkdir -p "$ZIEL/plugins"
+    if [ "$(readlink "$ZIEL/plugins/gedaechtnis" 2>/dev/null)" != "$TIKKI/plugins/gedaechtnis" ]; then
+      rm -rf "$ZIEL/plugins/gedaechtnis"
+      ln -s "$TIKKI/plugins/gedaechtnis" "$ZIEL/plugins/gedaechtnis"
+      sagen "Plugin gedaechtnis verlinkt"
+    fi
+  fi
+
+  # 3d) Dauerbetrieb: Takt der Suiten (raumleiter) und Rundgang des Wachhalters.
+  #     Hermes-Cron führt nur Skripte aus ~/.hermes/profiles/<slug>/scripts/ aus.
+  case "$SLUG" in
+    raumleiter)
+      skript_und_job "$SLUG" "$ZIEL" tikki-takt.sh \
+        "exec \"$HERMES_BIN\" --run-module tikki.werkzeuge.suite_takt takt --hermes \"$HERMES_BIN\"" \
+        tikki-takt "every 5m" --no-agent ;;
+    wachhalter)
+      skript_und_job "$SLUG" "$ZIEL" tikki-raumbericht.sh \
+        "exec \"$HERMES_BIN\" --run-module tikki.werkzeuge.suite_takt bericht" \
+        tikki-rundgang "every 15m" \
+        "Rundgang: Oben steht der Raumbericht aller Suiten. Handle genau nach deinem SOUL und schließe mit dem RUNDGANG-Block." ;;
+  esac
+
   # 4) .env-Hinweis (wird nie vom Skript befüllt)
   if [ "$DRY_RUN" = 0 ] && [ ! -f "$ZIEL/.env" ]; then
-    printf '# Tikki-Rolle %s – Schlüssel hier eintragen (Datei bleibt lokal, nie ins Repo)\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n# HONCHO_API_KEY=\n' "$SLUG" > "$ZIEL/.env"
+    printf '# Tikki-Rolle %s – Schlüssel hier eintragen (Datei bleibt lokal, nie ins Repo)\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n# HONCHO_API_KEY=\n# LOKAL_API_KEY=lokal\n# CLAUDE_CODE_OAUTH_TOKEN=   (Claude-Abo: claude setup-token)\n' "$SLUG" > "$ZIEL/.env"
     chmod 600 "$ZIEL/.env"
     sagen ".env-Vorlage angelegt (ohne Werte): $ZIEL/.env"
   fi
@@ -158,6 +215,7 @@ if [ "$DRY_RUN" = 0 ]; then
   echo "Nächste Schritte:"
   echo "  1. XAI_API_KEY, CURSOR_API_KEY, HONCHO_API_KEY und je Profil API_SERVER_KEY setzen (Umgebung oder ~/.hermes/profiles/<slug>/.env)."
   echo "     Honcho-SDK einmal bereitstellen: hermes pm install --extra honcho"
-  echo "  2. Pro Rolle starten:  hermes -p <slug> gateway"
+  echo "  2. Pro Rolle starten:  hermes -p <slug> gateway   (als Dienst: hermes -p <slug> gateway install)"
+  echo "     raumleiter und wachhalter tragen die Cronjobs tikki-takt und tikki-rundgang – ihr Gateway muss immer laufen."
   echo "  3. Prüfen:             tikki/werkzeuge/rollen-status.sh"
 fi

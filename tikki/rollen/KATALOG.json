@@ -5,21 +5,22 @@
     "icon": "🐾",
     "kurz": "Assistentin im Vorzimmer: Small Talk, nimmt Aufträge an, öffnet Räume.",
     "kategorie": "vorzimmer",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": [],
+    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5", "weitere": ["lokal/tikki-schnell"] },
+    "werkzeuge": ["gedaechtnis"],
     "freigabe": "smart",
     "port": 8650,
     "hermes_profil": "tikki",
-    "im_raum_ab_start": false
+    "im_raum_ab_start": false,
+    "einstellungen": { "agent": { "reasoning_effort": "low" }, "display": { "streaming": true } }
   },
   {
     "slug": "raumleiter",
     "name": "Raumleiter",
     "icon": "🧭",
-    "kurz": "Leitet den Raum: plant, delegiert an bis zu 30 Bots, bleibt dran bis zum Ziel.",
+    "kurz": "Leitet den Raum rund um die Uhr: plant, holt bis zu 50 Bots an den Tisch, bleibt dran bis zum Ziel.",
     "kategorie": "leitung",
     "modell": { "primary": "cursor/claude-opus-5.5", "fallback": "xai/grok-4.7" },
-    "werkzeuge": ["delegation", "todo"],
+    "werkzeuge": ["delegation", "todo", "gedaechtnis"],
     "freigabe": "smart",
     "port": 8651,
     "hermes_profil": "raumleiter",
@@ -153,6 +154,19 @@
     "freigabe": "smart",
     "port": 8661,
     "hermes_profil": "uebersetzer",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "wachhalter",
+    "name": "Wachhalter",
+    "icon": "🛡️",
+    "kurz": "Geht rund um die Uhr von Raum zu Raum, weckt stille Räume und prüft Ergebnisse.",
+    "kategorie": "leitung",
+    "modell": { "primary": "anthropic/claude-opus-5-5", "fallback": "openai-codex/gpt-6-sol", "weitere": ["lokal/tikki-gross"] },
+    "werkzeuge": ["terminal", "file", "todo"],
+    "freigabe": "smart",
+    "port": 8662,
+    "hermes_profil": "wachhalter",
     "im_raum_ab_start": false
   }
 ]

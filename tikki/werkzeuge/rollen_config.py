@@ -42,6 +42,15 @@ def _modelle(rolle: dict) -> tuple[tuple[str, str], tuple[str, str]]:
     return primary, fallback  # type: ignore[return-value]
 
 
+def _einmischen(ziel, zusatz: dict) -> None:
+    """Rollen-eigene Einstellungen aus dem Katalog (``einstellungen``) tief einmischen."""
+    for schluessel, wert in zusatz.items():
+        if isinstance(wert, dict) and isinstance(ziel.get(schluessel), dict):
+            _einmischen(ziel[schluessel], wert)
+        else:
+            ziel[schluessel] = wert
+
+
 def aktuelle_config_version() -> int | None:
     """Der Stand, den Hermes selbst stempeln würde. Ohne Hermes-Umgebung: None.
 
@@ -73,7 +82,10 @@ def rollen_config(katalog: str, vorlage: str, slug: str):
         cfg.insert(0, "_config_version", version)
     cfg["model"]["provider"] = p_prov
     cfg["model"]["default"] = p_model
-    cfg["fallback_providers"] = [{"provider": f_prov, "model": f_model}]
+    cfg["fallback_providers"] = [{"provider": f_prov, "model": f_model}] + [
+        {"provider": prov, "model": model}
+        for prov, model in (eintrag.split("/", 1) for eintrag in rolle["modell"].get("weitere", []))
+    ]
     cfg.setdefault("approvals", {})["mode"] = rolle.get("freigabe", "smart")
     werkzeuge = list(rolle.get("werkzeuge", []))
     cfg.setdefault("platform_toolsets", {})
@@ -86,6 +98,7 @@ def rollen_config(katalog: str, vorlage: str, slug: str):
     # Delegation nur für Rollen, die sie im Katalog haben
     if "delegation" not in werkzeuge:
         cfg.pop("delegation", None)
+    _einmischen(cfg, rolle.get("einstellungen") or {})
 
     buf = io.StringIO()
     yaml.dump(cfg, buf)

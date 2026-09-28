@@ -275,12 +275,14 @@ Dokumente). Physisch/virtuell getrennt von allem anderen. Chats heißen **Suites
 | `store.ts` | Eine Suite = Sitzung des Profils `raumleiter` mit `source: tikki-suite`. `ladeSuites()` = `session.list {profile, include_hidden}` gefiltert auf die Quelle (Fehler bleibt Fehler, nie „leer“). `neueSuite(name, ziel)`: exakte Titelsuche (adoptieren statt gabeln) → `session.create` → `session.title` (legt die Zeile an) → Raum öffnen → `prompt.submit` mit `RAUM:`/`ZIEL:` (Raumprotokoll). Alles über `requestGatewayForProfile('raumleiter')`. `$aktiveSuite` = der Raum, in dem man steht; `oeffneSuite`/`verlasseSuite`. |
 | `suites-area.tsx` | Lobby: Verlauf links (leer bis zur ersten Suite), Formular „Neue Suite“, Karte „Immer am Tisch“ (Raumleiter mit Haupt- und Ausweichmodell aus dem Katalog). Steht eine Suite in `$aktiveSuite`, zeigt der Bereich den Raum. |
 | `suite-room.tsx` | Der Raum: Kopf (Zur Lobby, Titel, Raumleiter, „arbeitet“), links **To-do-Wand** (`$todosBySession`, sonst `$retainedTodosBySession`, `todoTree`) und **Am Tisch** (Raumleiter + `$subagentsBySession`, Rolle per `AN:`-Zeile), Mitte **der Chat der Suite** (`TileChat` aus `app/chat/session-tile.tsx`, jetzt exportiert und mit festgenageltem `ownerRoute` auf `raumleiter`), rechts **Daten-Screen** und **Output-Screen**. |
-| `suite-runtime.ts` | `useSuiteRuntime(storedId)`: Owner-Hinweis setzen, `sessionTileDelegate().resumeTile(storedId, {refreshTranscript})`, daraus eine `SessionView` über `$sessionStates[runtimeId]`. Kein zweiter Resume-Pfad, kein Layoutbaum, keine Seitenleiste. |
+| `suite-runtime.ts` | `useSuiteRuntime(storedId)`: Owner-Hinweis für gespeicherte **und** Laufzeit-Id setzen (ohne den zweiten schlagen alle sitzungsgebundenen RPCs auf der Laufzeit-Id fehl), `sessionTileDelegate().resumeTile(storedId, {refreshTranscript})`, bei leerem Transkript einmal `getLatestSessionMessages` nachladen, daraus eine `SessionView` über `$sessionStates[runtimeId]`. Solange der Raum gemountet ist, hält er sein Transkript per `holdSessionTranscript(storedId)` (`store/session-states.ts`): der Zustandsspeicher wirft sonst beim ersten „fertig“-Publish jedes Transkript weg, das weder Hauptansicht noch Kachel ist, und der Raum ist keins von beiden. Kein zweiter Resume-Pfad, kein Layoutbaum, keine Seitenleiste. |
 | `suite-daten.ts` | Reine Funktionen: `eingabenAusNachrichten` (Anhänge und `@file:/@url:/…`-Nennungen aus Nutzer-Nachrichten), `ausgabenAusNachrichten` (Markdown-Links, URLs, absolute Pfade mit Endung aus Bot-Antworten). Der Output-Screen mischt dazu `$previewStatusBySession`, `artifactsForSession` und `filesWritten` der Bots. |
 | Tests | `store.test.ts`, `suites-area.test.tsx`, `suite-daten.test.ts`. |
 
-Hermes-Änderung dafür: `TileChat` in `app/chat/session-tile.tsx` ist exportiert und nimmt
-optional `ownerRoute` (vorher nur Tile-intern). Sonst nichts im Hermes-Code.
+Hermes-Änderungen dafür: `TileChat` in `app/chat/session-tile.tsx` ist exportiert und nimmt
+optional `ownerRoute` (vorher nur Tile-intern); `store/session-states.ts` hat den gezählten
+Halt `holdSessionTranscript` (generisch, mit Test in `session-states-eviction.test.ts`).
+Sonst nichts im Hermes-Code.
 
 Offen an den Suites: Räume aus dem Vorzimmer heraus öffnen (Tikkis `RAUM:`-Antwort → Suite),
 Vorschau von Dateien direkt im Output-Screen (heute öffnen Links extern, Dateien sind nur
@@ -522,6 +524,9 @@ Bereich Browser), Post, Terminal.
 | `aa2fcf6a` | Composer-Statusfach bleibt in versteckten Bereichen unsichtbar |
 | `ad23fc29` | Bereich „Suites“: Lobby mit Verlauf, Neue Suite, Raumleiter |
 | `0a236537` | Die Suite als Raum: runder Tisch, To-do-Wand, Daten- und Output-Screen |
+| `e14a704f` | Honcho als Gedächtnis-Anbieter jeder Rolle (`vorlage-rolle.yaml`, `vorlage-honcho.json`), Gedächtnis-Plan 8.1a |
+| `1af2ff35` | Honcho als eigener Dienst (`tikki/dienste/honcho/`), Status-Karte im Admin-Bereich |
+| `eabca897` | Suite-Raum hält sein Transkript (`holdSessionTranscript`); vorher blieb der Chat im Raum leer |
 
 Dieses Dokument: `tikki/HANDOVER.md`. Bitte bei jedem größeren Schritt fortschreiben,
 damit die nächste Übergabe wieder vollständig ist.

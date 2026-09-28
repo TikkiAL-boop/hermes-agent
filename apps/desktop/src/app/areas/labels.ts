@@ -57,6 +57,7 @@ interface AreaLabels {
     unread: string
   }
   rail: { label: string }
+  raum: { bot: string; fertig: string; fehler: string; unvollstaendig: string }
 }
 
 const de: AreaLabels = {
@@ -153,7 +154,8 @@ const de: AreaLabels = {
     to: 'An',
     unread: 'ungelesen'
   },
-  rail: { label: 'Bereiche' }
+  rail: { label: 'Bereiche' },
+  raum: { bot: 'Bot', fertig: 'Fertig', fehler: 'Fehlgeschlagen', unvollstaendig: 'Unvollständig' }
 }
 
 const en: AreaLabels = {
@@ -249,7 +251,8 @@ const en: AreaLabels = {
     to: 'To',
     unread: 'unread'
   },
-  rail: { label: 'Areas' }
+  rail: { label: 'Areas' },
+  raum: { bot: 'Bot', fertig: 'Done', fehler: 'Failed', unvollstaendig: 'Incomplete' }
 }
 
 /** Tikki is a German-first product; every other locale falls back to English. */

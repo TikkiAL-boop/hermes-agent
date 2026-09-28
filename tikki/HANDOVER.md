@@ -346,9 +346,34 @@ im Katalog anpassen.
 
 ## 8. Nächste Bauschritte (Reihenfolge, wie mit Thorsten besprochen)
 
-### 8.1 Räume (der Kern der Idee) – noch nicht begonnen
+### 8.1 Räume (der Kern der Idee) – Schritt 1 gebaut, Rest offen
 
 Ziel: Ein Raum ist ein Chat mit einem Raumleiter und bis zu 30 Bots; alles sichtbar.
+
+**Gebaut (Schritt 1, Weg (a), nur Renderer):** Delegationen erscheinen im Chat unter dem Namen
+und Icon der Rolle. Hermes' `delegate_task` kennt keine Rollen (das `role`-Argument ist
+tot, ein Kind ist nur „Task 2 von 5“); die einzige Stelle, an der eine Rolle steht, ist die
+`AN: <rolle>`-Zeile, die der Raumleiter laut Hausprotokoll in jede Aufgabe schreibt.
+`apps/desktop/src/app/areas/tikki/rollen.ts` liest sie aus dem Aufgabentext und löst sie
+gegen `KATALOG.json` auf (Slug, Name oder Profilname, Umlaute egal); der Titel der Zeile
+ist dann der `AUFGABE:`-Absatz statt des Protokollblocks.
+
+- Laufende/abgesetzte Delegation: die bestehende Hermes-Karte je Kind
+  (`components/assistant-ui/tool/delegate.tsx`, `DelegateRowView`) zeigt Icon + Rollenname vor
+  dem Auftrag (`data-tikki-bot="<slug>"`). Ohne `AN:`-Zeile bleibt alles wie in Hermes.
+- Fertige Hintergrund-Delegation: die Sammelnotiz (`display_kind: async_delegation_complete`)
+  wird nicht mehr als zugeklappte Zeile „2 background agents finished“ gezeigt, sondern als
+  **Runder Tisch**: je Bot ein offener Block mit Icon, Name, Status (Fertig / Fehlgeschlagen /
+  Unvollständig) und dem Bericht als Markdown (`areas/tikki/bot-ergebnisse.tsx`). Dazu trägt die
+  Hydration den rohen Umschlag als `asyncResultSource` (`lib/chat-messages/hydration.ts`,
+  `types.ts`, `lib/chat-runtime.ts`, `use-session-actions/utils.ts` COMPARED); `botErgebnisse()`
+  in `rollen.ts` zerlegt `[ASYNC DELEGATION BATCH COMPLETE …]` an den `--- ✓ TASK i/n: … ---`-
+  Köpfen, dazu `… COMPLETE` (eine Aufgabe) und `… TASK FAILED` (Frühwarnung). Was nicht
+  parst, fällt auf die Hermes-Zeile zurück (`thread/system-message.tsx`).
+- Tests: `areas/tikki/rollen.test.ts`, `areas/tikki/bot-ergebnisse.test.tsx`.
+- Nicht enthalten: eigener Bereich „Räume“, Raum anlegen, Live-Ereignisse `subagent.*` mit
+  Rolle (die Live-Zeile im Karten-Ticker bleibt Hermes' Aktivitätstext), Bots als eigene
+  Profile/Ports (Delegation läuft heute im Prozess des Raumleiters mit dessen Werkzeugen).
 
 Vorgeschlagene Architektur (Vorschlag, noch nicht abgestimmt im Detail):
 

@@ -465,6 +465,8 @@ Vorgeschlagene Architektur (Vorschlag, noch nicht abgestimmt im Detail):
 | `f4a3b983` | Upstream-Tests wieder grün (Branding-Schalter), keine nativen `title=` |
 | `50169e82` | Dieses Handover |
 | `d18ef6cd` | Rollenkonfiguration in der Hermes-Umgebung erzeugen, mit Versionsstempel (`rollen_config.py`) |
+| `dd10491a` | Handover: `rollen_config.py`, Installationsnotizen |
+| `cb635e8b` | Räume, Schritt 1: Bots sprechen im Chat unter ihrem Namen (`areas/tikki/`) |
 
 Dieses Dokument: `tikki/HANDOVER.md`. Bitte bei jedem größeren Schritt fortschreiben,
 damit die nächste Übergabe wieder vollständig ist.

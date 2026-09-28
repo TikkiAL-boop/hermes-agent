@@ -129,6 +129,17 @@ eine Verbindung steht.
 (`uv sync --frozen --no-dev`). In der Cloud musste Python 3.14 standalone geholt werden;
 auf dem Mac sollte der normale Hermes-Installer reichen.
 
+**Hermes-Installation aus dem Repo** (`bash setup-hermes.sh`, dann `hermes` in `~/.local/bin`):
+PM lädt Python, uv, node, npm, ripgrep und ffmpeg hash-geprüft aus `pm/lock.json`. Stolperstein
+(Stand 28.09.): der gepinnte ffmpeg-Autobuild von BtbN (`autobuild-2026-09-10-15-31`) ist
+upstream gelöscht (404); ohne Zugriff auf den Nous-Spiegel `hermes-assets.nousresearch.com`
+bricht `pm install` daran ab, obwohl alles andere steht. Auf dem Mac sollte der Spiegel
+erreichbar sein. Notweg, wie in der Cloud benutzt: `python -m pm.cli install node npm python
+ripgrep uv`, dann `python -c "from pm.install import sync_venv; sync_venv(['all'], explicit=True)"`,
+dann `python -I -X utf8 hermes_cli/_launchers.py ~/.local/bin` (jeweils das von uv
+installierte Python 3.14). Testumgebung: `python -m pm.build_env --source . --out .venv
+--group dev --group test`; Tests dann mit `HERMES_PYTHON=$PWD/.venv/bin/python scripts/run_tests.sh …`.
+
 ---
 
 ## 4. Architektur der Tikki-Schicht
@@ -257,7 +268,8 @@ eine Testmail senden.** Wenn der Server anders heißt oder Ports abweichen, die 
 | Rollen und Ports | `tikki` 8650 (Vorzimmer, grok-4.7 → opus-5.5, keine Werkzeuge) · `raumleiter` 8651 (opus-5.5 → grok-4.7, Werkzeuge `delegation`, `todo`, im Raum ab Start) · `rechercheur` 8652 · `pruefer` 8653 · `schreiber` 8654 · `frontend-entwickler` 8655 · `backend-entwickler` 8656 · `sicherheitsbeauftragter` 8657 · `datenanalyst` 8658 · `organisator` 8659 · `api-fachmann` 8660 · `uebersetzer` 8661 (alle grok-4.7 → opus-5.5, `smart`). |
 | `rollen/<slug>/SOUL.md` | 53–90 Zeilen je Rolle: Was du tust / Was du nie tust / Protokoll. Gemeinsame `## Hausregeln` am Ende jeder Datei: Deutsch, kurz, keine Modellwerbung, Aufgaben zu Ende bringen, Mensch nur per Zeile `BRAUCHE: …` mit Vorschlag, Ergebnisse im Raum-Chat. Der Raumleiter hat zusätzlich Delegationsformat, Rundenschleife, To-do-Listen „Tikki“ und „Du“, Stoppregel. |
 | `hermes/vorlage-rolle.yaml` | Vorlage für `~/.hermes/profiles/<slug>/config.yaml` mit **echten Hermes-Schlüsseln**: `model.{provider,default}`, `fallback_providers`, `providers.{cursor,xai}` (`base_url`, `key_env`, `api_mode: chat_completions`), `approvals.mode: smart`, `platform_toolsets.{api_server,cli}`, `platforms.api_server.{enabled,extra.host,extra.port}`, `delegation.{max_concurrent_children: 30, max_spawn_depth: 1}`, `display.compact`. |
-| `werkzeuge/rollen-einrichten.sh` | Legt je Rolle ein Hermes-Profil an, idempotent (`--dry-run`, `--nur <slug>`). Schreibt SOUL.md und config.yaml, **nie Schlüssel**. Nutzt ruamel.yaml aus dem Hermes-venv. Dry-Run in der Cloud: 12 Rollen, 0 Fehler; Profil-Configs mit Hermes' eigener Validierung geprüft. |
+| `werkzeuge/rollen-einrichten.sh` | Legt je Rolle ein Hermes-Profil an, idempotent (`--dry-run`, `--nur <slug>`). Schreibt SOUL.md und config.yaml, **nie Schlüssel**. Echter Lauf in der Cloud (`d18ef6cd`): 12 Profile angelegt, zweiter Lauf ein No-op, `hermes -p <slug> doctor` meldet „Config version up to date“. |
+| `werkzeuge/rollen_config.py` | Erzeugt die `config.yaml` einer Rolle. Das Skript ruft es über `hermes --run-module tikki.werkzeuge.rollen_config` auf, also im von Hermes verwalteten venv (eine PM-Installation hat kein `.venv` und kein `~/.hermes/hermes-agent/venv`); Rückfall: ein Python mit ruamel.yaml. Stempelt `_config_version` aus `hermes_cli.config_defaults`, sonst stuft Hermes die Datei beim ersten Start als unversioniert ein, schreibt sie neu, und das Skript dreht sie beim nächsten Lauf zurück. Tests: `tests/tikki/test_rollen_config.py`. |
 | `werkzeuge/rollen-status.sh` | Fragt `/health` je Port ab (`--host`, `--timeout`). |
 | `README.md` | Deutsch: Was liegt hier, Truppe, Einrichten auf dem Mac, Modelle und Ersatz, Schlüssel, Post und Browser, Ports. |
 
@@ -426,6 +438,8 @@ Vorgeschlagene Architektur (Vorschlag, noch nicht abgestimmt im Detail):
 | `d762c346` | Admin-Bereich und die Bot-Truppe (12 Rollen) |
 | `972f363b` | Post-Client (IMAP/SMTP) und Cookie-Auto-Klick im Browser |
 | `f4a3b983` | Upstream-Tests wieder grün (Branding-Schalter), keine nativen `title=` |
+| `50169e82` | Dieses Handover |
+| `d18ef6cd` | Rollenkonfiguration in der Hermes-Umgebung erzeugen, mit Versionsstempel (`rollen_config.py`) |
 
 Dieses Dokument: `tikki/HANDOVER.md`. Bitte bei jedem größeren Schritt fortschreiben,
 damit die nächste Übergabe wieder vollständig ist.

@@ -46,6 +46,10 @@ providers:
     # Eigener Modellserver im Haus (llama.cpp, vLLM, MLX, Ollama – alles mit
     # OpenAI-kompatibler Schnittstelle). Adresse je Rechner anpassen; der Schlüssel
     # ist meist beliebig, muss aber gesetzt sein (LOKAL_API_KEY in der .env).
+    # Hermes verlangt ein Kontextfenster von mindestens 64k Token: den Server so
+    # starten (llama.cpp -c 65536, vLLM --max-model-len 65536, Ollama
+    # OLLAMA_CONTEXT_LENGTH=65536) und, wenn Hermes es nicht selbst erkennt,
+    # model.context_length: 65536 setzen. Kleiner startet Hermes gar nicht erst.
     base_url: "http://127.0.0.1:8080/v1"
     key_env: "LOKAL_API_KEY"
     api_mode: "chat_completions"

@@ -550,6 +550,40 @@ im Katalog anpassen.
 
 ## 5. Was verifiziert ist und was nicht
 
+### 5.0 Testlauf mit lokalem Modell (29.09., in der Cloud)
+
+Ohne API-Schlüssel wurde ein echter Modellserver aufgesetzt (`llama-cpp-python[server]` mit
+SmolLM2-135M-Instruct, dem einzigen Modell, das der Container-Proxy hergab – Hugging Face und
+Ollama sind dort gesperrt). Provider `lokal`, `LOKAL_API_KEY=lokal`, Profile `tikki` und
+`raumleiter` auf `lokal/tikki-schnell`. Ergebnis:
+
+- **Kette steht**: `hermes -p tikki chat -Q` → Antwort in 54 s; verpackte App unter Xvfb:
+  Frage im Vorzimmer → Antwort im Chat nach 11 s; Plugin `gedaechtnis` spiegelt die Runde
+  (Frage + Antwort + Sitzung) in die RAG-Sammlung (`~/.tikki/rag/thorsten.sqlite`, Tabelle
+  `stuecke`). Der Inhalt der Antworten ist bei 135M Parametern Unsinn – geprüft ist die
+  Leitung, nicht die Qualität.
+- **Hermes verlangt ≥ 64k Kontext je Modell** (`agent/agent_init.py::_enforce_minimum_context`);
+  mit 8k bricht der Start ab. Für den lokalen Hauptrechner heißt das: Server mit ≥ 64k
+  starten (Kommentar in `hermes/vorlage-rolle.yaml`), sonst `model.context_length: 65536`.
+- **Prompt-Masse Vorzimmer**: Systemprompt ~2,7k Token (Schätzung Zeichen/4; der
+  SmolLM2-Tokenizer zählte 8,5k für den ganzen Prompt), Werkzeuge nur der `tool_search`-Dreier
+  (~830 Token), weil `platform_toolsets.cli = [gedaechtnis]` alles andere hinter die Brücke
+  legt. Der Desktop nutzt denselben Schlüssel `cli`. Ohne diese Einschränkung wären es 24
+  Werkzeuge mit ~11k Token – der Katalogeintrag `werkzeuge: ["gedaechtnis"]` ist also die
+  Latenz-Stellschraube des Vorzimmers.
+- **Beim Start warnt Hermes** `platform 'cli' has no valid toolsets configured (unknown
+  name(s): gedaechtnis)`. Das Plugin-Werkzeug `nachschlagen` ist trotzdem als „1 deferred“
+  hinter `tool_search` da (Log `tools.tool_search`); die Warnung kommt aus der Prüfung vor dem
+  Plugin-Laden. Noch nicht bewiesen: dass das Modell `nachschlagen` über die Brücke wirklich
+  aufrufen kann – mit echtem Modell auf dem Mac einmal „Was weißt du über …“ fragen.
+- **Der Desktop merkt sich das zuletzt gewählte Modell je Nutzerdaten** (Modellwähler der
+  Hermes-Oberfläche), nicht das `model.default` des Profils: ein alter Zustand ließ das
+  Vorzimmer auf `bedrock` laufen, bis die Nutzerdaten frisch waren. Auf dem Mac nach der
+  Installation einmal im Vorzimmer prüfen, dass die Karte „Deine Gesprächs-KI“ das
+  Vorzimmer-Modell zeigt; sonst im Modellwähler umstellen.
+- Honcho (`memory.provider: honcho`) meldet ohne laufenden Dienst bei jeder Sitzung
+  „Connection refused“ im Log – harmlos, verschwindet mit `tikki/dienste/honcho/honcho.sh start`.
+
 **Verifiziert (Cloud, headless unter Xvfb mit Playwright `_electron.launch`)**:
 - Build durchläuft; App startet; Rail mit den Bereichs-Knöpfen ist im DOM.
 - `window.hermesDesktop.tikkiMail.status()` liefert `{address:null, signedIn:false}`; ein

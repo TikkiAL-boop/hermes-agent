@@ -191,7 +191,7 @@ while IFS=$'\t' read -r SLUG NAME PORT; do
 
   # 4) .env-Hinweis (wird nie vom Skript befüllt)
   if [ "$DRY_RUN" = 0 ] && [ ! -f "$ZIEL/.env" ]; then
-    printf '# Tikki-Rolle %s – Schlüssel hier eintragen (Datei bleibt lokal, nie ins Repo)\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n# HONCHO_API_KEY=\n# LOKAL_API_KEY=lokal\n# CLAUDE_CODE_OAUTH_TOKEN=   (Claude-Abo: claude setup-token)\n' "$SLUG" > "$ZIEL/.env"
+    printf '# Tikki-Rolle %s – Schlüssel hier eintragen (Datei bleibt lokal, nie ins Repo)\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n# HONCHO_API_KEY=\n# LOKAL_API_KEY=lokal\n# CLAUDE_CODE_OAUTH_TOKEN=   (Claude-Abo: claude setup-token)\n# WA_BRIDGE_TOKEN=\n# Alle auf einmal aus einer Textdatei: tikki/werkzeuge/schluessel-einlesen.sh <datei>\n' "$SLUG" > "$ZIEL/.env"
     chmod 600 "$ZIEL/.env"
     sagen ".env-Vorlage angelegt (ohne Werte): $ZIEL/.env"
   fi

@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { atom } from 'nanostores'
-import { type ReactNode, useMemo } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import { useSubagentSnapshot } from '@/app/chat/composer/status-stack/use-subagent-snapshot'
 import { TileChat } from '@/app/chat/session-tile'
@@ -8,7 +8,20 @@ import { CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
 import { useI18n } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { openExternalLink } from '@/lib/external-link'
-import { AlertCircle, ArrowUpRight, CheckCircle2, Clock, FileText, Globe, ImageIcon, Link } from '@/lib/icons'
+import {
+  AlertCircle,
+  ArrowUpRight,
+  Brain,
+  CheckCircle2,
+  Clock,
+  Eye,
+  FileText,
+  Globe,
+  ImageIcon,
+  Link,
+  Search,
+  ShieldLock
+} from '@/lib/icons'
 import { todoTree } from '@/lib/todos'
 import { useSessionSlice } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
@@ -19,9 +32,10 @@ import { $retainedTodosBySession, $todosBySession } from '@/store/todos'
 
 import { rolle } from '../admin/katalog'
 import { areaLabels } from '../labels'
+import { setArea } from '../store'
 import { auftragAusText } from '../tikki/rollen'
 
-import { type Suite, SUITE_PROFIL, verlasseSuite } from './store'
+import { $suites, oeffneSuite, type Suite, SUITE_PROFIL, verlasseSuite } from './store'
 import {
   type Ausgabe,
   ausgabenAusNachrichten,
@@ -357,6 +371,7 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
           {teil ? teil.basis : suite.titel}
         </h1>
         <RaumMarken suite={suite} view={view} />
+        <Tueren aktuell={suite} />
         <span className="flex-1" />
         {raumleiter && (
           <span className="flex items-center gap-1.5 text-xs text-(--ui-text-secondary)">
@@ -391,7 +406,86 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
           <OutputScreen runtimeId={runtimeId} storedId={storedId} view={view} />
         </div>
       </div>
+      <Grundbesatzung />
     </div>
+  )
+}
+
+/** Doors to the other rooms: one project may need several; walking between them keeps each one whole. */
+function Tueren({ aktuell }: { aktuell: Suite }) {
+  const { locale } = useI18n()
+  const r = areaLabels(locale).raum
+  const suites = useStore($suites)
+  const [offen, setOffen] = useState(false)
+  const andere = suites.filter(s => s.id !== aktuell.id && s.resolvedId !== aktuell.id)
+
+  return (
+    <div className="relative">
+      <button
+        aria-expanded={offen}
+        className="tikki-knopf tikki-knopf-still px-2.5 py-1 text-xs"
+        data-suite-tueren=""
+        onClick={() => setOffen(o => !o)}
+        type="button"
+      >
+        {r.tueren}
+      </button>
+      {offen && (
+        <ul className="tikki-glas tikki-glas-dicht absolute top-full left-0 z-20 mt-1 flex max-h-72 w-64 flex-col gap-1 overflow-y-auto p-2">
+          {andere.length === 0 && <li className="px-2 py-1 text-xs text-(--tikki-tinte-weich)">{r.keineTueren}</li>}
+          {andere.map(s => (
+            <li key={s.id}>
+              <button
+                className="tikki-knopf tikki-knopf-still w-full px-2.5 py-1.5 text-left text-xs"
+                onClick={() => {
+                  setOffen(false)
+                  void oeffneSuite(s)
+                }}
+                type="button"
+              >
+                {s.titel}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/** The room's base crew along the floor: who is in every room, whatever the project. */
+function Grundbesatzung() {
+  const { locale } = useI18n()
+  const r = areaLabels(locale).raum
+
+  const mitglieder = [
+    {
+      icon: Search,
+      key: 'raumleiter' as const,
+      onClick: () => document.querySelector<HTMLElement>('[data-suite-tisch-chat] textarea')?.focus()
+    },
+    { icon: Brain, key: 'gedaechtnis' as const, onClick: () => setArea('admin') },
+    { icon: Eye, key: 'wachhalter' as const, onClick: () => setArea('admin') },
+    { icon: ShieldLock, key: 'pruefer' as const, onClick: () => setArea('admin') },
+    { icon: Globe, key: 'suche' as const, onClick: () => setArea('browser') }
+  ]
+
+  return (
+    <nav aria-label={r.besatzung} className="flex items-center justify-center gap-6 px-6 pb-4" data-suite-besatzung="">
+      {mitglieder.map(({ icon: Icon, key, onClick }) => (
+        <button
+          className="flex flex-col items-center gap-1 text-[11px] font-medium text-(--tikki-tinte) hover:text-(--tikki-gelb-tief)"
+          key={key}
+          onClick={onClick}
+          type="button"
+        >
+          <span className="tikki-knopf tikki-knopf-still flex size-11 items-center justify-center rounded-full">
+            <Icon aria-hidden className="size-5" stroke={1.9} />
+          </span>
+          {r.besatzungRollen[key]}
+        </button>
+      ))}
+    </nav>
   )
 }
 

@@ -228,6 +228,36 @@ alles Bedienbare als **Glasfläche mit Leuchtrand**, Vorzimmer mit Karten neben 
 - **Admin, Post, Terminal, Browser**: Boden + Glasflächen, Admin-Navigation als Tafeln.
 - Hermes-Code unverändert; kein Hermes-Bereich wurde umgebaut, nur eingerahmt und getönt.
 
+### 4.2b Vorzimmer-Funktionen (29.09., Thorstens Punkte 1–4)
+
+- **Eine schnelle KI im Vorzimmer über Cursor**: Katalog `tikki` → `cursor/claude-haiku-4-5`,
+  Ausweich `xai/grok-4.7`, danach `cursor/claude-opus-5.5`, lokal. **Prüfen**: die genaue
+  Modell-ID im Cursor-Katalog; in Admin → Modelle jederzeit umstellbar. Schlüssel liegen bei
+  Thorsten in einer Textdatei im Download-Ordner: `tikki/werkzeuge/schluessel-einlesen.sh
+  ~/Downloads/<datei> --danach-loeschen` (`schluessel.py`: erkennt Anbieter an Namen oder
+  Schlüsselform, schreibt `KEY=wert` in `~/.hermes/.env` und jede Rollen-`.env`, Rechte 600,
+  zeigt nie Werte; Test `tests/tikki/test_schluessel.py`).
+- **Browserzeile** im Vorzimmer-Kopf (`vorzimmer-rahmen.tsx` → `browser-area.tsx::oeffneImBrowser`,
+  Regel in `browser-adresse.ts`): Adresse, Host oder Suchbegriff → die ganze App wird zum Browser;
+  „Zum Vorzimmer“ links in der Tab-Leiste führt zurück. Tikki selbst kann Seiten öffnen: eine Zeile
+  `ÖFFNE: <Adresse>` in ihrer Antwort (SOUL, Abschnitt Browser; `vorzimmer.ts::oeffneAusText`).
+- **Tagesbriefing** (`tikki/briefing.ts`): Knopf sammelt ungelesene Post (Mail-Brücke
+  `tikkiMail`, INBOX), neue WhatsApps (WA-Bridge `127.0.0.1:8765`, Token in Admin → Betrieb
+  bzw. `WA_BRIDGE_TOKEN`; Skill `whatsapp-hermes` beschreibt die API), wartende und zuletzt
+  besuchte Suiten, und gibt alles als `TAGESBRIEFING …` an Tikki (SOUL: vortragen wie eine
+  Assistentin am Morgen). **Vorlesen**: Schalter neben dem Knopf; jede fertige Antwort im Vorzimmer
+  wird mit der Systemstimme (de-DE) gesprochen, ohne Sprach-Anbieter. Geprüft im Durchlauf: die
+  Nachricht landet im Chat und öffnet eine Sitzung.
+- **Update-Wächter** (`tikki/update-waechter.ts`, `tikki/hermes-basis.json`): vergleicht beim Start
+  und alle sechs Stunden den Hermes-Stand, auf dem tikki-app aufsetzt, mit `NousResearch/hermes-agent`
+  `main` (GitHub-API, ohne Schlüssel) und zeigt im Vorzimmer die Karte „Tikki-Update verfügbar“
+  mit Anzahl und Befehl. `hermes-aktualisieren.sh` schreibt die Basis nach jedem Merge.
+- **Lobby**: Räume, die auf den Menschen warten, leuchten atmend mit Glocke (`data-braucht`).
+- **Raum**: „Türen“ im Kopf führen in andere Räume (mehrere Räume je Projekt, der Reihe nach
+  begehbar); unten die **Grundbesatzung** (Raumleiter, Gedächtnis, Wachhalter, Prüfer, Suche); links
+  „Am Tisch“ die Bots, die gerade arbeiten. Räume „verbinden“ inhaltlich: das Gedächtnis-Plugin
+  spiegelt jeden Raum in die RAG-Sammlung, `nachschlagen` liest also raumübergreifend.
+
 ### 4.2 Branding
 
 | Datei | Zweck |
@@ -727,7 +757,8 @@ Bereich Browser), Post, Terminal.
 | `ed8ee494` | Vorzimmer öffnet Suiten selbst, Übungsläufe in der App, Takt-Auswahl, Raumbild, Markenwache |
 | `8ce52252` | Bots bekommen ihre Werkzeuge, Abos/Skills, OpenClaw-Katalog, Update-Skript, Handover |
 | `9788cc0a` | Recherche-Skills für alle Rollen (YouTube-Transkripte, arXiv, Nachrichtenlage, Wiki) |
-| (dieser) | Design „Gelbes Glas“: Theme gelb, Glas-Leiste, Lobby nach Entwurf, Vorzimmer-Rahmen mit Karten, Raum und Admin im Glas |
+| `b1ee94ba` | Design „Gelbes Glas“: Theme gelb, Glas-Leiste, Lobby nach Entwurf, Vorzimmer-Rahmen mit Karten, Raum und Admin im Glas |
+| (dieser) | Vorzimmer: Browserzeile, Tagesbriefing mit Vorlesen, Update-Wächter; Lobby-Hervorhebung; Raum mit Türen und Grundbesatzung; Schlüssel einlesen |
 
 Dieses Dokument: `tikki/HANDOVER.md`. Bitte bei jedem größeren Schritt fortschreiben,
 damit die nächste Übergabe wieder vollständig ist.

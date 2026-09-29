@@ -7,6 +7,7 @@ import { chatMessageText } from '@/lib/chat-messages/parts'
 import { notify } from '@/store/notifications'
 import { $sessionStates, runtimeSessionOwner } from '@/store/session-states'
 
+import { oeffneImBrowser } from '../browser-area'
 import { $aktiveSuite, $suites, neueSuite, oeffneSuite, SUITE_PROFIL } from '../suites/store'
 
 export interface RaumAuftrag {
@@ -25,6 +26,11 @@ function zeile(text: string, schluessel: string): string | undefined {
     .trim()
 
   return wert || undefined
+}
+
+/** `ÖFFNE: <Adresse oder Suche>` in a Vorzimmer reply: Tikki asks the app to show a page. */
+export function oeffneAusText(text: string): string | undefined {
+  return zeile(text, 'ÖFFNE') ?? zeile(text, 'OEFFNE')
 }
 
 /** The room order in a Vorzimmer reply, or undefined when the reply is talk, not an order. */
@@ -97,12 +103,21 @@ export function startVorzimmerWache(): () => void {
       }
 
       const letzte = [...state.messages].reverse().find(message => message.role === 'assistant')
-      const auftrag = letzte ? raumAuftragAusText(chatMessageText(letzte)) : undefined
+      const text = letzte ? chatMessageText(letzte) : ''
+      const auftrag = text ? raumAuftragAusText(text) : undefined
+      const adresse = text ? oeffneAusText(text) : undefined
       const schluessel = `${state.storedSessionId ?? runtimeId}:${letzte?.id ?? ''}`
 
-      if (auftrag && !erledigt.has(schluessel)) {
+      if ((auftrag || adresse) && !erledigt.has(schluessel)) {
         erledigt.add(schluessel)
-        void uebergeben(auftrag)
+
+        if (auftrag) {
+          void uebergeben(auftrag)
+        }
+
+        if (adresse) {
+          oeffneImBrowser(adresse)
+        }
       }
     }
   })

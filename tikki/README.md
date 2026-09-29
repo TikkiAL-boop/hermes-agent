@@ -66,6 +66,7 @@ den Lauf auf eine Rolle.
 | Skript | Wofür |
 |---|---|
 | `werkzeuge/suite_takt.py` | Räume mit `TAKT:` fahren Runden im Backend (Cronjob `tikki-takt`), Raumbericht für den Wachhalter, Übungsergebnisse an den Hauptraum |
+| `werkzeuge/schluessel-einlesen.sh` | Schlüssel aus einer Textdatei in alle Profile übernehmen, ohne sie anzuzeigen |
 | `werkzeuge/abos-einrichten.sh` | Claude-, Codex-, Grok-Abo als Modelle anmelden; Kommandozeilen der Abos prüfen |
 | `werkzeuge/openclaw-einrichten.sh` | ClawHub-Katalog (OpenClaw) lokal, Skills auf Abruf in die Bibliothek `openclaw` |
 | `werkzeuge/hermes-aktualisieren.sh` | Neue Hermes-Version per Merge übernehmen, danach alle Tikki-Prüfungen |

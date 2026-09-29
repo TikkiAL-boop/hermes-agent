@@ -256,7 +256,15 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
   )
 }
 
-function SuiteTafel({ suite, uebungen = [] }: { suite: Suite; uebungen?: Suite[] }) {
+function SuiteTafel({
+  braucht = false,
+  suite,
+  uebungen = []
+}: {
+  braucht?: boolean
+  suite: Suite
+  uebungen?: Suite[]
+}) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
   const [offen, setOffen] = useState(false)
@@ -266,11 +274,16 @@ function SuiteTafel({ suite, uebungen = [] }: { suite: Suite; uebungen?: Suite[]
     <li className="flex flex-col gap-1">
       <button
         className="tikki-knopf w-full px-3 py-2.5 text-left"
+        data-braucht={braucht ? 'true' : undefined}
         data-suite-id={suite.id}
         onClick={() => void oeffneSuite(suite)}
         type="button"
       >
-        <Armchair aria-hidden className="size-5 shrink-0" stroke={1.9} />
+        {braucht ? (
+          <Bell aria-hidden className="size-5 shrink-0" stroke={2} />
+        ) : (
+          <Armchair aria-hidden className="size-5 shrink-0" stroke={1.9} />
+        )}
         <span className="flex min-w-0 flex-col">
           <span className="truncate text-[13px] font-semibold">
             {teil ? `${teil.basis} · ${s.uebungslauf(teil.nr)}` : suite.titel}
@@ -374,6 +387,7 @@ function SuitesLobby() {
   const status = useStore($suitesStatus)
   const fehler = useStore($suitesFehler)
   const formularOffen = useStore($neueSuiteOffen)
+  const wartend = useStore($attentionSessionIds)
   const [suche, setSuche] = useState('')
   const nameFeld = useRef<HTMLInputElement | null>(null)
 
@@ -442,7 +456,14 @@ function SuitesLobby() {
           {suites.length > 0 && (
             <ul className={cn('flex flex-col gap-2', status === 'laedt' && 'opacity-70')}>
               {verlaufGruppen(gefiltert).map(({ suite, uebungen }) => (
-                <SuiteTafel key={suite.id} suite={suite} uebungen={uebungen} />
+                <SuiteTafel
+                  braucht={
+                    wartend.includes(suite.id) || (suite.resolvedId ? wartend.includes(suite.resolvedId) : false)
+                  }
+                  key={suite.id}
+                  suite={suite}
+                  uebungen={uebungen}
+                />
               ))}
             </ul>
           )}

@@ -5,7 +5,7 @@ import { useEffect } from 'react'
 import { PreviewTilePane } from '@/app/chat/right-rail/preview'
 import { hiddenPaneProps, PaneVisibleContext } from '@/components/pane-shell/pane-visibility'
 import { useI18n } from '@/i18n'
-import { Plus, X } from '@/lib/icons'
+import { ChevronLeft, Plus, X } from '@/lib/icons'
 import { persistString, storedString } from '@/lib/storage'
 import { cn } from '@/lib/utils'
 import {
@@ -14,10 +14,13 @@ import {
   closeRightRailTab,
   markBrowserTabPopped,
   newBrowserTab,
+  openPreview,
   type PreviewTab
 } from '@/store/preview'
 
+import { adresseAusEingabe } from './browser-adresse'
 import { areaLabels } from './labels'
+import { setArea } from './store'
 
 const ACTIVE_KEY = 'tikki.desktop.browser.activeTab'
 
@@ -26,6 +29,40 @@ const $activeTab = atom<null | string>(storedString(ACTIVE_KEY))
 $activeTab.subscribe(id => persistString(ACTIVE_KEY, id))
 
 const urlTabs = (tabs: PreviewTab[]) => tabs.filter(tab => tab.target.kind === 'url')
+
+/** Open an address or a search in the Browser area and walk over to it. The whole app turns into the browser; the rail leads back. */
+export function oeffneImBrowser(eingabe: string): void {
+  const url = adresseAusEingabe(eingabe)
+  let label = url
+
+  try {
+    label = new URL(url).hostname || url
+  } catch {
+    // about:blank and friends keep the raw text
+  }
+
+  const ziel = { kind: 'url' as const, label, source: url, url }
+  openPreview(ziel)
+  let tab = $previewTabs.get().findLast(t => t.target.kind === 'url' && t.target.url === url)
+
+  // The rail's own browser tab can live in another scope's bucket; then the
+  // area gets a tab of its own and points it at the page.
+  if (!tab) {
+    newBrowserTab()
+    const neu = $previewTabs.get().findLast(t => t.target.kind === 'url')
+
+    if (neu) {
+      $previewTabs.set($previewTabs.get().map(t => (t.id === neu.id ? { ...t, target: ziel } : t)))
+      tab = { ...neu, target: ziel }
+    }
+  }
+
+  if (tab) {
+    $activeTab.set(tab.id)
+  }
+
+  setArea('browser')
+}
 
 /**
  * Browser as a full area: a tab strip on top, one `PreviewTilePane` per tab
@@ -68,6 +105,15 @@ export function BrowserArea({ active }: { active: boolean }) {
     <div className="tikki-boden flex min-h-0 min-w-0 flex-1 flex-col p-4" data-browser-area="">
       <div className="tikki-glas flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex h-9 shrink-0 items-end gap-1 overflow-x-auto px-2 pt-1" role="tablist">
+          <button
+            className="tikki-knopf tikki-knopf-still mb-1 shrink-0 px-2.5 py-1 text-xs font-medium"
+            data-browser-zurueck=""
+            onClick={() => setArea('tikki')}
+            type="button"
+          >
+            <ChevronLeft aria-hidden className="size-3.5" />
+            {labels.zurueck}
+          </button>
           {tabs.map(tab => {
             const page = pages[tab.id]
             const title = page?.title || tab.target.label || labels.untitled

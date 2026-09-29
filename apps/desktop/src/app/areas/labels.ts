@@ -36,7 +36,7 @@ interface AreaLabels {
     }
   }
   areas: Record<Area, string>
-  browser: { close: string; newTab: string; untitled: string }
+  browser: { close: string; newTab: string; untitled: string; zurueck: string; adresse: string }
   post: {
     address: string
     addressHint: string
@@ -79,8 +79,27 @@ interface AreaLabels {
     neueSuite: string
     neueSuiteHinweis: string
     einstellungen: string
+    briefing: string
+    briefingLaeuft: string
+    vorlesen: string
+    vorlesenAn: string
+    vorlesenAus: string
+    keinChat: string
+    update: string
+    updateText: (n: number, version: string) => string
+    updateBefehl: string
+    updateAktuell: string
   }
-  raum: { bot: string; fertig: string; fehler: string; unvollstaendig: string }
+  raum: {
+    bot: string
+    fertig: string
+    fehler: string
+    unvollstaendig: string
+    besatzung: string
+    tueren: string
+    keineTueren: string
+    besatzungRollen: { raumleiter: string; gedaechtnis: string; wachhalter: string; pruefer: string; suche: string }
+  }
   suites: {
     abbrechen: string
     amTisch: string
@@ -219,7 +238,13 @@ const de: AreaLabels = {
     }
   },
   areas: { admin: 'Admin', browser: 'Browser', post: 'Post', suites: 'Suites', terminal: 'Terminal', tikki: 'Tikki' },
-  browser: { close: 'Tab schließen', newTab: 'Neuer Tab', untitled: 'Neue Seite' },
+  browser: {
+    close: 'Tab schließen',
+    newTab: 'Neuer Tab',
+    untitled: 'Neue Seite',
+    zurueck: 'Zum Vorzimmer',
+    adresse: 'Webadresse oder Suche …'
+  },
   post: {
     address: 'Adresse',
     addressHint: 'Dein Postfach bei tikki.team, z. B. karin@tikki.team. Das Passwort bleibt auf diesem Rechner.',
@@ -271,9 +296,34 @@ const de: AreaLabels = {
     keinerWartet: 'Gerade wartet keine Suite auf dich.',
     neueSuite: 'Neue Suite',
     neueSuiteHinweis: 'Platz für einen Auftrag',
-    einstellungen: 'Einstellungen'
+    einstellungen: 'Einstellungen',
+    briefing: 'Tagesbriefing',
+    briefingLaeuft: 'Sammle …',
+    vorlesen: 'Antwort vorlesen',
+    vorlesenAn: 'an',
+    vorlesenAus: 'aus',
+    keinChat: 'Kein Gespräch offen. Klick zuerst ins Eingabefeld.',
+    update: 'Tikki-Update verfügbar',
+    updateText: (n, version) => `${n} neue Änderungen bei Hermes${version ? ` (Version ${version})` : ''}.`,
+    updateBefehl: 'Übernehmen im Terminal:',
+    updateAktuell: 'Tikki ist auf dem neuesten Stand.'
   },
-  raum: { bot: 'Bot', fertig: 'Fertig', fehler: 'Fehlgeschlagen', unvollstaendig: 'Unvollständig' },
+  raum: {
+    bot: 'Bot',
+    fertig: 'Fertig',
+    fehler: 'Fehlgeschlagen',
+    unvollstaendig: 'Unvollständig',
+    besatzung: 'Grundbesatzung',
+    tueren: 'Türen',
+    keineTueren: 'Keine anderen Räume',
+    besatzungRollen: {
+      raumleiter: 'Raumleiter',
+      gedaechtnis: 'Gedächtnis',
+      wachhalter: 'Wachhalter',
+      pruefer: 'Prüfer',
+      suche: 'Suche'
+    }
+  },
   suites: {
     abbrechen: 'Abbrechen',
     amTisch: 'Am Tisch',
@@ -413,7 +463,13 @@ const en: AreaLabels = {
     }
   },
   areas: { admin: 'Admin', browser: 'Browser', post: 'Mail', suites: 'Suites', terminal: 'Terminal', tikki: 'Tikki' },
-  browser: { close: 'Close tab', newTab: 'New tab', untitled: 'New page' },
+  browser: {
+    close: 'Close tab',
+    newTab: 'New tab',
+    untitled: 'New page',
+    zurueck: 'To reception',
+    adresse: 'Web address or search …'
+  },
   post: {
     address: 'Address',
     addressHint: 'Your tikki.team mailbox, e.g. karin@tikki.team. The password stays on this machine.',
@@ -465,9 +521,34 @@ const en: AreaLabels = {
     keinerWartet: 'No suite is waiting for you right now.',
     neueSuite: 'New suite',
     neueSuiteHinweis: 'Room for an order',
-    einstellungen: 'Settings'
+    einstellungen: 'Settings',
+    briefing: 'Daily briefing',
+    briefingLaeuft: 'Collecting …',
+    vorlesen: 'Read replies aloud',
+    vorlesenAn: 'on',
+    vorlesenAus: 'off',
+    keinChat: 'No conversation open. Click into the input first.',
+    update: 'Tikki update available',
+    updateText: (n, version) => `${n} new changes in Hermes${version ? ` (version ${version})` : ''}.`,
+    updateBefehl: 'Apply in the terminal:',
+    updateAktuell: 'Tikki is up to date.'
   },
-  raum: { bot: 'Bot', fertig: 'Done', fehler: 'Failed', unvollstaendig: 'Incomplete' },
+  raum: {
+    bot: 'Bot',
+    fertig: 'Done',
+    fehler: 'Failed',
+    unvollstaendig: 'Incomplete',
+    besatzung: 'Base crew',
+    tueren: 'Doors',
+    keineTueren: 'No other rooms',
+    besatzungRollen: {
+      raumleiter: 'Room lead',
+      gedaechtnis: 'Memory',
+      wachhalter: 'Watchkeeper',
+      pruefer: 'Reviewer',
+      suche: 'Search'
+    }
+  },
   suites: {
     abbrechen: 'Cancel',
     amTisch: 'At the table',

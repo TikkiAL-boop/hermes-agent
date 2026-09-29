@@ -70,6 +70,22 @@ if ! git merge --no-edit -m "Tikki: Hermes-Update übernommen ($remote/main)" "$
   git diff --name-only --diff-filter=U | sed 's/^/    Konflikt: /'
   exit 1
 fi
+basis_schreiben() {
+  # Der Update-Wächter der App vergleicht gegen diesen Stand.
+  local sha datum
+  sha="$(git rev-parse "$remote/main")"; datum="$(git log -1 --format=%cI "$sha")"
+  python3 - "$sha" "$datum" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path("tikki/hermes-basis.json")
+d = json.loads(p.read_text(encoding="utf-8"))
+d["commit"], d["datum"] = sys.argv[1], sys.argv[2]
+p.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+  git add tikki/hermes-basis.json
+  git commit -q -m "Tikki: Hermes-Basis auf $sha gesetzt" || true
+}
+basis_schreiben
 pruefen
 echo
 echo "Update übernommen. Zum Veröffentlichen: git push origin tikki-app"

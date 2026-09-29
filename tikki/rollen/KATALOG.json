@@ -5,7 +5,7 @@
     "icon": "🐾",
     "kurz": "Assistentin im Vorzimmer: Small Talk, nimmt Aufträge an, öffnet Räume.",
     "kategorie": "vorzimmer",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5", "weitere": ["lokal/tikki-schnell"] },
+    "modell": { "primary": "cursor/claude-haiku-4-5", "fallback": "xai/grok-4.7", "weitere": ["cursor/claude-opus-5.5", "lokal/tikki-schnell"] },
     "werkzeuge": ["gedaechtnis"],
     "freigabe": "smart",
     "port": 8650,

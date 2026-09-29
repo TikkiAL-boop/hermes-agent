@@ -52,6 +52,7 @@ describe('TikkiMailService store', () => {
 
   test('starts signed out when no store exists', () => {
     const { io: store } = io('')
+
     const service = new TikkiMailService({
       ...store,
       readStoreText: () => {
@@ -69,6 +70,7 @@ describe('TikkiMailService store', () => {
         password: { encoding: 'test', value: Buffer.from('pw').toString('base64') }
       })
     )
+
     const service = new TikkiMailService(store)
 
     assert.deepEqual(service.status(), { address: 'zoe@tikki.team', signedIn: true })

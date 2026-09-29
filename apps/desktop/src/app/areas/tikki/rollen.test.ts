@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { KATALOG } from '../admin/katalog'
+
 import { auftragAusText, botErgebnisse, rolleAusName } from './rollen'
 
 const auftrag = (rolle: string, aufgabe: string) =>
@@ -86,6 +87,7 @@ describe('botErgebnisse', () => {
       '--- RESULT ---',
       'Alle drei Angaben stimmen.'
     ].join('\n')
+
     const failed = [
       '[ASYNC DELEGATION TASK FAILED — d-3, task 2/3]',
       'One subagent in a background fan-out you dispatched has failed while its siblings are still running.',

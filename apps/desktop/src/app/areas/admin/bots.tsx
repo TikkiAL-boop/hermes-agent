@@ -4,6 +4,7 @@ import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { areaLabels } from '../labels'
+
 import { KATALOG } from './katalog'
 
 type Health = 'online' | 'offline' | 'unknown'
@@ -56,7 +57,9 @@ export function BotsSection() {
           return (
             <div className="rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-chrome) p-3" key={r.slug}>
               <div className="flex items-center gap-2">
-                <span aria-hidden className="text-xl">{r.icon}</span>
+                <span aria-hidden className="text-xl">
+                  {r.icon}
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-(--ui-text-primary)">{r.name}</div>
                   <div className="truncate text-xs text-(--ui-text-secondary)">{r.kategorie}</div>
@@ -64,7 +67,11 @@ export function BotsSection() {
                 <span
                   className={cn(
                     'size-2.5 shrink-0 rounded-full',
-                    state === 'online' ? 'bg-(--ui-accent)' : state === 'offline' ? 'bg-(--ui-text-secondary)/40' : 'bg-(--ui-text-secondary)/20'
+                    state === 'online'
+                      ? 'bg-(--ui-accent)'
+                      : state === 'offline'
+                        ? 'bg-(--ui-text-secondary)/40'
+                        : 'bg-(--ui-text-secondary)/20'
                   )}
                   title={b[state]}
                 />
@@ -78,7 +85,9 @@ export function BotsSection() {
                 <dt>{b.port}</dt>
                 <dd className="font-mono">{r.port}</dd>
               </dl>
-              <div className="mt-2 text-[11px] text-(--ui-text-secondary)">{r.im_raum_ab_start ? b.atStart : b.onDemand}</div>
+              <div className="mt-2 text-[11px] text-(--ui-text-secondary)">
+                {r.im_raum_ab_start ? b.atStart : b.onDemand}
+              </div>
             </div>
           )
         })}

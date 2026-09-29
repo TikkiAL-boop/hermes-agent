@@ -8,6 +8,7 @@ import { AlertCircle, CheckCircle2 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { areaLabels } from '../labels'
+
 import type { BotErgebnis, ErgebnisStatus } from './rollen'
 
 function StatusGlyph({ label, status }: { label: string; status: ErgebnisStatus }) {
@@ -34,6 +35,7 @@ function StatusGlyph({ label, status }: { label: string; status: ErgebnisStatus 
 export const BotErgebnisse: FC<{ ergebnisse: BotErgebnis[]; text: string }> = ({ ergebnisse, text }) => {
   const { locale } = useI18n()
   const r = areaLabels(locale).raum
+
   const statusLabel: Record<ErgebnisStatus, string> = {
     fehler: r.fehler,
     fertig: r.fertig,

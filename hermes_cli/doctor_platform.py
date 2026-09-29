@@ -322,7 +322,8 @@ def _desktop_app_bundle() -> Path | None:
     deliberately not probed: it is the separately-signed, certificate-anchored Hermes-Setup launcher.
     """
     release_dir = Path(__file__).resolve().parents[1] / "apps" / "desktop" / "release"
-    candidates = [p for p in release_dir.glob("mac*/Hermes.app") if p.is_dir()]
+    from hermes_cli.desktop_identity import desktop_app_names  # noqa: PLC0415
+    candidates = [p for name in desktop_app_names() for p in release_dir.glob(f"mac*/{name}.app") if p.is_dir()]
     return max(candidates, key=lambda p: p.stat().st_mtime) if candidates else None
 
 

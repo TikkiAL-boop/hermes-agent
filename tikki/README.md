@@ -65,6 +65,8 @@ den Lauf auf eine Rolle.
 
 | Skript | Wofür |
 |---|---|
+| `installieren.sh` | Alles mit einem Befehl: Kern, App, Rollen, Schlüssel, Dienste, danach Selbsttest |
+| `werkzeuge/selbsttest.py` | Prüft jede Schicht (Rollen, Plugin, Cronjobs, Schlüsselnamen, App, Backend-Start) |
 | `werkzeuge/suite_takt.py` | Räume mit `TAKT:` fahren Runden im Backend (Cronjob `tikki-takt`), Raumbericht für den Wachhalter, Übungsergebnisse an den Hauptraum |
 | `werkzeuge/schluessel-einlesen.sh` | Schlüssel aus einer Textdatei in alle Profile übernehmen, ohne sie anzuzeigen |
 | `werkzeuge/abos-einrichten.sh` | Claude-, Codex-, Grok-Abo als Modelle anmelden; Kommandozeilen der Abos prüfen |

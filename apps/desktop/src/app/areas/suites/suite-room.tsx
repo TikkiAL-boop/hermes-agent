@@ -5,6 +5,7 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { useSubagentSnapshot } from '@/app/chat/composer/status-stack/use-subagent-snapshot'
 import { TileChat } from '@/app/chat/session-tile'
 import { CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
+import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { openExternalLink } from '@/lib/external-link'
@@ -291,17 +292,18 @@ function OutputScreen({
 
             return (
               <li key={ausgabe.wert}>
-                <button
-                  className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-xs text-(--ui-text-primary) hover:bg-(--ui-fill-quinary) disabled:cursor-default"
-                  disabled={!external}
-                  onClick={() => openExternalLink(ausgabe.wert)}
-                  title={ausgabe.wert}
-                  type="button"
-                >
-                  <Icon aria-hidden className="size-3.5 shrink-0 text-(--ui-text-secondary)" />
-                  <span className="min-w-0 flex-1 truncate">{ausgabe.label}</span>
-                  {external && <ArrowUpRight aria-hidden className="size-3 shrink-0 text-(--ui-text-secondary)" />}
-                </button>
+                <Tip label={ausgabe.wert}>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-xs text-(--ui-text-primary) hover:bg-(--ui-fill-quinary) disabled:cursor-default"
+                    disabled={!external}
+                    onClick={() => openExternalLink(ausgabe.wert)}
+                    type="button"
+                  >
+                    <Icon aria-hidden className="size-3.5 shrink-0 text-(--ui-text-secondary)" />
+                    <span className="min-w-0 flex-1 truncate">{ausgabe.label}</span>
+                    {external && <ArrowUpRight aria-hidden className="size-3 shrink-0 text-(--ui-text-secondary)" />}
+                  </button>
+                </Tip>
               </li>
             )
           })}

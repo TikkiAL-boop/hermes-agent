@@ -2,6 +2,7 @@ import { ModelSettings } from '@/app/settings/model-settings'
 import { useI18n } from '@/i18n'
 
 import { areaLabels } from '../labels'
+
 import { KATALOG } from './katalog'
 
 /**
@@ -27,7 +28,9 @@ export function ModelleSection() {
           {KATALOG.map(r => (
             <tr className="border-t border-(--ui-stroke-secondary)" key={r.slug}>
               <td className="py-1.5 pr-3 text-(--ui-text-primary)">
-                <span aria-hidden className="mr-1.5">{r.icon}</span>
+                <span aria-hidden className="mr-1.5">
+                  {r.icon}
+                </span>
                 {r.name}
               </td>
               <td className="py-1.5 pr-3 font-mono text-xs text-(--ui-text-primary)">{r.modell.primary}</td>

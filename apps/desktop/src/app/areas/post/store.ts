@@ -146,6 +146,7 @@ export async function openMessage(uid: number): Promise<void> {
 
 export async function markUnread(uid: number): Promise<void> {
   const mailbox = $mailbox.get()
+
   const ok = await guarded('read', async () => {
     await api().setSeen(mailbox, uid, false)
 
@@ -159,6 +160,7 @@ export async function markUnread(uid: number): Promise<void> {
 
 export async function removeMessage(uid: number): Promise<void> {
   const mailbox = $mailbox.get()
+
   const ok = await guarded('remove', async () => {
     await api().remove(mailbox, uid)
 
@@ -184,6 +186,7 @@ export function startReply(message: MailMessage): void {
     .split('\n')
     .map(line => `> ${line}`)
     .join('\n')
+
   const subject = /^(re|aw):/i.test(message.subject) ? message.subject : `Re: ${message.subject}`
 
   $compose.set({

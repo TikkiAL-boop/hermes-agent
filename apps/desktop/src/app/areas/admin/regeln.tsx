@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 
-import { getProfileSoul, getProfiles, updateProfileSoul } from '@/api/profiles'
+import { getProfiles, getProfileSoul, updateProfileSoul } from '@/api/profiles'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { areaLabels } from '../labels'
+
 import { KATALOG } from './katalog'
 
 /**
@@ -59,6 +60,7 @@ export function RegelnSection() {
 
   const save = async () => {
     setState('saving')
+
     try {
       await updateProfileSoul(slug, text)
       setState('saved')
@@ -78,7 +80,9 @@ export function RegelnSection() {
           <button
             className={cn(
               'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
-              role.slug === slug ? 'bg-(--ui-accent)/15 text-(--ui-accent)' : 'text-(--ui-text-primary) hover:bg-(--ui-fill-quinary)'
+              role.slug === slug
+                ? 'bg-(--ui-accent)/15 text-(--ui-accent)'
+                : 'text-(--ui-text-primary) hover:bg-(--ui-fill-quinary)'
             )}
             key={role.slug}
             onClick={() => setSlug(role.slug)}
@@ -86,7 +90,9 @@ export function RegelnSection() {
           >
             <span aria-hidden>{role.icon}</span>
             <span className="truncate">{role.name}</span>
-            {!existing.has(role.slug) && <span className="ml-auto size-1.5 rounded-full bg-(--ui-text-secondary)/40" title={r.missingProfile} />}
+            {!existing.has(role.slug) && (
+              <span className="ml-auto size-1.5 rounded-full bg-(--ui-text-secondary)/40" title={r.missingProfile} />
+            )}
           </button>
         ))}
       </div>

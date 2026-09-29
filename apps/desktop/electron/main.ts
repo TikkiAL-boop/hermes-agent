@@ -1078,7 +1078,7 @@ const BOOT_FAKE_STEP_MS = (() => {
   return Math.max(120, raw)
 })()
 
-const APP_NAME: string = IDENTITY_APP_NAME || process.env.HERMES_DESKTOP_APP_NAME || 'Hermes'
+const APP_NAME: string = IDENTITY_APP_NAME || process.env.HERMES_DESKTOP_APP_NAME || app.getName()
 const HUD_WINDOW_TITLE = `${APP_NAME} HUD`
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
@@ -13582,7 +13582,7 @@ function spawnSecondaryWindow({
     height: SESSION_WINDOW_MIN_HEIGHT,
     minWidth: SESSION_WINDOW_MIN_WIDTH,
     minHeight: SESSION_WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -13684,7 +13684,7 @@ function spawnBrowserWindow(tabId) {
     height: BROWSER_WINDOW_HEIGHT,
     minWidth: BROWSER_WINDOW_MIN_WIDTH,
     minHeight: BROWSER_WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -13786,7 +13786,7 @@ function createInstanceWindow(
     ...nextInstanceBounds(source),
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -14870,7 +14870,7 @@ function createWindow() {
     ...computeWindowOptions(savedWindowState, screen.getAllDisplays()),
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     // Frameless title bar on every platform so the renderer can paint the
     // "hide sidebar" button (and other left-side titlebar tools) flush with
     // the top edge — matching the macOS layout where the traffic lights sit
@@ -15855,7 +15855,9 @@ ipcMain.handle('tikki:mail:logout', () => tikkiMail.logout())
 ipcMain.handle('tikki:mail:mailboxes', () => tikkiMail.mailboxes())
 ipcMain.handle('tikki:mail:list', (_event, mailbox, limit) => tikkiMail.list(String(mailbox), Number(limit) || 50))
 ipcMain.handle('tikki:mail:read', (_event, mailbox, uid) => tikkiMail.read(String(mailbox), Number(uid)))
-ipcMain.handle('tikki:mail:seen', (_event, mailbox, uid, seen) => tikkiMail.setSeen(String(mailbox), Number(uid), seen === true))
+ipcMain.handle('tikki:mail:seen', (_event, mailbox, uid, seen) =>
+  tikkiMail.setSeen(String(mailbox), Number(uid), seen === true)
+)
 ipcMain.handle('tikki:mail:remove', (_event, mailbox, uid) => tikkiMail.remove(String(mailbox), Number(uid)))
 ipcMain.handle('tikki:mail:send', (_event, input) => tikkiMail.send(input))
 

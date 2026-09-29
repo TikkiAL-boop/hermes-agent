@@ -25,6 +25,7 @@ const envelope = [
 describe('BotErgebnisse', () => {
   it('shows every report open, under the role name or a numbered bot, with its status', () => {
     const ergebnisse = botErgebnisse(envelope)!
+
     const { container, getByLabelText, getByText } = render(
       <I18nProvider configClient={null} initialLocale="de">
         <BotErgebnisse ergebnisse={ergebnisse} text="2 Bots fertig" />

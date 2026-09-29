@@ -116,6 +116,25 @@ nicht mehr die einzige Quelle; ab jetzt gilt: **wer zuerst pusht, hat den Stand*
 
 ## 3. Auf dem Mac einrichten und starten
 
+**Ein Befehl (empfohlen)** – installiert Kern, App, Rollen, Schlüssel, Dienste und prüft danach
+alles mit dem Selbsttest:
+
+```bash
+git clone -b tikki-app https://github.com/TikkiAL-boop/hermes-agent.git ~/.hermes/hermes-agent
+~/.hermes/hermes-agent/tikki/installieren.sh          # --help zeigt die Optionen
+open -a Tikki
+```
+
+`installieren.sh` ruft den offiziellen Hermes-Installer (`scripts/install.sh --dir … --branch
+tikki-app --include-desktop`) auf, kopiert `Tikki.app` nach `/Applications`, richtet die 13
+Rollen ein, stellt das Vorzimmer auf `tikki`, übernimmt Schlüssel aus `~/Downloads/cv.cv.txt`
+(Werte bleiben unsichtbar), prüft die Abos, installiert Raumleiter und Wachhalter als Dienst
+und endet mit `tikki/werkzeuge/selbsttest.py` (✓/⚠/✗ je Schicht, Exit 1 bei Fehlern).
+Nur prüfen: `tikki/installieren.sh --nur-pruefen`. Der Klon gehört nach `~/.hermes/hermes-agent`,
+weil Hermes nur für diesen Ort die App in `/Applications` bei `hermes update` erneuert.
+
+Von Hand (Entwicklung):
+
 ```bash
 git clone https://github.com/TikkiAL-boop/hermes-agent.git tikki
 cd tikki
@@ -705,6 +724,21 @@ Bereich Browser), Post, Terminal.
 ---
 
 ## 10. Bekannte Stolpersteine
+
+- **App-Name im Kern (bewusste Kernänderung, beim Hermes-Merge erhalten!)**: Hermes suchte
+  die gebaute App fest als `Hermes.app/Contents/MacOS/Hermes` bzw. `linux-unpacked/hermes`.
+  Mit `productName: "Tikki"` baut electron-builder aber `Tikki.app`; `install.sh
+  --include-desktop`, `hermes update` und `hermes desktop` brachen deshalb mit „Desktop build
+  produced no launchable app“ ab (nachgestellt am 29.09.). Seitdem liefert
+  `hermes_cli/desktop_identity.py::desktop_app_name()` den Namen aus `apps/desktop/package.json`
+  (`productName`), genutzt in `main_desktop.py`, `doctor_platform.py`, `gui_uninstall.py`.
+  Die Suche probiert erst den Produktnamen, dann „Hermes“, damit die Upstream-Tests (die
+  `Hermes.app` als Fixture bauen) unverändert grün bleiben. Einzige angefasste Upstream-Testdatei:
+  `tests/hermes_cli/test_gui_command.py` (der `is_file`-Mock lief für jeden zweiten Pfad in eine
+  Endlosrekursion; jetzt bindet er das echte `is_file` und nimmt den Produktnamen).
+  Verträge: `tests/hermes_cli/test_desktop_identity.py`, `electron/tikki-identitaet.test.ts`.
+  Auch die Mac-Menüleiste („Über …“, „… beenden“), Fenstertitel und das Tray-Menü nehmen den
+  Namen jetzt aus `productName` statt fest „Hermes“.
 
 - `pkill -f "<muster>"` in derselben Shell-Zeile killt die eigene Shell; `pkill -x electron`.
 - Electron headless: `--no-sandbox --disable-gpu --use-gl=swiftshader --in-process-gpu`

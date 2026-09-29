@@ -10,23 +10,21 @@ const desktopWindow = window as Window & { hermesDesktop?: Window['hermesDesktop
 
 function installBridge() {
   const bridge = {
-    list: vi
-      .fn()
-      .mockResolvedValue([
-        {
-          answered: false,
-          date: '2026-09-27T10:00:00.000Z',
-          flagged: false,
-          from: 'Karin <karin@tikki.team>',
-          fromAddress: 'karin@tikki.team',
-          hasAttachments: false,
-          seen: false,
-          size: 1200,
-          subject: 'Einkauf',
-          to: 'thorsten@tikki.team',
-          uid: 7
-        }
-      ]),
+    list: vi.fn().mockResolvedValue([
+      {
+        answered: false,
+        date: '2026-09-27T10:00:00.000Z',
+        flagged: false,
+        from: 'Karin <karin@tikki.team>',
+        fromAddress: 'karin@tikki.team',
+        hasAttachments: false,
+        seen: false,
+        size: 1200,
+        subject: 'Einkauf',
+        to: 'thorsten@tikki.team',
+        uid: 7
+      }
+    ]),
     login: vi.fn().mockResolvedValue({ address: 'thorsten@tikki.team', signedIn: true }),
     logout: vi.fn().mockResolvedValue({ address: null, signedIn: false }),
     mailboxes: vi.fn().mockResolvedValue([

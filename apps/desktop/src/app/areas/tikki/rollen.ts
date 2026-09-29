@@ -24,10 +24,12 @@ export interface Auftrag {
 }
 
 const AN_LINE = /^[ \t]*AN:[ \t]*(?<rolle>[^\n]*?)[ \t]*$/im
+
 // No `m` flag here: `$` must mean the end of the text, or a paragraph that wraps
 // onto a second line is cut after its first.
 const AUFGABE =
   /(?:^|\n)[ \t]*AUFGABE:[ \t]*(?<text>[\s\S]*?)(?=\n[ \t]*(?:FERTIG WENN|ABGABE|KONTEXT|AN):|\n[ \t]*\n|$)/i
+
 const PROTOKOLL_LINE = /^[ \t]*(?:AN|AUFGABE|FERTIG WENN|ABGABE|KONTEXT):/i
 
 /** Fold case, umlauts and punctuation so "Prüfer", "pruefer" and "PRÜFER" meet. */
@@ -89,6 +91,7 @@ export interface BotErgebnis {
 
 const BATCH_HEADER =
   /^--- (?<icon>[✓✗⚠]) TASK (?<nummer>\d+\/\d+)(?:: (?<goal>[\s\S]*?))? {2}\(status=(?<status>[^,)\n]*)[^\n]*\) ---\r?\n/gm
+
 const TRANSCRIPT_FOOTER = /\n?Full live transcript \(complete tool\/assistant trace\): [^\n]*\n*/g
 const ERFOLG = new Set(['completed', 'ok', 'success', 'done'])
 
@@ -153,6 +156,7 @@ export function botErgebnisse(envelope: string): BotErgebnis[] | undefined {
 
   if (envelope.startsWith('[ASYNC DELEGATION TASK FAILED')) {
     const kopf = envelope.match(/task (?<nummer>\d+\/\d+)\]/)
+
     const body = envelope
       .split('\n')
       .filter(line => /^(Status|Error|Live transcript):/.test(line))

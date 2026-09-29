@@ -66,7 +66,20 @@ interface AreaLabels {
     to: string
     unread: string
   }
-  rail: { label: string }
+  rail: { label: string; hinweis: Record<Area, string> }
+  vorzimmer: {
+    titel: string
+    gespraechsKi: string
+    imVorzimmer: string
+    geradeImChat: string
+    zuletztBesucht: string
+    keineBesuche: string
+    brauchtDich: string
+    keinerWartet: string
+    neueSuite: string
+    neueSuiteHinweis: string
+    einstellungen: string
+  }
   raum: { bot: string; fertig: string; fehler: string; unvollstaendig: string }
   suites: {
     abbrechen: string
@@ -99,6 +112,15 @@ interface AreaLabels {
     wirdEroeffnet: string
     ziel: string
     zielPlatzhalter: string
+    suchen: string
+    erstellen: string
+    verbinden: string
+    verbindenHinweis: string
+    verbindenName: string
+    aufmerksamkeit: string
+    allesRuhig: string
+    neueNachrichten: string
+    wartetAufDich: string
     takt: string
     taktEinmalig: string
     taktEigener: string
@@ -227,7 +249,30 @@ const de: AreaLabels = {
     to: 'An',
     unread: 'ungelesen'
   },
-  rail: { label: 'Bereiche' },
+  rail: {
+    label: 'Bereiche',
+    hinweis: {
+      admin: 'Einstellungen',
+      browser: 'Im Netz',
+      post: 'Deine Mails',
+      suites: 'Arbeitsräume',
+      terminal: 'Kommandozeile',
+      tikki: 'Dein Empfang'
+    }
+  },
+  vorzimmer: {
+    titel: 'Vorzimmer',
+    gespraechsKi: 'Deine Gesprächs-KI',
+    imVorzimmer: 'Tikki im Vorzimmer',
+    geradeImChat: 'Gerade im Chat',
+    zuletztBesucht: 'Zuletzt besucht',
+    keineBesuche: 'Noch keine Suite besucht.',
+    brauchtDich: 'Braucht dich',
+    keinerWartet: 'Gerade wartet keine Suite auf dich.',
+    neueSuite: 'Neue Suite',
+    neueSuiteHinweis: 'Platz für einen Auftrag',
+    einstellungen: 'Einstellungen'
+  },
   raum: { bot: 'Bot', fertig: 'Fertig', fehler: 'Fehlgeschlagen', unvollstaendig: 'Unvollständig' },
   suites: {
     abbrechen: 'Abbrechen',
@@ -261,6 +306,15 @@ const de: AreaLabels = {
     verlauf: 'Verlauf',
     wirdEroeffnet: 'Suite wird eröffnet …',
     ziel: 'Ziel',
+    suchen: 'Suite suchen …',
+    erstellen: 'Suite erstellen',
+    verbinden: 'Suite verbinden',
+    verbindenHinweis: 'Eine bestehende Suite über ihren Namen betreten.',
+    verbindenName: 'Name der Suite',
+    aufmerksamkeit: 'Benötigt deine Aufmerksamkeit',
+    allesRuhig: 'Alles ruhig. Keine Suite wartet auf dich.',
+    neueNachrichten: 'Neue Nachrichten in diesem Raum',
+    wartetAufDich: 'Wartet auf deine Antwort',
     takt: 'Takt',
     taktEinmalig: 'Einmalig – fertig ist fertig',
     taktEigener: 'Eigener Takt …',
@@ -389,7 +443,30 @@ const en: AreaLabels = {
     to: 'To',
     unread: 'unread'
   },
-  rail: { label: 'Areas' },
+  rail: {
+    label: 'Areas',
+    hinweis: {
+      admin: 'Settings',
+      browser: 'On the web',
+      post: 'Your mail',
+      suites: 'Workrooms',
+      terminal: 'Command line',
+      tikki: 'Reception'
+    }
+  },
+  vorzimmer: {
+    titel: 'Reception',
+    gespraechsKi: 'Your conversation AI',
+    imVorzimmer: 'Tikki at reception',
+    geradeImChat: 'In this chat',
+    zuletztBesucht: 'Recently visited',
+    keineBesuche: 'No suite visited yet.',
+    brauchtDich: 'Needs you',
+    keinerWartet: 'No suite is waiting for you right now.',
+    neueSuite: 'New suite',
+    neueSuiteHinweis: 'Room for an order',
+    einstellungen: 'Settings'
+  },
   raum: { bot: 'Bot', fertig: 'Done', fehler: 'Failed', unvollstaendig: 'Incomplete' },
   suites: {
     abbrechen: 'Cancel',
@@ -423,6 +500,15 @@ const en: AreaLabels = {
     verlauf: 'History',
     wirdEroeffnet: 'Opening suite …',
     ziel: 'Goal',
+    suchen: 'Search suites …',
+    erstellen: 'Create suite',
+    verbinden: 'Join suite',
+    verbindenHinweis: 'Enter an existing suite by its name.',
+    verbindenName: 'Suite name',
+    aufmerksamkeit: 'Needs your attention',
+    allesRuhig: 'All quiet. No suite is waiting for you.',
+    neueNachrichten: 'New messages in this room',
+    wartetAufDich: 'Waiting for your answer',
     takt: 'Schedule',
     taktEinmalig: 'Once – done is done',
     taktEigener: 'Custom schedule …',

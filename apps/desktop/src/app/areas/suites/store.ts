@@ -38,6 +38,8 @@ export const $suitesFehler = atom<string | null>(null)
 export const $suiteEntsteht = atom<string | null>(null)
 /** The suite the person is standing in; null means the lobby. */
 export const $aktiveSuite = atom<Suite | null>(null)
+/** The lobby's form is open (the Vorzimmer's „Neue Suite“ sets it before switching areas). */
+export const $neueSuiteOffen = atom(false)
 
 interface SessionListRow {
   id: string

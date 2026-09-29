@@ -1,3 +1,5 @@
+import './tikki.css'
+
 import { useStore } from '@nanostores/react'
 import { type ReactNode, useEffect, useState } from 'react'
 
@@ -13,6 +15,7 @@ import { $area, type Area } from './store'
 import { SuitesArea } from './suites/suites-area'
 import { TerminalArea } from './terminal-area'
 import { startVorzimmerWache } from './tikki/vorzimmer'
+import { VorzimmerRahmen } from './tikki/vorzimmer-rahmen'
 
 function AreaLayer({ active, children, id }: { active: boolean; children: ReactNode; id: Area }) {
   return (
@@ -56,7 +59,7 @@ export function AreaShell({ children }: { children: ReactNode }) {
       <AreaRail />
       <div className="relative min-h-0 min-w-0 flex-1">
         <AreaLayer active={area === 'tikki'} id="tikki">
-          {children}
+          <VorzimmerRahmen>{children}</VorzimmerRahmen>
         </AreaLayer>
         {area === 'suites' && (
           <AreaLayer active id="suites">

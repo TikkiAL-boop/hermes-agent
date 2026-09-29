@@ -4,7 +4,6 @@ import { type ReactNode, useMemo } from 'react'
 
 import { useSubagentSnapshot } from '@/app/chat/composer/status-stack/use-subagent-snapshot'
 import { TileChat } from '@/app/chat/session-tile'
-import raumBild from '@/assets/tikki/suite-raum.svg?url'
 import { CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
 import { useI18n } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
@@ -37,9 +36,9 @@ const raumleiter = rolle(SUITE_PROFIL)
 
 function Zone({ children, count, title }: { children: ReactNode; count?: number; title: string }) {
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-(--ui-accent)/35 bg-(--ui-bg-chrome)/70 shadow-[0_0_28px_-6px_rgba(67,224,160,0.55)] backdrop-blur-sm">
-      <header className="flex items-center justify-between border-b border-(--ui-stroke-secondary) px-3 py-2">
-        <h2 className="text-xs font-semibold tracking-wide text-(--ui-text-secondary) uppercase">{title}</h2>
+    <section className="tikki-glas flex min-h-0 flex-1 flex-col">
+      <header className="flex items-center justify-between border-b border-(--tikki-glas-rand) px-3 py-2">
+        <h2 className="text-xs font-semibold tracking-wide text-(--tikki-tinte-weich) uppercase">{title}</h2>
         {count !== undefined && count > 0 && <span className="text-[11px] text-(--ui-text-secondary)">{count}</span>}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">{children}</div>
@@ -318,7 +317,7 @@ function RaumMarken({ suite, view }: { suite: Suite; view: ReturnType<typeof use
     <>
       {takt && (
         <span
-          className="flex items-center gap-1 rounded-full border border-(--ui-accent)/50 bg-(--ui-accent)/15 px-2 py-0.5 text-[11px] font-medium text-(--ui-accent)"
+          className="tikki-knopf gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
           data-suite-takt-marke={takt}
         >
           <Clock aria-hidden className="size-3" />
@@ -349,17 +348,9 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
   const teil = uebungsTeil(suite.titel)
 
   return (
-    <div
-      className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#041712] bg-cover bg-center"
-      data-suite-room={storedId}
-      style={{ backgroundImage: `url(${raumBild})` }}
-    >
-      <header className="mx-6 mt-9 flex items-center gap-3 rounded-xl border border-(--ui-accent)/35 bg-(--ui-bg-chrome)/75 px-4 py-2 backdrop-blur-sm">
-        <button
-          className="rounded-md px-2 py-1 text-xs text-(--ui-text-secondary) hover:bg-(--ui-fill-quinary) hover:text-(--ui-text-primary)"
-          onClick={verlasseSuite}
-          type="button"
-        >
+    <div className="tikki-raum flex min-h-0 min-w-0 flex-1 flex-col" data-suite-room={storedId}>
+      <header className="tikki-glas mx-6 mt-9 flex items-center gap-3 px-4 py-2">
+        <button className="tikki-knopf tikki-knopf-still px-2.5 py-1 text-xs" onClick={verlasseSuite} type="button">
           ← {s.zurueck}
         </button>
         <h1 className="min-w-0 truncate text-base font-semibold text-(--ui-text-primary)">
@@ -381,7 +372,7 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
           <AmTisch runtimeId={runtimeId} />
         </div>
         <div
-          className="mx-4 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[2rem] border border-(--ui-accent)/50 bg-(--ui-bg-primary)/85 shadow-[0_0_48px_-8px_rgba(67,224,160,0.7)] backdrop-blur-sm"
+          className="tikki-glas tikki-glas-dicht mx-4 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[2rem] border-(--tikki-gelb)/60 shadow-[0_0_56px_-8px_var(--tikki-glow-stark)]"
           data-suite-tisch-chat=""
         >
           {fehler ? (

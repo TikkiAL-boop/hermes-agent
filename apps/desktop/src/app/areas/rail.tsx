@@ -18,9 +18,10 @@ const ICONS: Record<Area, typeof Globe> = {
 }
 
 /**
- * The left rail: four big, labelled buttons and nothing else. This is the
- * whole top-level navigation of Tikki — anyone in the family should find the
- * chat, the browser, the mail and the terminal without reading a manual.
+ * The left rail: one glowing tablet per area, each with its name and a word
+ * on what it is for. This is the whole top-level navigation of Tikki — anyone
+ * in the family should find the reception, the suites, the browser, the mail
+ * and the terminal without reading a manual.
  */
 export function AreaRail() {
   const area = useStore($area)
@@ -31,9 +32,9 @@ export function AreaRail() {
     <nav
       aria-label={labels.rail.label}
       className={cn(
-        'flex w-[4.5rem] shrink-0 flex-col items-stretch gap-1 border-r border-(--ui-stroke-secondary) bg-(--ui-bg-chrome) px-1.5 pb-2',
+        'tikki-boden flex w-[10.5rem] shrink-0 flex-col items-stretch gap-2 border-r border-(--tikki-glas-rand) px-2.5 pb-3',
         // Leave room for the macOS traffic lights on the hidden-inset titlebar.
-        isMacPlatform() ? 'pt-10' : 'pt-2'
+        isMacPlatform() ? 'pt-10' : 'pt-3'
       )}
       data-area-rail=""
     >
@@ -45,18 +46,21 @@ export function AreaRail() {
           <button
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] font-medium transition-colors',
-              active
-                ? 'bg-(--ui-accent)/15 text-(--ui-accent)'
-                : 'text-(--ui-text-secondary) hover:bg-(--ui-fill-quinary) hover:text-(--ui-text-primary)'
+              'tikki-knopf px-3 py-2.5 text-left',
+              !active && 'tikki-knopf-still',
+              id === 'admin' && 'mt-auto'
             )}
             key={id}
             onClick={() => setArea(id)}
-            style={id === 'admin' ? { marginTop: 'auto' } : undefined}
             type="button"
           >
-            <Icon aria-hidden className="size-6" stroke={1.75} />
-            <span>{labels.areas[id]}</span>
+            <Icon aria-hidden className="size-5 shrink-0" stroke={1.9} />
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-[13px] leading-tight font-semibold">{labels.areas[id]}</span>
+              <span className={cn('truncate text-[10.5px] leading-tight', active ? 'opacity-75' : 'opacity-70')}>
+                {labels.rail.hinweis[id]}
+              </span>
+            </span>
           </button>
         )
       })}

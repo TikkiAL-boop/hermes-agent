@@ -200,6 +200,34 @@ Hermes Desktop bleibt der Kern. Tikki legt drei Dinge darüber:
    Der Hermes-Layoutbaum ist unverändert die Ebene „Tikki“.
 3. **Tikki-Ordner** (`tikki/`): Rollen, Prompts, Skripte, Doku. Kein App-Code.
 
+### 4.2a Design „Gelbes Glas“ (29.09., `apps/desktop/src/app/areas/tikki.css`)
+
+Thorstens Vorgabe (mit vier Entwürfen): Grundfarbe **Gelb**, Räume mit sichtbaren Wänden,
+alles Bedienbare als **Glasfläche mit Leuchtrand**, Vorzimmer mit Karten neben dem Chat.
+
+- **Theme**: `TIKKI_ACCENT = '#f2c200'` (`themes/presets.ts`); `retintTheme` hält die
+  Lesbarkeit (Akzenttext wird automatisch dunkler gestimmt). Hell und dunkel.
+- **Token und Klassen** in `tikki.css`: `--tikki-gelb`, `--tikki-glas`, `--tikki-glow` …
+  (Dunkel unter `:root.dark`), Klassen `.tikki-boden` (offener Boden mit Raster und Licht),
+  `.tikki-raum` (Projektraum), `.tikki-glas`/`.tikki-glas-dicht`, `.tikki-knopf` (gelbe
+  Leuchttafel, `aria-current`/`data-aktiv` = aktiv), `.tikki-knopf-still` (Glas), `.tikki-feld`,
+  `.tikki-fenster-kopf`, `.tikki-wortmarke`. Hintergründe: `assets/tikki/boden-{hell,dunkel}.svg`,
+  `suite-raum-{hell,dunkel}.svg` (erzeugt per Python, im Verlauf dieser Sitzung; Ersatz durch
+  gestaltete Bilder ist vorgesehen, Liste der nötigen Grafiken siehe Chat-Prompt vom 29.09.).
+- **Leiste** (`rail.tsx`): 10,5 rem breit, je Bereich eine Tafel mit Name und Zweck.
+- **Vorzimmer** (`tikki/vorzimmer-rahmen.tsx`): Kopf „tikki VORZIMMER“ + Einstellungen, der
+  **unveränderte Hermes-Layoutbaum** im Glas (seine Oberflächen-Token werden nur innerhalb
+  von `.tikki-hermes-glas` durchscheinend gesetzt), rechts Karten „Deine Gesprächs-KI“,
+  „Zuletzt besucht“, „Braucht dich“ (Suiten mit `needsInput`), „Neue Suite“ (öffnet die Lobby
+  mit fokussiertem Formular über `$neueSuiteOffen`).
+- **Lobby** (`suites-area.tsx`) nach Entwurf 1: links Verlauf als Leuchttafeln (Übungsläufe
+  darunter), Mitte Suchfeld + Fenster „Suite erstellen | Suite verbinden“ (verbinden = bestehende
+  Suite per Name betreten), darunter die Raumleiter-Karte, rechts „Benötigt deine Aufmerksamkeit“
+  (wartet auf Antwort / neue Nachrichten).
+- **Raum**: Raumbild gelb, Zonen als Glas, Chat in dichtem Glas, Abzeichen als Leuchtknopf.
+- **Admin, Post, Terminal, Browser**: Boden + Glasflächen, Admin-Navigation als Tafeln.
+- Hermes-Code unverändert; kein Hermes-Bereich wurde umgebaut, nur eingerahmt und getönt.
+
 ### 4.2 Branding
 
 | Datei | Zweck |
@@ -698,7 +726,8 @@ Bereich Browser), Post, Terminal.
 | `de40222d` | TencentDB Agent Memory als Dienst je Mensch und fürs System |
 | `ed8ee494` | Vorzimmer öffnet Suiten selbst, Übungsläufe in der App, Takt-Auswahl, Raumbild, Markenwache |
 | `8ce52252` | Bots bekommen ihre Werkzeuge, Abos/Skills, OpenClaw-Katalog, Update-Skript, Handover |
-| (dieser) | Recherche-Skills für alle Rollen (YouTube-Transkripte, arXiv, Nachrichtenlage, Wiki) |
+| `9788cc0a` | Recherche-Skills für alle Rollen (YouTube-Transkripte, arXiv, Nachrichtenlage, Wiki) |
+| (dieser) | Design „Gelbes Glas“: Theme gelb, Glas-Leiste, Lobby nach Entwurf, Vorzimmer-Rahmen mit Karten, Raum und Admin im Glas |
 
 Dieses Dokument: `tikki/HANDOVER.md`. Bitte bei jedem größeren Schritt fortschreiben,
 damit die nächste Übergabe wieder vollständig ist.

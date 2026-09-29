@@ -53,8 +53,8 @@ export function AdminArea() {
   const Body = SECTION[section]
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 bg-(--ui-bg-primary)" data-admin-area="">
-      <nav className="flex w-56 shrink-0 flex-col gap-0.5 border-r border-(--ui-stroke-secondary) bg-(--ui-bg-chrome) p-2 pt-3">
+    <div className="tikki-boden flex min-h-0 min-w-0 flex-1 gap-4 p-4" data-admin-area="">
+      <nav className="tikki-glas flex w-56 shrink-0 flex-col gap-1 p-2 pt-3">
         <div className="px-2 pb-2 text-xs font-semibold tracking-wide text-(--ui-text-secondary) uppercase">
           {labels.areas.admin}
         </div>
@@ -65,12 +65,7 @@ export function AdminArea() {
           return (
             <button
               aria-current={active ? 'page' : undefined}
-              className={cn(
-                'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-                active
-                  ? 'bg-(--ui-accent)/15 text-(--ui-accent)'
-                  : 'text-(--ui-text-primary) hover:bg-(--ui-fill-quinary)'
-              )}
+              className={cn('tikki-knopf px-2.5 py-1.5 text-left text-sm', !active && 'tikki-knopf-still')}
               key={id}
               onClick={() => setSection(id)}
               type="button"
@@ -81,7 +76,7 @@ export function AdminArea() {
           )
         })}
       </nav>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+      <div className="tikki-glas flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
         <header className="border-b border-(--ui-stroke-secondary) px-6 py-4">
           <h1 className="text-lg font-semibold text-(--ui-text-primary)">{labels.admin.sections[section]}</h1>
           <p className="mt-1 text-sm text-(--ui-text-secondary)">{labels.admin.intro[section]}</p>

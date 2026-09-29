@@ -397,17 +397,17 @@ export const slateTheme: DesktopTheme = {
 }
 
 /**
- * Tikki — the Nous skin re-seeded with the green of the Tikki emblem
+ * Tikki — the Nous skin re-seeded with the yellow of the Tikki design (Thorsten, 29.09.: „Grundfarbe gelb“)
  * (`assets/tikki/tikki-logo-original.png`), so chrome, accents and the
  * terminal palette match the app icon. Light and dark both derive from
  * the one seed via `retintTheme`, which keeps AA contrast as a floor.
  */
-export const TIKKI_ACCENT = '#7cb42e'
+export const TIKKI_ACCENT = '#f2c200'
 export const tikkiTheme: DesktopTheme = {
   ...retintTheme(nousTheme, TIKKI_ACCENT),
   name: 'tikki',
   label: 'Tikki',
-  description: 'Tikki green accent on clean chrome'
+  description: 'Tikki yellow: glass, light and warm chrome'
 }
 
 export const BUILTIN_THEMES: Record<string, DesktopTheme> = {

@@ -58,8 +58,10 @@ export function PostArea() {
   }, [])
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 bg-(--ui-bg-primary)" data-post-area="">
-      {status?.signedIn ? <Mailbox labels={labels} address={status.address ?? ''} /> : <SignIn labels={labels} />}
+    <div className="tikki-boden relative flex min-h-0 min-w-0 flex-1 p-4" data-post-area="">
+      <div className="tikki-glas flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        {status?.signedIn ? <Mailbox address={status.address ?? ''} labels={labels} /> : <SignIn labels={labels} />}
+      </div>
       {(error || notice) && (
         <div
           className={cn(

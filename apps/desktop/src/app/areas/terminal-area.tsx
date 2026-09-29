@@ -14,8 +14,10 @@ export function TerminalArea() {
   }, [])
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 bg-(--ui-bg-chrome)" data-terminal-area="">
-      <TerminalPaneChrome />
+    <div className="tikki-boden flex min-h-0 min-w-0 flex-1 p-4" data-terminal-area="">
+      <div className="tikki-glas flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <TerminalPaneChrome />
+      </div>
     </div>
   )
 }

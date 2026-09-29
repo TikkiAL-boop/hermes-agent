@@ -18,6 +18,7 @@
 #
 # Optionen:
 #   --schluessel DATEI  Schlüsseldatei (Standard: ~/Downloads/cv.cv.txt, falls vorhanden)
+#   --ohne-kern         Schritt 1 auslassen (Hermes samt `hermes`-Befehl ist schon installiert)
 #   --ohne-app          die Desktop-App nicht bauen (nur Kern und Rollen)
 #   --ohne-dienste      Raumleiter/Wachhalter nicht als Dienst installieren
 #   --nur-pruefen       nichts installieren, nur den Selbsttest laufen lassen
@@ -29,6 +30,7 @@ HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HIER/.." && pwd)"
 ZWEIG="tikki-app"
 SCHLUESSEL=""
+KERN=1
 APP=1
 DIENSTE=1
 NUR_PRUEFEN=0
@@ -36,10 +38,11 @@ NUR_PRUEFEN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --schluessel) shift; SCHLUESSEL="${1:?--schluessel braucht eine Datei}" ;;
+    --ohne-kern) KERN=0 ;;
     --ohne-app) APP=0 ;;
     --ohne-dienste) DIENSTE=0 ;;
     --nur-pruefen) NUR_PRUEFEN=1 ;;
-    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -89,12 +92,16 @@ fi
 # 1) Hermes-Kern über den offiziellen Installer. Er holt origin/tikki-app, legt lokale
 #    Änderungen als Stash ab (nichts geht verloren) und baut die App mit dem Namen Tikki.
 schritt "1/8  Kern, Abhängigkeiten und App bauen (dauert beim ersten Mal 10–20 Minuten)"
-INSTALL_ARGS=(--dir "$REPO" --branch "$ZWEIG" --non-interactive)
-[ "$APP" = 1 ] && INSTALL_ARGS+=(--include-desktop)
-bash "$REPO/scripts/install.sh" "${INSTALL_ARGS[@]}" || abbruch "Kern-Installation fehlgeschlagen (Log: ~/.hermes/logs/install.log)."
+if [ "$KERN" = 1 ]; then
+  INSTALL_ARGS=(--dir "$REPO" --branch "$ZWEIG" --non-interactive)
+  [ "$APP" = 1 ] && INSTALL_ARGS+=(--include-desktop)
+  bash "$REPO/scripts/install.sh" "${INSTALL_ARGS[@]}" || abbruch "Kern-Installation fehlgeschlagen (Log: ~/.hermes/logs/install.log)."
+else
+  hinweis "übersprungen (--ohne-kern)"
+fi
 export PATH="$HOME/.local/bin:$PATH"
 HERMES="$(hermes_bin)"
-[ -n "$HERMES" ] || abbruch "hermes-Befehl nach der Installation nicht gefunden."
+[ -n "$HERMES" ] || abbruch "hermes-Befehl nicht gefunden."
 gut "Kern bereit: $HERMES"
 
 # 2) Auf dem Mac die gebaute App nach /Applications. Spätere `hermes update` erneuern diese

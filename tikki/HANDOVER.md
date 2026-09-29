@@ -130,7 +130,7 @@ tikki-app --include-desktop`) auf, kopiert `Tikki.app` nach `/Applications`, ric
 Rollen ein, stellt das Vorzimmer auf `tikki`, übernimmt Schlüssel aus `~/Downloads/cv.cv.txt`
 (Werte bleiben unsichtbar), prüft die Abos, installiert Raumleiter und Wachhalter als Dienst
 und endet mit `tikki/werkzeuge/selbsttest.py` (✓/⚠/✗ je Schicht, Exit 1 bei Fehlern).
-Nur prüfen: `tikki/installieren.sh --nur-pruefen`. Der Klon gehört nach `~/.hermes/hermes-agent`,
+Nur prüfen: `tikki/installieren.sh --nur-pruefen`; Hermes schon da: `--ohne-kern`. Der Klon gehört nach `~/.hermes/hermes-agent`,
 weil Hermes nur für diesen Ort die App in `/Applications` bei `hermes update` erneuert.
 
 Von Hand (Entwicklung):

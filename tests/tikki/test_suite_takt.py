@@ -1,16 +1,56 @@
-"""Tikki-Dauerräume: der Takt steht im Raum, das Backend fährt die Runden.
+"""Tikki-Dauerräume: der Takt steht im Raum, das Gateway fährt die Runden, der Taktgeber stellt nur ein.
 
-Verträge, keine Momentaufnahmen: was ``zeitplan`` liefert, muss Hermes' eigener Kalender
-verstehen; eine Systemrunde beantwortet keine offene Frage; ein Übungsergebnis erreicht
-den Hauptraum genau einmal, und nur solange der nicht selbst fertig ist.
+Verträge gegen den echten Raumspeicher, keine Momentaufnahmen: was ``zeitplan`` liefert, muss
+Hermes' Kalender verstehen; ein fälliger Takt ergibt genau eine ``TAKT-RUNDE`` an ``@raumleiter``
+und keine zweite vor dem nächsten Slot; eine Systemnachricht beantwortet keine offene Frage, der
+Mensch schon; eine Tür und ein Übungsergebnis erreichen ihren Zielraum genau einmal.
 """
 
+from __future__ import annotations
+
+import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
 from cron.jobs import parse_schedule
+from gateway import hosted_rooms
+from tikki.werkzeuge import raeume
 from tikki.werkzeuge import suite_takt as st
+
+GATEWAY = "install:test-gateway"
+T0 = 1_790_000_000.0
+
+
+@pytest.fixture
+def db(tmp_path: Path, monkeypatch) -> Path:
+    """Eine Hermes-Wurzel, in der jede Katalogrolle ein Profil mit Identitätsmarker hat."""
+    wurzel = tmp_path / ".hermes"
+    for e in raeume.katalog():
+        profil = wurzel / "profiles" / e["hermes_profil"]
+        profil.mkdir(parents=True)
+        (profil / "config.yaml").write_text("model:\n  default: x\n", encoding="utf-8")
+    monkeypatch.setenv("HERMES_HOME", str(wurzel))
+    return wurzel / "shared-state.db"
+
+
+def _raum(db: Path, name: str, jetzt: float = T0) -> str:
+    return raeume.anlegen(name, [], db=db, jetzt=jetzt, gateway_id=GATEWAY)["room_id"]
+
+
+def _raumleiter_sagt(db: Path, raum_id: str, text: str, jetzt: float) -> None:
+    r = raeume.stand(raum_id, db)
+    hosted_rooms.append_event(
+        db, room_id=raum_id, event_id=f"test:{uuid.uuid4().hex}", kind="message.member",
+        actor={"kind": "member", "id": "raumleiter"},
+        payload={"member_id": "raumleiter", "text": text, "thread_id": raeume.HAUPTFADEN},
+        authority_gateway_id=r["authority_gateway_id"], authority_epoch=r["authority_epoch"], now=jetzt,
+    )
+
+
+def _texte(db: Path, raum_id: str) -> list[str]:
+    return [n["text"] for n in raeume.nachrichten(raeume.verlauf(raum_id, db=db))]
 
 
 @pytest.mark.parametrize(
@@ -21,47 +61,73 @@ def test_every_german_takt_is_a_schedule_hermes_understands(takt):
 
     assert plan is not None
     assert parse_schedule(plan)["kind"] in {"interval", "cron"}
-
-
-def test_takt_off_and_last_line_wins():
     assert st.zeitplan("aus") is None
-    assert st.takt_aus_text("TAKT: täglich 06:00\n…\n**TAKT: aus**") == "aus"
 
 
-def _msg(role, text, ts=0.0, **kw):
-    return {"role": role, "content": text, "timestamp": ts, **kw}
-
-
-def test_system_rounds_do_not_answer_an_open_question_but_the_human_does():
-    sitzung = {"id": "s1", "title": "Projekt"}
-    offen = [_msg("user", "RAUM: Projekt"), _msg("assistant", "STAND: x\nBRAUCHE: Budget? Vorschlag 100 €")]
-
-    assert st.raum_stand(sitzung, offen + [_msg("user", "TAKT-RUNDE 01.01. (täglich)")]).wartet_auf_mensch
-    assert not st.raum_stand(sitzung, offen + [_msg("user", "ja, passt")]).wartet_auf_mensch
-
-
-def test_first_sighting_is_not_due_and_an_elapsed_interval_is():
-    sitzung = {"id": "s1", "title": "Dauer"}
-    raum = st.raum_stand(sitzung, [_msg("user", "RAUM: Dauer\nTAKT: alle 30 Minuten")])
+def test_faelliger_takt_ergibt_genau_eine_runde_an_den_raumleiter_und_keine_vor_dem_naechsten_slot(db: Path):
     jetzt = datetime.now(timezone.utc)
-    zustand: dict = {}
+    raum = _raum(db, "Nachrichtenlage")
+    raeume.senden(raum, "@raumleiter Halte die KI-News aktuell.\nTAKT: alle 30 Minuten", von="Thorsten", db=db, jetzt=T0 + 1)
 
-    assert st.faellige([raum], zustand, jetzt) == []
-    zustand["s1"]["letzte"] = (jetzt - timedelta(minutes=31)).isoformat()
-    assert st.faellige([raum], zustand, jetzt) == [raum]
+    assert st.takt(db=db, jetzt=jetzt - timedelta(minutes=31)) == []  # erstes Sehen: nächste Gelegenheit, nicht sofort
+    gemeldet = st.takt(db=db, jetzt=jetzt)
+    runden = [t for t in _texte(db, raum) if "TAKT-RUNDE" in t]
+
+    assert len(gemeldet) == 1 and len(runden) == 1
+    assert runden[0].startswith("@raumleiter TAKT-RUNDE 1 ·") and "alle 30 Minuten" in runden[0]
+    assert st.takt(db=db, jetzt=jetzt + timedelta(minutes=1)) == []
+    assert len([t for t in _texte(db, raum) if "TAKT-RUNDE" in t]) == 1
+
+    _raumleiter_sagt(db, raum, "STAND: Lage ruhig.\nTAKT: aus", jetzt=T0 + 2)
+    assert st.takt(db=db, jetzt=jetzt + timedelta(hours=2)) == []
 
 
-def test_first_finished_practice_room_reaches_the_main_room_once():
-    haupt = st.raum_stand({"id": "h", "title": "App"}, [_msg("user", "RAUM: App")])
-    fertig = st.raum_stand(
-        {"id": "u2", "title": "App-thorsten-2@tikki.team"},
-        [_msg("user", "ÜBUNG 2/4\nANSATZ: schnell"), _msg("assistant", "FERTIG: app.html liegt bereit", 10.0)],
-    )
-    zustand: dict = {}
+def test_brauche_nach_der_letzten_menschnachricht_wartet_und_der_mensch_loest_sie(db: Path):
+    raum = _raum(db, "Kindergeburtstag")
+    raeume.senden(raum, "@raumleiter Plane die Feier.", von="Thorsten", db=db, jetzt=T0 + 1)
+    _raumleiter_sagt(db, raum, (
+        "STAND: Ort gesucht.\nAUFGABEN:\n- [x] Gästeliste (@organisator)\n- [ ] Ort buchen (@organisator)\n"
+        "BRAUCHE: Budget? Vorschlag 150 €"
+    ), jetzt=T0 + 2)
 
-    runden = st.uebungs_runden([haupt, fertig], zustand)
-    assert [(r[0].id, r[3]) for r in runden] == [("h", ("App", "weitergegeben", "u2"))]
-    assert "app.html" in runden[0][1]
+    [z] = st.bericht(db=db, jetzt=T0 + 2 + 9 * 60)
+    assert z["brauche"] == "Budget? Vorschlag 150 €" and z["stand"] == "Ort gesucht."
+    assert z["aufgaben_offen"] == ["Ort buchen (@organisator)"] and z["aufgaben_erledigt"] == 1
+    assert z["still_seit_min"] == 9 and "wartet auf Mensch" in st._bericht_text([z])
 
-    zustand["_uebung"] = {"App": {"weitergegeben": "u2"}}
-    assert st.uebungs_runden([haupt, fertig], zustand) == []
+    raeume.senden(raum, "@raumleiter WACHHALTER: bitte weiterarbeiten", db=db, jetzt=T0 + 3)
+    assert st.bericht(db=db)[0]["brauche"] is not None  # eine Systemnachricht antwortet nicht
+
+    raeume.senden(raum, "ja, 150 € passen", von="Thorsten", db=db, jetzt=T0 + 4)
+    assert st.bericht(db=db)[0]["brauche"] is None
+
+
+def test_tuer_zeile_des_raumleiters_erreicht_den_zielraum_einmal_und_unbekannte_stehen_im_bericht(db: Path):
+    jetzt = datetime.now(timezone.utc)
+    a, b = _raum(db, "Recherche Ostsee"), _raum(db, "Website Ostsee", T0 + 1)
+    _raumleiter_sagt(db, a, "STAND: Quellen stehen.\nTÜR: website ostsee | Die Quellenliste liegt unter quellen.md.", jetzt=T0 + 2)
+    _raumleiter_sagt(db, a, "TÜR: Buchhaltung | Rechnung bitte", jetzt=T0 + 3)
+
+    st.takt(db=db, jetzt=jetzt)
+
+    assert _texte(db, b) == ["[Tür aus „Recherche Ostsee“] @raumleiter Die Quellenliste liegt unter quellen.md."]
+    assert st.takt(db=db, jetzt=jetzt + timedelta(minutes=5)) == []
+    assert len(_texte(db, b)) == 1
+    bericht_a = next(z for z in st.bericht(db=db) if z["id"] == a)
+    assert [t["ziel"] for t in bericht_a["tueren_unzustellbar"]] == ["Buchhaltung"]
+    assert "Buchhaltung" in st._bericht_text(st.bericht(db=db))
+
+
+def test_erstes_fertiges_uebungsergebnis_erreicht_den_hauptraum_einmal(db: Path):
+    jetzt = datetime.now(timezone.utc)
+    haupt, uebung = _raum(db, "App"), _raum(db, "App-thorsten-2@tikki.team", T0 + 1)
+    raeume.senden(uebung, "@raumleiter ÜBUNG 2/4\nANSATZ: schnell\nBau die App.", von="Thorsten", db=db, jetzt=T0 + 2)
+    _raumleiter_sagt(db, uebung, "STAND: app.html gebaut.\nFERTIG: app.html liegt bereit", jetzt=T0 + 3)
+
+    st.takt(db=db, jetzt=jetzt)
+    texte = _texte(db, haupt)
+
+    assert len(texte) == 1 and texte[0].startswith("@raumleiter ÜBUNGSERGEBNIS 2:")
+    assert "app.html liegt bereit" in texte[0] and "schnell" in texte[0] and "STAND: app.html gebaut." in texte[0]
+    st.takt(db=db, jetzt=jetzt + timedelta(minutes=5))
+    assert _texte(db, haupt) == texte

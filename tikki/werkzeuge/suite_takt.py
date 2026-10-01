@@ -1,23 +1,27 @@
-"""Tikki – Dauerräume: Takt-Runden und Raumbericht, im Backend, ohne offene App.
+"""Tikki – Dauerräume: Takt-Runden, Türen, Übungsläufe und Raumbericht auf gehosteten Räumen.
 
-Eine Suite ist eine Sitzung des Profils ``raumleiter`` mit der Quelle ``tikki-suite``.
-Ob ein Raum einen Takt hat, steht im Raum selbst, im Raumprotokoll: die letzte Zeile
-``TAKT: …`` (vom Menschen im Eröffnungstext oder vom Raumleiter bestätigt) gilt,
-``TAKT: aus`` beendet ihn. Es gibt keine zweite Liste, die auseinanderlaufen könnte.
+Die Räume selbst fährt Hermes' Gateway (``gateway/hosted_rooms.py``, siehe ``raeume.py``): nach
+jeder Nachricht des Menschen bekommt jedes angesprochene Mitglied den ungelesenen Teil des
+Gesprächs, höchstens drei Runden und zehn Antworten je Nachricht. Dieses Modul ist nur der Taktgeber
+dazu, ohne Modell, alle fünf Minuten aus einem Hermes-Cronjob: es liest die Raumprotokolle und
+stellt – immer an ``@raumleiter``, damit nicht jedes Mitglied der Reihe nach gefragt wird – drei
+Arten von Nachrichten ein:
 
-Ein einziger Hermes-Cronjob je Rechner (``tikki-takt``, alle 5 Minuten, ohne Modell)
-ruft ``takt`` auf. Der sucht die fälligen Räume und startet je Raum eine Runde als
-eigenen Prozess: ``hermes -p raumleiter chat --resume <sitzung> -Q``. Hermes erlaubt
-genau einen Schreiber je Sitzung; ist der Raum gerade in der App offen, lehnt Hermes
-ab, und die Runde versucht es nach einer Minute erneut (bis 30 Minuten). Nach einem
-Stromausfall holt der nächste Takt die versäumte Runde einmal nach.
+- ``TAKT-RUNDE n``, wenn der Takt eines Raums fällig ist. Der Takt steht im Raum selbst: die letzte
+  Zeile ``TAKT: …`` (vom Menschen im Eröffnungstext oder vom Raumleiter bestätigt) gilt, ``TAKT: aus``
+  beendet ihn. Es gibt keine zweite Liste, die auseinanderlaufen könnte.
+- Türen: eine Zeile ``TÜR: <Raum> | <Text>`` des Raumleiters wird einmal in den genannten Raum
+  weitergereicht.
+- Übungsläufe: das erste fertige Übungsergebnis geht in den Hauptraum, und sind alle durch, die
+  Bitte ``LERNEN:``.
+
+Nur der Zustand des Taktgebers (letzte Runde, zuletzt gelesene Zeile, Merker) liegt in
+``<Hermes-Wurzel>/tikki/takt.json`` unter Dateisperre, neben ``shared-state.db``.
 
 Unterbefehle:
 
-    takt    [--profil P] [--hermes BIN] [--parallel N]   fällige Runden starten
-    bericht [--profil P] [--json]                        Stand aller Suiten (für den Wachhalter)
-    runde   <sitzung> [--text T] [--profil P] [--hermes BIN] [--takt]
-                                                          eine Runde jetzt, blockierend
+    takt    [--db PFAD]            fällige Runden, Türen und Übungsergebnisse einstellen
+    bericht [--json] [--db PFAD]   Stand aller Räume (für Wachhalter und Briefing)
 """
 
 from __future__ import annotations
@@ -27,36 +31,35 @@ import contextlib
 import json
 import os
 import re
-import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
-SUITE_PROFIL = "raumleiter"
-SUITE_QUELLE = "tikki-suite"
-MODUL = "tikki.werkzeuge.suite_takt"
+from tikki.werkzeuge import raeume
 
-#: Wie lange eine Runde auf einen in der App offenen Raum wartet, und in welchem Abstand.
-WARTEN_BIS_S = 30 * 60
-WARTEN_TAKT_S = 60
-#: Eine Runde darf so lange laufen; danach gilt sie als hängend und wird beendet.
-RUNDE_HOECHSTENS_S = 2 * 60 * 60
-#: So viele Runden laufen je Rechner gleichzeitig; der Rest kommt im nächsten Takt dran.
-PARALLEL_STANDARD = 8
+#: Das Mitglied, dessen Zeilen (STAND, BRAUCHE, FERTIG, AUFGABEN, TÜR) Takt und Wände lesen.
+RAUMLEITER = "raumleiter"
+#: So viele Ereignisse vom Ende eines Raums werden gelesen; lange Räume halten ihren Anfang extra.
+FENSTER = 1500
+ANFANG = 40
 
 _TAKT = re.compile(r"(?:^|\n)[ \t>*_]*TAKT:[ \t]*([^\n]+)", re.IGNORECASE)
 _BRAUCHE = re.compile(r"(?:^|\n)[ \t>*_]*BRAUCHE:[ \t]*([^\n]+)")
-_FERTIG = re.compile(r"(?:^|\n)[ \t>*_]*FERTIG:")
+_FERTIG = re.compile(r"(?:^|\n)[ \t>*_]*FERTIG:[ \t]*")
 _STAND = re.compile(r"(?:^|\n)[ \t>*_]*STAND:[ \t]*([^\n]+)")
 _ANSATZ = re.compile(r"(?:^|\n)[ \t>*_]*ANSATZ:[ \t]*([^\n]+)")
-#: Runden, die das Backend selbst in einen Raum schreibt, sind keine Antwort des Menschen.
-_BACKEND_RUNDEN = ("TAKT-RUNDE", "ÜBUNGSERGEBNIS", "LERNEN", "WACHHALTER")
+_AUFGABEN = re.compile(r"(?:^|\n)[ \t>*_]*AUFGABEN:[ \t]*\n((?:[ \t]*-[ \t]*\[[ xX]\][^\n]*\n?)+)")
+_AUFGABE = re.compile(r"^[ \t]*-[ \t]*\[([ xX])\][ \t]*(.+?)[ \t]*$", re.MULTILINE)
+_TUER = re.compile(r"(?:^|\n)[ \t>*_]*TÜR:[ \t]*([^|\n]+?)[ \t]*\|[ \t]*([^\n]+)")
+#: Nachrichten, die das Backend in einen Raum stellt, sind keine Antwort des Menschen – auch wenn
+#: der Mensch ihnen seinen Namen voranstellt oder sie @raumleiter ansprechen.
+_SYSTEM = re.compile(
+    r"^(?:[^:\n@\[]{1,40}:[ \t]*)?(?:@raumleiter[ \t]*)?(?:TAKT-RUNDE|ÜBUNGSERGEBNIS|LERNEN:|WACHHALTER:|\[Tür)"
+)
 #: Übungsräume heißen ``<Projekt>-<nutzer>-<nr>@tikki.team``; der Hauptraum trägt nur den Projektnamen.
 UEBUNG_TITEL = re.compile(r"^(?P<basis>.+)-(?P<nutzer>[^-@\s]+)-(?P<nr>\d+)@tikki\.team$")
-_BESETZT = re.compile(r"open in another|already (?:open|held|owned)", re.IGNORECASE)
 
 _AUS = {"aus", "stopp", "stop", "keiner", "kein", "nein", "off", "none", "-"}
 _WOCHENTAGE = {
@@ -145,11 +148,19 @@ def naechste_runde(plan: str, letzte: str | None) -> datetime | None:
 
 
 @dataclass
+class Tuer:
+    seq: int
+    ziel: str
+    text: str
+
+
+@dataclass
 class RaumStand:
     id: str
-    tip: str
     titel: str
+    mitglieder: list[str] = field(default_factory=list)
     letzte_aktivitaet: float | None = None
+    letzte_seq: int = 0
     takt: str | None = None
     plan: str | None = None
     stand: str | None = None
@@ -158,114 +169,114 @@ class RaumStand:
     fertig_text: str | None = None
     fertig_zeit: float | None = None
     ansatz: str | None = None
-    todos_offen: list[str] = field(default_factory=list)
-    todos_erledigt: int = 0
+    aufgaben_offen: list[str] = field(default_factory=list)
+    aufgaben_erledigt: int = 0
     nachrichten: int = 0
+    arbeitet: str | None = None
+    tueren: list[Tuer] = field(default_factory=list)
 
     @property
     def wartet_auf_mensch(self) -> bool:
         return self.brauche is not None
 
 
-def _text(inhalt) -> str:
-    if isinstance(inhalt, str):
-        return inhalt
-    if isinstance(inhalt, list):
-        return "\n".join(teil.get("text", "") for teil in inhalt if isinstance(teil, dict))
-    return ""
+def ist_systemnachricht(text: str) -> bool:
+    return bool(_SYSTEM.match((text or "").lstrip()))
 
 
-def raum_stand(sitzung: dict, nachrichten: list[dict]) -> RaumStand:
-    """Was ein Raum gerade ist, nur aus seinem Verlauf: Takt, To-dos, offene Frage, fertig."""
+def raum_stand(raum: dict, ereignisse: list[dict]) -> RaumStand:
+    """Was ein Raum gerade ist, nur aus seinem Protokoll: Takt, Aufgaben, offene Frage, fertig, Türen.
+
+    Gelesen werden die Zeilen des Raumleiters; die Berichtsformate der anderen Rollen (etwa das
+    ``STAND: <Datum>`` des Rechercheurs) sind keine Raumaussage. Eine Nachricht des Menschen
+    beantwortet die offene Frage und öffnet einen fertigen Raum wieder; Systemnachrichten nicht.
+    """
     stand = RaumStand(
-        id=sitzung["id"],
-        tip=sitzung.get("tip") or sitzung["id"],
-        titel=(sitzung.get("title") or "").strip() or sitzung["id"],
-        letzte_aktivitaet=sitzung.get("last_active") or sitzung.get("started_at"),
-        nachrichten=len(nachrichten),
+        id=raum["room_id"], titel=(raum.get("name") or "").strip() or raum["room_id"],
+        mitglieder=[m.get("handle") or m["member_id"] for m in raum.get("members", [])],
+        letzte_aktivitaet=raum.get("updated_at"), letzte_seq=int(raum.get("latest_seq") or 0),
+        arbeitet=raeume.wer_arbeitet(ereignisse),
     )
-    for nachricht in nachrichten:
-        rolle = nachricht.get("role")
-        text = _text(nachricht.get("content"))
-        stempel = nachricht.get("timestamp")
-        if isinstance(stempel, (int, float)):
-            stand.letzte_aktivitaet = max(stand.letzte_aktivitaet or 0, float(stempel))
-        if rolle in {"user", "assistant"}:
-            takt = takt_aus_text(text)
-            if takt is not None:
-                stand.takt = takt
-        if rolle == "user" and stand.ansatz is None:
-            ansatz = _ANSATZ.findall(text)
-            if ansatz:
+    for e in ereignisse:
+        stand.letzte_aktivitaet = max(stand.letzte_aktivitaet or 0, float(e.get("created_at") or 0))
+        stand.letzte_seq = max(stand.letzte_seq, int(e["seq"]))
+    gesagt = raeume.nachrichten(ereignisse, raum)
+    stand.nachrichten = len(gesagt)
+    for n in gesagt:
+        text, von = n["text"], n["von"]
+        if von == "mensch" and ist_systemnachricht(text):
+            continue
+        if von not in ("mensch", RAUMLEITER):
+            continue
+        takt = takt_aus_text(text)
+        if takt is not None:
+            stand.takt = takt
+        if von == "mensch":
+            if stand.ansatz is None and (ansatz := _ANSATZ.findall(text)):
                 stand.ansatz = ansatz[-1].strip()
-        if rolle == "user" and text.strip() and not text.lstrip().startswith(_BACKEND_RUNDEN):
-            # Eine Antwort des Menschen beantwortet die offene Frage und öffnet einen fertigen Raum wieder.
-            stand.brauche = None
-            stand.fertig = False
-        if rolle == "assistant" and text.strip():
-            brauche = _BRAUCHE.findall(text)
-            stand.brauche = brauche[-1].strip() if brauche else None
-            stand.fertig = bool(_FERTIG.search(text))
-            if stand.fertig:
-                stand.fertig_text = text.strip()[-3000:]
-                stand.fertig_zeit = float(stempel) if isinstance(stempel, (int, float)) else None
-            zeile = _STAND.findall(text)
-            if zeile:
-                stand.stand = zeile[-1].strip()
-        if rolle == "tool" and nachricht.get("tool_name") == "todo":
-            with contextlib.suppress(ValueError, TypeError, AttributeError):
-                todos = json.loads(text).get("todos") or []
-                stand.todos_offen = [
-                    str(t.get("content", "")).strip()
-                    for t in todos
-                    if t.get("status") not in {"completed", "cancelled"}
-                ]
-                stand.todos_erledigt = sum(1 for t in todos if t.get("status") == "completed")
+            if text.strip():
+                stand.brauche = None
+                stand.fertig = False
+            continue
+        brauche = _BRAUCHE.findall(text)
+        stand.brauche = brauche[-1].strip() if brauche else None
+        if treffer := _FERTIG.search(text):
+            stand.fertig = True
+            stand.fertig_text = text[treffer.start():].strip()[:3000]
+            stand.fertig_zeit = n["zeit"]
+        if zeile := _STAND.findall(text):
+            stand.stand = zeile[-1].strip()
+        if block := _AUFGABEN.search(text):
+            aufgaben = _AUFGABE.findall(block.group(1))
+            stand.aufgaben_offen = [a for kreuz, a in aufgaben if kreuz == " "]
+            stand.aufgaben_erledigt = sum(1 for kreuz, _ in aufgaben if kreuz != " ")
+        stand.tueren += [Tuer(n["seq"], ziel.strip(), inhalt.strip()) for ziel, inhalt in _TUER.findall(text)]
     stand.plan = zeitplan(stand.takt)
     return stand
 
 
-def profil_home(profil: str) -> Path:
-    from hermes_cli.profiles import get_profile_dir
+def ereignisse(raum: dict, db: Path) -> list[dict]:
+    """Das Protokoll eines Raums: ganz, oder bei langen Räumen Anfang (Takt, Ansatz) plus Ende."""
+    letzte = int(raum.get("latest_seq") or 0)
+    if letzte <= FENSTER:
+        return raeume.verlauf(raum["room_id"], hoechstens=FENSTER + 1, db=db)
+    anfang = raeume.verlauf(raum["room_id"], hoechstens=ANFANG, db=db)
+    return anfang + raeume.verlauf(raum["room_id"], seit=max(anfang[-1]["seq"], letzte - FENSTER), db=db)
 
-    return get_profile_dir(profil)
 
-
-def raeume(home: Path) -> list[RaumStand]:
-    """Alle Suiten eines Profils mit ihrem Stand, jüngste zuerst."""
-    from hermes_state import SessionDB
-
-    db_pfad = home / "state.db"
-    if not db_pfad.is_file():
+def alle_raeume(db: Path | None = None) -> list[RaumStand]:
+    """Alle Tikki-Räume mit ihrem Stand, jüngste zuerst. Ohne Speicher gibt es keine Räume."""
+    db = db or raeume.db_pfad()
+    if not db.is_file():
         return []
-    db = SessionDB(db_path=db_pfad, read_only=True)
-    try:
-        zeilen = db.list_sessions_rich(
-            source=SUITE_QUELLE, include_hidden=True, limit=5000, order_by_last_active=True
-        )
-        ergebnis = []
-        for zeile in zeilen:
-            tip = db.get_compression_tip(zeile["id"]) or zeile["id"]
-            nachrichten = db.get_messages(tip, latest=True, limit=400)
-            ergebnis.append(raum_stand({**zeile, "tip": tip}, nachrichten))
-        return ergebnis
-    finally:
-        db.close()
+    return [raum_stand(r, ereignisse(r, db)) for r in raeume.liste(db=db)]
 
 
-# ─── Zustand der Takt-Runden ─────────────────────────────────────────────────
+def raum_finden(name: str, raum_liste: list[RaumStand]) -> RaumStand | None:
+    """Ein Raum nach dem Wort des Raumleiters: genauer Name, eindeutiger Namensanfang, dann Kennung."""
+    wort = name.strip()
+    for raum in raum_liste:
+        if raum.titel == wort:
+            return raum
+    anfang = [r for r in raum_liste if r.titel.lower().startswith(wort.lower())]
+    if len(anfang) == 1:
+        return anfang[0]
+    return next((r for r in raum_liste if r.id == wort), None)
 
 
-def _zustand_pfad(home: Path) -> Path:
-    return home / "tikki" / "takt.json"
+# ─── Zustand des Taktgebers ──────────────────────────────────────────────────
+
+
+def zustand_pfad(db: Path) -> Path:
+    return db.parent / "tikki" / "takt.json"
 
 
 @contextlib.contextmanager
-def _zustand(home: Path):
-    """Der Zustand aller Takt-Runden eines Profils, unter Dateisperre gelesen und geschrieben."""
+def _zustand(db: Path):
+    """Der Zustand des Taktgebers, unter Dateisperre gelesen und geschrieben."""
     import fcntl
 
-    pfad = _zustand_pfad(home)
+    pfad = zustand_pfad(db)
     pfad.parent.mkdir(parents=True, exist_ok=True)
     with open(pfad.with_suffix(".lock"), "a+") as sperre:
         fcntl.flock(sperre, fcntl.LOCK_EX)
@@ -279,20 +290,15 @@ def _zustand(home: Path):
         os.replace(tmp, pfad)
 
 
-def _laeuft(pid: int | None) -> bool:
-    if not pid:
-        return False
+def _zustand_lesen(db: Path) -> dict:
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+        return json.loads(zustand_pfad(db).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def faellige(raum_liste: list[RaumStand], zustand: dict, jetzt: datetime) -> list[RaumStand]:
-    """Räume mit Takt, deren nächste Runde erreicht ist und die nicht gerade eine Runde fahren.
+    """Räume mit Takt, deren nächste Runde erreicht ist.
 
     Ein Raum, der zum ersten Mal einen Takt zeigt, beginnt mit dem Zeitpunkt, an dem er
     gesehen wird: seine erste Runde ist die nächste Gelegenheit, nicht sofort.
@@ -306,90 +312,49 @@ def faellige(raum_liste: list[RaumStand], zustand: dict, jetzt: datetime) -> lis
             eintrag["plan"] = raum.plan
             eintrag["letzte"] = jetzt.isoformat()
             continue
-        if _laeuft(eintrag.get("pid")):
-            continue
         naechste = naechste_runde(raum.plan, eintrag.get("letzte"))
         if naechste is not None and naechste <= jetzt:
             faellig.append(raum)
     return faellig
 
 
-def runden_text(raum: RaumStand, jetzt: datetime) -> str:
+def runden_text(raum: RaumStand, nummer: int, jetzt: datetime) -> str:
     return (
-        f"TAKT-RUNDE {jetzt.astimezone().strftime('%d.%m.%Y %H:%M')} ({raum.takt})\n"
-        "Neue Runde nach Takt. Prüfe, was seit der letzten Runde passiert ist, verteile die "
-        "nächsten Aufgaben, prüfe Ergebnisse und schließe mit dem STAND-Block. "
+        f"@raumleiter TAKT-RUNDE {nummer} · {jetzt.strftime('%d.%m.%Y %H:%M')}: Neue Runde nach Takt ({raum.takt}). "
+        "Prüfe, was seit der letzten Runde passiert ist, verteile die nächsten Aufgaben an die Mitglieder "
+        "(@slug), prüfe Ergebnisse und schließe mit STAND: und AUFGABEN:. "
         "Dieser Raum läuft weiter; kein FERTIG, solange der Takt gilt."
     )
 
 
-# ─── Runden ausführen ────────────────────────────────────────────────────────
+# ─── Türen ───────────────────────────────────────────────────────────────────
 
 
-def _hermes(hermes: str | None) -> list[str]:
-    return [hermes or os.environ.get("TIKKI_HERMES") or "hermes"]
+def tueren_weiterreichen(raum_liste: list[RaumStand], zustand: dict, db: Path, jetzt: float) -> list[str]:
+    """Jede neue ``TÜR:``-Zeile eines Raumleiters einmal in den Zielraum stellen.
 
-
-def runde(
-    sitzung: str,
-    text: str,
-    *,
-    profil: str = SUITE_PROFIL,
-    hermes: str | None = None,
-    warten_bis_s: int = WARTEN_BIS_S,
-) -> tuple[bool, str]:
-    """Eine Runde in der Suite, blockierend. Wartet, solange der Raum in der App offen ist."""
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", suffix=".txt", prefix="tikki-runde-", delete=False
-    ) as datei:
-        datei.write(text)
-        anfrage = datei.name
-    befehl = _hermes(hermes) + [
-        "-p", profil, "chat", "--resume", sitzung, "-Q", "--query-file", anfrage,
-    ]
-    ende = time.monotonic() + max(0, warten_bis_s)
-    try:
-        while True:
-            try:
-                lauf = subprocess.run(
-                    befehl, capture_output=True, text=True, errors="replace",
-                    timeout=RUNDE_HOECHSTENS_S,
-                )
-            except subprocess.TimeoutExpired:
-                return False, f"Runde nach {RUNDE_HOECHSTENS_S // 60} Minuten abgebrochen"
-            ausgabe = (lauf.stdout or "") + (lauf.stderr or "")
-            if lauf.returncode == 0 and not _BESETZT.search(ausgabe):
-                return True, (lauf.stdout or "").strip()
-            if _BESETZT.search(ausgabe) and time.monotonic() < ende:
-                time.sleep(WARTEN_TAKT_S)
+    Was nicht zustellbar ist (unbekannter Raum, mehrdeutiger Anfang, der Raum selbst), bleibt im
+    Zustand stehen, damit der Bericht es dem Wachhalter zeigt.
+    """
+    meldungen = []
+    for raum in raum_liste:
+        eintrag = zustand.setdefault(raum.id, {})
+        gesehen = int(eintrag.get("gesehen", 0))
+        for tuer in raum.tueren:
+            if tuer.seq <= gesehen:
                 continue
-            if _BESETZT.search(ausgabe):
-                return False, "Raum war die ganze Zeit in der App offen; Runde vertagt"
-            return False, ausgabe.strip()[-2000:] or f"Hermes endete mit Code {lauf.returncode}"
-    finally:
-        with contextlib.suppress(OSError):
-            os.unlink(anfrage)
+            ziel = raum_finden(tuer.ziel, raum_liste)
+            if ziel is None or ziel.id == raum.id:
+                eintrag["unzustellbar"] = [*eintrag.get("unzustellbar", [])[-4:], {"ziel": tuer.ziel, "text": tuer.text[:200], "seq": tuer.seq}]
+                meldungen.append(f"Tür nicht zustellbar: {raum.titel} → „{tuer.ziel}“")
+                continue
+            raeume.tuer(raum.id, ziel.id, tuer.text, db=db, jetzt=jetzt)
+            meldungen.append(f"Tür: {raum.titel} → {ziel.titel}")
+        eintrag["gesehen"] = max(gesehen, raum.letzte_seq)
+    return meldungen
 
 
-def _runde_im_takt(sitzung: str, raum_id: str, text: str, profil: str, hermes: str | None) -> int:
-    """Kindprozess einer Takt-Runde: fahren, dann den Zustand fortschreiben."""
-    home = profil_home(profil)
-    beginn = datetime.now(timezone.utc).astimezone()
-    ok, meldung = runde(sitzung, text, profil=profil, hermes=hermes)
-    with _zustand(home) as zustand:
-        eintrag = zustand.setdefault(raum_id, {})
-        eintrag["pid"] = None
-        eintrag["ergebnis"] = "ok" if ok else "fehler"
-        eintrag["meldung"] = meldung[-500:]
-        if ok:
-            eintrag["letzte"] = beginn.isoformat()
-        else:
-            eintrag["fehlversuche"] = int(eintrag.get("fehlversuche", 0)) + 1
-            # Nach drei Fehlschlägen wartet der Raum bis zur nächsten regulären Gelegenheit.
-            if eintrag["fehlversuche"] >= 3:
-                eintrag["letzte"] = beginn.isoformat()
-                eintrag["fehlversuche"] = 0
-    return 0 if ok else 1
+# ─── Übungsläufe ─────────────────────────────────────────────────────────────
 
 
 def uebungsgruppen(raum_liste: list[RaumStand]) -> dict[str, dict]:
@@ -409,17 +374,21 @@ def _kurz(text: str | None, laenge: int = 1500) -> str:
     return text if len(text) <= laenge else text[: laenge - 1] + "…"
 
 
-def uebungs_runden(raum_liste: list[RaumStand], zustand: dict) -> list[tuple]:
-    """Runden, die Übungsräume für ihren Hauptraum auslösen: (Raum, Text, Grund, Merker).
+def _nummer(raum: RaumStand) -> str:
+    m = UEBUNG_TITEL.match(raum.titel)
+    return m.group("nr") if m else "?"
 
-    Der Merker ``(projekt, feld, wert)`` wird erst gesetzt, wenn die Runde wirklich startet.
+
+def uebungs_runden(raum_liste: list[RaumStand], zustand: dict, jetzt: float) -> list[tuple]:
+    """Nachrichten, die Übungsräume für ihren Hauptraum auslösen: (Hauptraum, Text, Grund, Merker).
+
+    Der Merker ``(projekt, feld, wert)`` wird erst gesetzt, wenn die Nachricht wirklich im Raum ist.
 
     1. Der erste fertige Ansatz geht sofort an den Hauptraum, solange der selbst noch
        nicht fertig ist: der Mensch bekommt das schnellste Ergebnis, nicht das eigene.
     2. Sind alle fertig (oder der Hauptraum fertig und die Übungen seit einem Tag still),
        vergleicht der Hauptraum einmal die Ansätze und schreibt ERFAHRUNG-Zeilen.
     """
-    jetzt = time.time()
     runden = []
     uebung = zustand.get("_uebung", {})
     for basis, gruppe in uebungsgruppen(raum_liste).items():
@@ -432,10 +401,12 @@ def uebungs_runden(raum_liste: list[RaumStand], zustand: dict) -> list[tuple]:
         if fertige and not haupt.fertig and not merk.get("weitergegeben"):
             erster = fertige[0]
             runden.append((haupt, (
-                f"ÜBUNGSERGEBNIS aus „{erster.titel}“ (Ansatz: {erster.ansatz or 'unbekannt'}) ist zuerst fertig.\n"
-                f"{_kurz(erster.fertig_text)}\n\n"
-                "Prüfe es gegen das Raumziel. Erfüllt es das Ziel, übernimm es als Ergebnis dieses "
-                "Raums und schließe mit FERTIG; sonst arbeite weiter und nutze, was brauchbar ist."
+                f"@raumleiter ÜBUNGSERGEBNIS {_nummer(erster)}: Übungsraum „{erster.titel}“ "
+                f"(Ansatz: {erster.ansatz or 'unbekannt'}) ist zuerst fertig.\n"
+                f"{_kurz(erster.fertig_text)}\n"
+                + (f"STAND: {erster.stand}\n" if erster.stand else "")
+                + "\nPrüfe es gegen das Raumziel. Erfüllt es das Ziel, übernimm es als Ergebnis dieses "
+                "Raums und schließe mit FERTIG:; sonst arbeite weiter und nutze, was brauchbar ist."
             ), f"erstes Ergebnis aus {erster.titel}", (basis, "weitergegeben", erster.id)))
             continue
         still = all(
@@ -449,7 +420,7 @@ def uebungs_runden(raum_liste: list[RaumStand], zustand: dict) -> list[tuple]:
                 for r in gruppe["uebungen"]
             )
             runden.append((haupt, (
-                f"LERNEN: Alle Übungsläufe zu „{basis}“ sind durch.\n{ansaetze}\n\n"
+                f"@raumleiter LERNEN: Alle Übungsläufe zu „{basis}“ sind durch.\n{ansaetze}\n\n"
                 "Vergleiche die Ansätze mit deinem eigenen: Was war schneller, was besser, was "
                 "billiger? Schreib drei bis fünf Zeilen, jede beginnend mit ERFAHRUNG:, die beim "
                 "nächsten ähnlichen Auftrag helfen. Kein neuer Auftrag, kein FERTIG."
@@ -457,100 +428,82 @@ def uebungs_runden(raum_liste: list[RaumStand], zustand: dict) -> list[tuple]:
     return runden
 
 
-def _starte_runde(
-    home: Path, profil: str, hermes: str | None, raum: RaumStand, text: str, grund: str, zustand: dict
-) -> None:
-    """Eine Runde als eigenen Prozess starten; ihr Ergebnis schreibt der Prozess selbst zurück."""
-    protokolle = home / "tikki" / "runden"
-    protokolle.mkdir(parents=True, exist_ok=True)
-    befehl = _hermes(hermes) + [
-        "--run-module", MODUL, "runde", raum.tip, "--takt", "--raum", raum.id,
-        "--profil", profil, "--text", text,
-    ]
-    if hermes:
-        befehl += ["--hermes", hermes]
-    with open(protokolle / f"{raum.id}.log", "a", encoding="utf-8") as log:
-        log.write(f"\n== {datetime.now(timezone.utc).isoformat()} {grund}\n")
-        log.flush()
-        kind = subprocess.Popen(
-            befehl, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    zustand.setdefault(raum.id, {})["pid"] = kind.pid
+# ─── Takt ────────────────────────────────────────────────────────────────────
 
 
-def takt(profil: str, hermes: str | None, parallel: int) -> list[str]:
-    """Fällige Runden als eigene Prozesse starten. Rückgabe: je gestarteter Runde eine Zeile."""
-    home = profil_home(profil)
-    raum_liste = raeume(home)
-    jetzt = datetime.now(timezone.utc).astimezone()
-    gestartet: list[str] = []
-    with _zustand(home) as zustand:
-        laufend = sum(
-            1 for k, e in zustand.items() if not k.startswith("_") and isinstance(e, dict) and _laeuft(e.get("pid"))
-        )
-        auftraege = [a for a in uebungs_runden(raum_liste, zustand)
-                     if not _laeuft((zustand.get(a[0].id) or {}).get("pid"))]
-        auftraege += [(r, runden_text(r, jetzt), f"Takt-Runde ({r.takt})", None)
-                      for r in faellige(raum_liste, zustand, jetzt)]
-        belegt: set[str] = set()
-        for raum, text, grund, merker in auftraege:
-            if laufend >= parallel:
-                break
-            if raum.id in belegt:
-                continue
-            _starte_runde(home, profil, hermes, raum, text, grund, zustand)
-            if merker:
-                projekt, feld, wert = merker
-                zustand.setdefault("_uebung", {}).setdefault(projekt, {})[feld] = wert
-            belegt.add(raum.id)
-            laufend += 1
-            gestartet.append(f"{grund}: {raum.titel}")
+def _jetzt(jetzt: datetime | None) -> datetime:
+    if jetzt is not None:
+        return jetzt
+    from hermes_time import now
+
+    return now()
+
+
+def takt(*, db: Path | None = None, jetzt: datetime | None = None) -> list[str]:
+    """Ein Tick des Taktgebers. Rückgabe: je eingestellter Nachricht eine Zeile."""
+    db = db or raeume.db_pfad()
+    jetzt = _jetzt(jetzt)
+    stempel = jetzt.timestamp()
+    raum_liste = alle_raeume(db)
+    meldungen: list[str] = []
+    with _zustand(db) as zustand:
+        meldungen += tueren_weiterreichen(raum_liste, zustand, db, stempel)
+        for haupt, text, grund, (projekt, feld, wert) in uebungs_runden(raum_liste, zustand, stempel):
+            raeume.senden(haupt.id, text, db=db, jetzt=stempel)
+            zustand.setdefault("_uebung", {}).setdefault(projekt, {})[feld] = wert
+            meldungen.append(f"{grund}: {haupt.titel}")
+        for raum in faellige(raum_liste, zustand, jetzt):
+            eintrag = zustand[raum.id]
+            nummer = int(eintrag.get("runden", 0)) + 1
+            raeume.senden(raum.id, runden_text(raum, nummer, jetzt), db=db, jetzt=stempel)
+            eintrag["letzte"], eintrag["runden"] = jetzt.isoformat(), nummer
+            meldungen.append(f"Takt-Runde {nummer} ({raum.takt}): {raum.titel}")
         bekannt = {raum.id for raum in raum_liste}
         for alt in [k for k in zustand if not k.startswith("_") and k not in bekannt]:
             zustand.pop(alt, None)
-    return gestartet
+    return meldungen
 
 
-def bericht(profil: str) -> list[dict]:
-    """Stand aller Suiten, so kurz, dass ein Modell ihn in einem Blick liest."""
-    jetzt = time.time()
+# ─── Bericht ─────────────────────────────────────────────────────────────────
+
+
+def bericht(*, db: Path | None = None, jetzt: float | None = None) -> list[dict]:
+    """Stand aller Räume, so kurz, dass ein Modell ihn in einem Blick liest."""
+    db = db or raeume.db_pfad()
+    jetzt = jetzt or time.time()
+    zustand = _zustand_lesen(db)
     zeilen = []
-    home = profil_home(profil)
-    try:
-        with open(_zustand_pfad(home), encoding="utf-8") as f:
-            zustand = json.load(f)
-    except (OSError, ValueError):
-        zustand = {}
-    for raum in raeume(home):
+    for raum in alle_raeume(db):
         daten = asdict(raum)
-        daten["still_seit_min"] = (
-            int((jetzt - raum.letzte_aktivitaet) / 60) if raum.letzte_aktivitaet else None
-        )
-        daten["runde_laeuft"] = _laeuft((zustand.get(raum.id) or {}).get("pid"))
-        daten["letzte_takt_runde"] = (zustand.get(raum.id) or {}).get("letzte")
-        daten["letztes_ergebnis"] = (zustand.get(raum.id) or {}).get("ergebnis")
+        daten.pop("tueren", None)
+        eintrag = zustand.get(raum.id) or {}
+        daten["still_seit_min"] = int((jetzt - raum.letzte_aktivitaet) / 60) if raum.letzte_aktivitaet else None
+        daten["letzte_takt_runde"] = eintrag.get("letzte") if raum.plan else None
+        daten["takt_runden"] = int(eintrag.get("runden", 0))
+        daten["tueren_unzustellbar"] = eintrag.get("unzustellbar", [])
         zeilen.append(daten)
     return zeilen
 
 
 def _bericht_text(zeilen: list[dict]) -> str:
     if not zeilen:
-        return "Keine Suiten."
-    teile = [f"{len(zeilen)} Suiten (Profil {SUITE_PROFIL}):"]
+        return "Keine Räume."
+    teile = [f"{len(zeilen)} Räume:"]
     for z in zeilen:
         zustand = (
             "wartet auf Mensch" if z["brauche"] else
             "fertig" if z["fertig"] and not z["plan"] else
-            "Runde läuft" if z["runde_laeuft"] else
+            f"arbeitet (@{z['arbeitet']})" if z["arbeitet"] else
             "aktiv"
         )
         teile.append(
-            f"- [{z['tip']}] {z['titel']} · {zustand} · still seit {z['still_seit_min']} min"
+            f"- [{z['id']}] {z['titel']} · {zustand} · still seit {z['still_seit_min']} min"
             + (f" · Takt {z['takt']}" if z["plan"] else "")
-            + (f" · offen: {'; '.join(z['todos_offen'][:5])}" if z["todos_offen"] else "")
+            + (f" · offen: {'; '.join(z['aufgaben_offen'][:5])}" if z["aufgaben_offen"] else "")
             + (f" · BRAUCHE: {z['brauche']}" if z["brauche"] else "")
             + (f" · STAND: {z['stand']}" if z["stand"] else "")
+            + (f" · Tür nicht zustellbar: {', '.join('„' + t['ziel'] + '“' for t in z['tueren_unzustellbar'])}"
+               if z["tueren_unzustellbar"] else "")
         )
     return "\n".join(teile)
 
@@ -559,34 +512,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="suite_takt", description=__doc__.split("\n\n")[0])
     unter = parser.add_subparsers(dest="befehl", required=True)
     p_takt = unter.add_parser("takt")
-    p_takt.add_argument("--profil", default=SUITE_PROFIL)
-    p_takt.add_argument("--hermes")
-    p_takt.add_argument("--parallel", type=int, default=PARALLEL_STANDARD)
+    p_takt.add_argument("--db", type=Path)
     p_bericht = unter.add_parser("bericht")
-    p_bericht.add_argument("--profil", default=SUITE_PROFIL)
+    p_bericht.add_argument("--db", type=Path)
     p_bericht.add_argument("--json", action="store_true")
-    p_runde = unter.add_parser("runde")
-    p_runde.add_argument("sitzung")
-    p_runde.add_argument("--text", default="Neue Runde: Stand prüfen, weiterarbeiten, STAND-Block.")
-    p_runde.add_argument("--profil", default=SUITE_PROFIL)
-    p_runde.add_argument("--hermes")
-    p_runde.add_argument("--takt", action="store_true", help=argparse.SUPPRESS)
-    p_runde.add_argument("--raum", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     if args.befehl == "takt":
-        for zeile in takt(args.profil, args.hermes, max(1, args.parallel)):
+        for zeile in takt(db=args.db):
             print(zeile)
         return 0
-    if args.befehl == "bericht":
-        zeilen = bericht(args.profil)
-        print(json.dumps(zeilen, ensure_ascii=False, indent=2) if args.json else _bericht_text(zeilen))
-        return 0
-    if args.takt:
-        return _runde_im_takt(args.sitzung, args.raum or args.sitzung, args.text, args.profil, args.hermes)
-    ok, meldung = runde(args.sitzung, args.text, profil=args.profil, hermes=args.hermes)
-    print(meldung)
-    return 0 if ok else 1
+    zeilen = bericht(db=args.db)
+    print(json.dumps(zeilen, ensure_ascii=False, indent=2) if args.json else _bericht_text(zeilen))
+    return 0
 
 
 if __name__ == "__main__":

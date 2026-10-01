@@ -178,18 +178,19 @@ while IFS=$'\t' read -r SLUG NAME PORT; do
     fi
   done
 
-  # 3d) Dauerbetrieb: Takt der Suiten (raumleiter) und Rundgang des Wachhalters.
+  # 3d) Dauerbetrieb: Taktgeber der Räume (raumleiter, ohne Modell) und Rundgang des Wachhalters.
+  #     Die Räume selbst fährt das Gateway; der Taktgeber stellt nur Nachrichten ein.
   #     Hermes-Cron führt nur Skripte aus ~/.hermes/profiles/<slug>/scripts/ aus.
   case "$SLUG" in
     raumleiter)
       skript_und_job "$SLUG" "$ZIEL" tikki-takt.sh \
-        "exec \"$HERMES_BIN\" --run-module tikki.werkzeuge.suite_takt takt --hermes \"$HERMES_BIN\"" \
+        "exec \"$HERMES_BIN\" --run-module tikki.werkzeuge.suite_takt takt" \
         tikki-takt "every 5m" --no-agent ;;
     wachhalter)
       skript_und_job "$SLUG" "$ZIEL" tikki-raumbericht.sh \
         "exec \"$HERMES_BIN\" --run-module tikki.werkzeuge.suite_takt bericht" \
         tikki-rundgang "every 15m" \
-        "Rundgang: Oben steht der Raumbericht aller Suiten. Handle genau nach deinem SOUL und schließe mit dem RUNDGANG-Block." ;;
+        "Rundgang: Oben steht der Raumbericht aller Räume. Handle genau nach deinem SOUL und schließe mit dem RUNDGANG-Block." ;;
   esac
 
   # 4) .env-Hinweis (wird nie vom Skript befüllt)
@@ -219,7 +220,8 @@ if [ "$DRY_RUN" = 0 ]; then
   echo "  1. XAI_API_KEY, CURSOR_API_KEY, HONCHO_API_KEY und je Profil API_SERVER_KEY setzen (Umgebung oder ~/.hermes/profiles/<slug>/.env)."
   echo "     Honcho-SDK einmal bereitstellen: hermes pm install --extra honcho"
   echo "  2. Pro Rolle starten:  hermes -p <slug> gateway   (als Dienst: hermes -p <slug> gateway install)"
-  echo "     raumleiter und wachhalter tragen die Cronjobs tikki-takt und tikki-rundgang – ihr Gateway muss immer laufen."
+  echo "     Ein Gateway fährt die Räume rund um die Uhr (hermes gateway install); raumleiter und wachhalter tragen"
+  echo "     die Cronjobs tikki-takt und tikki-rundgang – ihr Gateway muss ebenfalls immer laufen."
   echo "  3. Vorzimmer = Profil tikki (Tikkis SOUL, Gedächtnis, schnelle Antworten):  hermes profile use tikki"
   echo "  4. Prüfen:             tikki/werkzeuge/rollen-status.sh"
 fi

@@ -146,18 +146,16 @@ fi
 schritt "6/8  Abos prüfen"
 "$HIER/werkzeuge/abos-einrichten.sh" || hinweis "Abo-Prüfung meldet Lücken – Anmeldung: tikki/werkzeuge/abos-einrichten.sh --anmelden"
 
-# 7) Dienste
-schritt "7/8  Raumleiter und Wachhalter als Dienst"
+# 7) Dienst: EIN Host-Gateway aus dem Hauptprofil bedient alle Rollen (Hermes erlaubt pro Rechner
+#    nur eines; es fährt die Räume, die Cronjobs aller Profile und das Vorzimmer-Postfach).
+schritt "7/8  Tikki-Gateway als Dienst (fährt Räume und Daueraufträge rund um die Uhr)"
 if [ "$DIENSTE" = 0 ]; then
   hinweis "übersprungen (--ohne-dienste)"
+elif AUSGABE="$("$HERMES" -p default gateway install 2>&1)"; then
+  gut "Gateway läuft als Dienst (startet nach Neustart von selbst)"
 else
-  for rolle in raumleiter wachhalter; do
-    if "$HERMES" -p "$rolle" gateway install >/dev/null 2>&1; then
-      gut "$rolle läuft als Dienst (startet nach Neustart von selbst)"
-    else
-      hinweis "$rolle: Dienst nicht installierbar – von Hand: hermes -p $rolle gateway install"
-    fi
-  done
+  hinweis "Gateway-Dienst nicht installierbar – Ausgabe:"
+  printf '%s\n' "$AUSGABE" | sed 's/^/    /' | tail -12
 fi
 
 # 8) Selbsttest

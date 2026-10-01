@@ -219,8 +219,7 @@ tikki/dienste/tencentdb/tencentdb.sh start thorsten
 hermes -p tikki gedaechtnis einspielen tikki/     # unser Wissen ins Gedächtnis
 hermes -p tikki gedaechtnis verlauf               # bisherige Gespräche nachholen
 tikki/werkzeuge/openclaw-einrichten.sh --vorab 25 # ClawHub-Katalog + erste Skills
-hermes -p raumleiter gateway install              # Takt läuft auch nach Neustart weiter
-hermes -p wachhalter gateway install              # Rundgang alle 15 Minuten
+hermes -p default gateway install                 # EIN Host-Gateway für alle Rollen: Räume, Takt, Rundgang
 ```
 
 **Hermes-Backend**: Die App erwartet ein `hermes serve` (FastAPI, `/api/*`, Bearer-Token
@@ -835,6 +834,12 @@ Bereich Browser), Post, Terminal.
   Hermes-Test `tests/gateway/test_hosted_room_discussion.py` liest die Konstante statt „2 and 6“.
   Alles andere (3 Runden, 10 Antworten je Mensch-Nachricht, 24 Zeilen Delta) ist unverändert.
   Vertrag: `tests/tikki/test_raeume.py` legt einen Raum mit allen Katalogrollen an.
+- **Nur ein Gateway je Rechner.** `hermes -p raumleiter gateway install` wird von Hermes abgelehnt
+  („Profile 'x' does not get a gateway of its own“): genau ein Host-Gateway aus dem Hauptprofil
+  (`hermes -p default gateway install`) bedient alle Profile – ihre Cronjobs (Takt, Rundgang,
+  Tikkis Daueraufträge) und die gehosteten Räume. Das war das ⚠ in Schritt 7 des Installers
+  (01.10.); `installieren.sh` installiert jetzt das eine Gateway. Beim Testen: `hermes -p default
+  gateway run` (der aktive Profilname `tikki` bekommt sonst keins).
 - **App-Name im Kern (bewusste Kernänderung, beim Hermes-Merge erhalten!)**: Hermes suchte
   die gebaute App fest als `Hermes.app/Contents/MacOS/Hermes` bzw. `linux-unpacked/hermes`.
   Mit `productName: "Tikki"` baut electron-builder aber `Tikki.app`; `install.sh

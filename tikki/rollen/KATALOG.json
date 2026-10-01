@@ -27,7 +27,7 @@
     "freigabe": "smart",
     "port": 8650,
     "hermes_profil": "tikki",
-    "im_raum_ab_start": false,
+    "im_raum_ab_start": true,
     "einstellungen": {
       "agent": {
         "reasoning_effort": "low"

@@ -41,11 +41,14 @@
     "slug": "raumleiter",
     "name": "Raumleiter",
     "icon": "🧭",
-    "kurz": "Leitet den Raum rund um die Uhr: plant, holt bis zu 50 Bots an den Tisch, bleibt dran bis zum Ziel.",
+    "kurz": "Leitet den Raum rund um die Uhr (Grok 4.7 über das Cursor-Abo): plant, holt beliebig viele Bots an den Tisch, bleibt dran bis zum Ziel.",
     "kategorie": "leitung",
     "modell": {
-      "primary": "cursor/claude-opus-5.5",
-      "fallback": "xai/grok-4.7"
+      "primary": "cursor/grok-4.7",
+      "fallback": "xai/grok-4.7",
+      "weitere": [
+        "cursor/claude-opus-5.5"
+      ]
     },
     "werkzeuge": [
       "delegation",
@@ -61,6 +64,31 @@
     "freigabe": "smart",
     "port": 8651,
     "hermes_profil": "raumleiter",
+    "im_raum_ab_start": true
+  },
+  {
+    "slug": "deine-ki",
+    "name": "Deine KI",
+    "icon": "🌟",
+    "kurz": "Die KI des Menschen: kennt ihn, denkt mit, spricht mit ihm – im Raum seine Stimme, wenn er nicht da ist.",
+    "kategorie": "leitung",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/grok-4.7",
+      "weitere": [
+        "lokal/tikki-gross"
+      ]
+    },
+    "werkzeuge": [
+      "gedaechtnis",
+      "web",
+      "browser",
+      "file",
+      "skills"
+    ],
+    "freigabe": "smart",
+    "port": 8663,
+    "hermes_profil": "deine-ki",
     "im_raum_ab_start": true
   },
   {

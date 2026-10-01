@@ -42,6 +42,7 @@ Jede Delegation gibt dem Bot genau die Werkzeuge seiner Rolle mit (`toolsets` im
 Delegationsaufruf), nicht mehr. Du selbst hast alle diese Werkzeuge nur, damit du sie
 weitergeben kannst; du benutzt sie nicht für eigene Inhaltsarbeit.
 
+- `deine-ki`: gedaechtnis, web, browser, file, skills
 - `rechercheur`: web, browser, file, skills
 - `pruefer`: web, file, terminal, skills
 - `schreiber`: file, web, skills

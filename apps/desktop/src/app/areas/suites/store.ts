@@ -1,32 +1,55 @@
-// Suites: one room per undertaking. A suite is a chat session on the
-// `raumleiter` profile — the room lead sits in every suite from the start,
-// with the primary and fallback model that profile carries. The list is the
-// backend's truth: no seeded rooms, zero suites until someone opens one.
+// Suites: one room per undertaking. A suite is a hosted Hermes group room
+// (`gateway/hosted_rooms.py`): a member roster from the troop catalogue and an
+// event log the gateway drives itself — the room keeps working while the app
+// is closed. The app is one client of it, over the `groups.*` RPCs on the
+// gateway the main chat uses; `tikki/werkzeuge/raeume.py` is the same client
+// without a network. Conventions (ids, thread, name prefix, room-lead lines)
+// are shared with it and must not drift.
 
 import { atom } from 'nanostores'
 
-import { PROMPT_SUBMIT_REQUEST_TIMEOUT_MS } from '@/api/client'
-import { requestGatewayForProfile } from '@/store/gateway'
-import { $workingSessionIds } from '@/store/session-states'
+import { activeGateway } from '@/store/gateway'
 
 import { $kapazitaet, $mensch, $uebungslaeufe } from '../admin/betrieb-store'
+import { KATALOG, type KatalogRolle } from '../admin/katalog'
 import { setArea } from '../store'
 
 import { ansatzFuer, freieUebungen, uebungsEroeffnung, uebungsTitel } from './uebung'
 
-/** The Hermes profile every suite lives on (see tikki/rollen/KATALOG.json). */
-export const SUITE_PROFIL = 'raumleiter'
-/** Marks the sessions that are suites, so a Bot Chat on the same profile is not one. */
-export const SUITE_QUELLE = 'tikki-suite'
+/** The room lead: the member every room-lead convention (`STAND:`, `BRAUCHE:` …) is read from. */
+export const RAUMLEITER = 'raumleiter'
+/** Every Tikki room carries this id prefix; foreign hosted rooms stay out of the list. */
+export const RAUM_PRAEFIX = 'tikki-'
+/** A room is one conversation: one thread for the person, the schedule and the doors. */
+export const HAUPTFADEN = 'haupt'
+/** How many of the last messages a merged room inherits from each predecessor. */
+export const VERSCHMELZEN_NACHRICHTEN = 12
+/** How many rooms get their tail read for the attention list on every refresh. */
+const DETAIL_HOECHSTENS = 50
+/** The log tail that is enough to read the room lead's latest lines. */
+const SCHWEIF = 40
+
+export interface Mitglied {
+  member_id: string
+  profile: string
+  handle: string
+  display_name?: string
+}
 
 export interface Suite {
+  /** The hosted room id (`tikki-<slug>-<base36 ms>`). */
   id: string
-  /** Live tip of a compressed lineage, when the backend reports one. */
-  resolvedId?: string
   titel: string
-  vorschau?: string
-  gestartet?: number
-  nachrichten?: number
+  mitglieder: Mitglied[]
+  /** `updated_at` as the backend reports it (seconds). */
+  geaendert: number
+  letzteSeq: number
+  /** The room lead's open `BRAUCHE:` — it waits for the person. */
+  brauche?: string
+  /** The room lead reported `FERTIG:` and nobody has spoken since. */
+  fertig?: boolean
+  /** The member whose turn is running right now. */
+  arbeitet?: string
 }
 
 export type SuitesStatus = 'idle' | 'laedt' | 'bereit' | 'fehler'
@@ -34,6 +57,8 @@ export type SuitesStatus = 'idle' | 'laedt' | 'bereit' | 'fehler'
 export const $suites = atom<Suite[]>([])
 export const $suitesStatus = atom<SuitesStatus>('idle')
 export const $suitesFehler = atom<string | null>(null)
+/** Rooms that need the person: an open `BRAUCHE:` or a pending approval. */
+export const $suitesBrauchen = atom<string[]>([])
 /** The suite whose creation is in flight, by name; guards a double click. */
 export const $suiteEntsteht = atom<string | null>(null)
 /** The suite the person is standing in; null means the lobby. */
@@ -41,43 +66,265 @@ export const $aktiveSuite = atom<Suite | null>(null)
 /** The lobby's form is open (the Vorzimmer's „Neue Suite“ sets it before switching areas). */
 export const $neueSuiteOffen = atom(false)
 
-interface SessionListRow {
-  id: string
-  resolved_id?: string
-  title?: string
-  preview?: string
-  started_at?: number
-  message_count?: number
-  source?: string
+// ── Wire shapes ─────────────────────────────────────────────────────────────
+
+export interface RaumZeile {
+  room_id: string
+  name: string
+  members: Mitglied[]
+  updated_at: number
+  latest_seq?: number
 }
 
-interface SessionCreateResult {
-  session_id?: string
-  stored_session_id?: string
+export interface RaumEreignis {
+  seq: number
+  event_id: string
+  kind: string
+  actor: { kind: string; id: string }
+  payload: Record<string, unknown>
+  created_at: number
 }
 
-const anfrage = <T>(
-  method: string,
-  params: Record<string, unknown>,
-  timeoutMs?: number,
-  spawnPriority: 'background' | 'foreground' = 'foreground'
-): Promise<T> =>
-  requestGatewayForProfile<T>(SUITE_PROFIL, method, { profile: SUITE_PROFIL, ...params }, timeoutMs, undefined, {
-    spawnPriority
-  })
+export interface Freigabe {
+  kind: string
+  member_id?: string
+  task_id?: string
+  execution_generation?: number
+  request_id?: string
+  approval?: Record<string, unknown>
+}
 
-const alsSuite = (row: SessionListRow): Suite => ({
-  id: row.id,
-  resolvedId: row.resolved_id || undefined,
-  titel: (row.title || '').trim() || row.id,
-  vorschau: row.preview || undefined,
-  gestartet: typeof row.started_at === 'number' ? row.started_at : undefined,
-  nachrichten: typeof row.message_count === 'number' ? row.message_count : undefined
+export interface Fahrstand {
+  running?: boolean
+  working?: boolean
+  blocked?: boolean
+  pending_actions?: Freigabe[]
+}
+
+interface LogSeite {
+  events: RaumEreignis[]
+  cursor: number
+  latest_seq: number
+  has_more: boolean
+}
+
+// ── Pure helpers (mirror tikki/werkzeuge/raeume.py) ─────────────────────────
+
+/** NFKD ascii, non-alphanumerics folded to `-`, lowercase, at most 40 chars. */
+export function raumSlug(text: string, laenge = 40): string {
+  const roh = text
+    .normalize('NFKD')
+    .replace(/[\u0080-￿]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+
+  return (roh || 'raum').slice(0, laenge).replace(/^-+|-+$/g, '')
+}
+
+/** The id of a new room: readable, unique, in the core's alphabet. */
+export const raumId = (name: string, ms = Date.now()): string =>
+  `${RAUM_PRAEFIX}${raumSlug(name)}-${Math.floor(ms).toString(36)}`
+
+const alsMitglied = (r: KatalogRolle): Mitglied => ({
+  member_id: r.slug,
+  profile: r.hermes_profil,
+  handle: r.slug,
+  display_name: r.name
 })
 
-/** `session.list` has no profile or hidden field; the source is how a suite is told apart. */
-export const suitenAusZeilen = (rows: readonly SessionListRow[]): Suite[] =>
-  rows.filter(row => row.source === SUITE_QUELLE).map(alsSuite)
+/** Base crew (catalogue `im_raum_ab_start`) plus the chosen roles, each once, order kept; unknown slugs are skipped. */
+export function raumMitglieder(rollen: readonly string[] = [], katalog: readonly KatalogRolle[] = KATALOG): Mitglied[] {
+  const slugs = [...katalog.filter(r => r.im_raum_ab_start).map(r => r.slug), ...rollen]
+  const gesehen = new Set<string>()
+  const aus: Mitglied[] = []
+
+  for (const slug of slugs) {
+    const r = katalog.find(x => x.slug === slug)
+
+    if (r && !gesehen.has(slug)) {
+      gesehen.add(slug)
+      aus.push(alsMitglied(r))
+    }
+  }
+
+  return aus
+}
+
+export interface Nachricht {
+  seq: number
+  /** `mensch` for the person, else the member id. */
+  von: string
+  name: string
+  text: string
+  zeit: number
+  /** `(pass)`: Discussion silence, never shown. */
+  still: boolean
+}
+
+export const MENSCH = 'mensch'
+const PASS = /^\(?\s*pass\s*\)?\.?$/i
+const NAME_PRAEFIX = /^([^\s:@[\]]{1,40}):\s+([\s\S]*)$/
+
+/** A log event as something said, or undefined for gateway and system kinds. */
+export function nachrichtAus(event: RaumEreignis, members: readonly Mitglied[] = []): Nachricht | undefined {
+  const text = String(event.payload.text ?? '')
+
+  if (event.kind === 'message.user') {
+    const m = NAME_PRAEFIX.exec(text)
+
+    return {
+      seq: event.seq,
+      von: MENSCH,
+      name: m ? m[1]! : 'Mensch',
+      text: m ? m[2]! : text,
+      zeit: event.created_at,
+      still: PASS.test(text.trim())
+    }
+  }
+
+  if (event.kind === 'message.member') {
+    const kennung = String(event.payload.member_id ?? event.actor.id ?? '?')
+    const mitglied = members.find(x => x.member_id === kennung)
+
+    return {
+      seq: event.seq,
+      von: kennung,
+      name: mitglied?.display_name || mitglied?.handle || kennung,
+      text,
+      zeit: event.created_at,
+      still: !text.trim() || PASS.test(text.trim())
+    }
+  }
+
+  return undefined
+}
+
+/** The member whose turn began and has not ended. */
+export function werArbeitet(events: readonly RaumEreignis[]): string | undefined {
+  let offen: string | undefined
+
+  for (const e of events) {
+    if (e.kind === 'turn.started') {
+      offen = String(e.payload.member_id ?? '') || undefined
+    } else if (/^turn\.(settled|failed|cancelled|deferred)$/.test(e.kind)) {
+      offen = undefined
+    }
+  }
+
+  return offen
+}
+
+const zeile = (text: string, schluessel: string): string | undefined => {
+  const treffer = [...text.matchAll(new RegExp(`(?:^|\\n)[ \\t>*_]*${schluessel}:[ \\t*_]*([^\\n]*)`, 'g'))]
+
+  return treffer
+    .at(-1)?.[1]
+    ?.replace(/[*_`]+$/g, '')
+    .trim()
+}
+
+/** What the room lead said since the person last spoke. */
+const raumleiterSeitMensch = (messages: readonly Nachricht[]): Nachricht[] => {
+  const letzterMensch = messages.findLastIndex(m => m.von === MENSCH)
+
+  return messages.slice(letzterMensch + 1).filter(m => m.von === RAUMLEITER && !m.still)
+}
+
+/** The room lead's open `BRAUCHE:`; a later message from the person clears it. */
+export function brauchtAus(messages: readonly Nachricht[]): string | undefined {
+  for (const m of raumleiterSeitMensch(messages).reverse()) {
+    const wert = zeile(m.text, 'BRAUCHE')
+
+    if (wert !== undefined) {
+      return wert || 'Braucht dich'
+    }
+  }
+
+  return undefined
+}
+
+/** The room lead reported `FERTIG:` and the person has not answered since. */
+export const fertigAus = (messages: readonly Nachricht[]): boolean =>
+  raumleiterSeitMensch(messages).some(m => zeile(m.text, 'FERTIG') !== undefined)
+
+/** The room lead's latest `STAND:` line. */
+export function standAus(messages: readonly Nachricht[]): string | undefined {
+  for (const m of [...messages].reverse()) {
+    if (m.von === RAUMLEITER && !m.still) {
+      const wert = zeile(m.text, 'STAND')
+
+      if (wert) {
+        return wert
+      }
+    }
+  }
+
+  return undefined
+}
+
+export interface Aufgabe {
+  text: string
+  erledigt: boolean
+}
+
+const AUFGABEN_KOPF = /(?:^|\n)[ \t>*_#]*AUFGABEN:[^\n]*\n/
+const AUFGABE_ZEILE = /^\s*[-*]\s*\[([ xX])\]\s*(.+?)\s*$/
+
+/** The `AUFGABEN:` block: `- [ ]` and `- [x]` lines until the first other line. */
+export function aufgabenAus(text: string): Aufgabe[] {
+  const kopf = AUFGABEN_KOPF.exec(text)
+
+  if (!kopf) {
+    return []
+  }
+
+  const aus: Aufgabe[] = []
+
+  for (const roh of text.slice(kopf.index + kopf[0].length).split('\n')) {
+    if (!roh.trim()) {
+      if (aus.length) {
+        break
+      }
+
+      continue
+    }
+
+    const m = AUFGABE_ZEILE.exec(roh)
+
+    if (!m) {
+      break
+    }
+
+    aus.push({ text: m[2]!, erledigt: m[1] !== ' ' })
+  }
+
+  return aus
+}
+
+/** The latest room-lead message that carries a task block. */
+export function aufgabenWand(messages: readonly Nachricht[]): Aufgabe[] {
+  for (const m of [...messages].reverse()) {
+    if (m.von === RAUMLEITER && AUFGABEN_KOPF.test(m.text)) {
+      return aufgabenAus(m.text)
+    }
+  }
+
+  return []
+}
+
+// ── Gateway ─────────────────────────────────────────────────────────────────
+
+/** Every room RPC goes to the gateway the main chat uses; the rooms live in its shared state. */
+function anfrage<T>(method: string, params: Record<string, unknown>, timeoutMs?: number): Promise<T> {
+  const gateway = activeGateway()
+
+  if (!gateway) {
+    return Promise.reject(new Error('Hermes gateway unavailable'))
+  }
+
+  return timeoutMs === undefined ? gateway.request<T>(method, params) : gateway.request<T>(method, params, timeoutMs)
+}
 
 export function fehlertext(error: unknown): string {
   const text = String((error as { message?: string })?.message ?? error ?? '')
@@ -85,33 +332,160 @@ export function fehlertext(error: unknown): string {
   return text.replace(/^Error invoking remote method '[^']+': /, '').replace(/^Error: /, '')
 }
 
-/** Whether an error says the room lead profile does not exist on this backend. */
-export const profilFehlt = (error: unknown): boolean =>
-  /profile .*does not exist|ProfileUnavailable/i.test(fehlertext(error))
+/** Whether an error says the room worker is not running on this gateway (code 4123). */
+export const raumdienstFehlt = (error: unknown): boolean =>
+  (error as { code?: number })?.code === 4123 || /worker is unavailable|driver is unavailable/i.test(fehlertext(error))
 
-/** The history, as the backend has it. A thrown error is an error, never "no suites". */
-export async function ladeSuites(): Promise<void> {
-  $suitesStatus.set('laedt')
+const alsSuite = (row: RaumZeile): Suite => ({
+  id: row.room_id,
+  titel: (row.name || '').trim() || row.room_id,
+  mitglieder: Array.isArray(row.members) ? row.members : [],
+  geaendert: typeof row.updated_at === 'number' ? row.updated_at : 0,
+  letzteSeq: typeof row.latest_seq === 'number' ? row.latest_seq : 0
+})
 
-  try {
-    const result = await anfrage<{ sessions?: SessionListRow[] }>('session.list', { limit: 200, include_hidden: true })
+/** Only Tikki's rooms, newest change first. */
+export const suitenAusRaeumen = (rows: readonly RaumZeile[]): Suite[] =>
+  rows
+    .filter(row => String(row.room_id ?? '').startsWith(RAUM_PRAEFIX))
+    .map(alsSuite)
+    .sort((a, b) => b.geaendert - a.geaendert)
 
-    $suites.set(suitenAusZeilen(result?.sessions ?? []))
-    $suitesFehler.set(null)
-    $suitesStatus.set('bereit')
-  } catch (error) {
-    $suitesFehler.set(fehlertext(error))
-    $suitesStatus.set('fehler')
+/** All events after `seit`, page by page. */
+export async function ladeVerlauf(
+  roomId: string,
+  seit = 0,
+  hoechstens = 5000
+): Promise<{ events: RaumEreignis[]; cursor: number; latestSeq: number }> {
+  const events: RaumEreignis[] = []
+  let cursor = seit
+  let latestSeq = seit
+
+  while (events.length < hoechstens) {
+    const seite = await anfrage<LogSeite>('groups.log', {
+      room_id: roomId,
+      since_seq: cursor,
+      limit: Math.min(500, hoechstens - events.length)
+    })
+
+    events.push(...(seite.events ?? []))
+    latestSeq = seite.latest_seq ?? latestSeq
+
+    if (!seite.has_more || seite.cursor === cursor) {
+      cursor = seite.cursor ?? cursor
+
+      break
+    }
+
+    cursor = seite.cursor
+  }
+
+  return { events, cursor: Math.max(cursor, events.at(-1)?.seq ?? seit), latestSeq }
+}
+
+export const ladeStand = (roomId: string): Promise<{ room: RaumZeile; driver_status?: Fahrstand }> =>
+  anfrage('groups.state', { room_id: roomId })
+
+/** The room's tail: enough to read the room lead's latest lines, never ahead of the log. */
+async function schweif(suite: Suite): Promise<RaumEreignis[]> {
+  const seit = Math.max(0, suite.letzteSeq - SCHWEIF)
+  const seite = await anfrage<LogSeite>('groups.log', { room_id: suite.id, since_seq: seit, limit: SCHWEIF + 1 })
+
+  return seite.events ?? []
+}
+
+export interface SuiteStand {
+  brauche?: string
+  fertig?: boolean
+  arbeitet?: string
+  freigaben: Freigabe[]
+}
+
+/** What the tail and the driver say about one room. */
+export function suiteStand(events: readonly RaumEreignis[], suite: Suite, fahrstand?: Fahrstand): SuiteStand {
+  const messages = events.map(e => nachrichtAus(e, suite.mitglieder)).filter((m): m is Nachricht => m !== undefined)
+
+  return {
+    brauche: brauchtAus(messages),
+    fertig: fertigAus(messages) || undefined,
+    arbeitet: werArbeitet(events) ?? (fahrstand?.working ? RAUMLEITER : undefined),
+    freigaben: (fahrstand?.pending_actions ?? []).filter(a => a.kind === 'approval')
   }
 }
 
-/** Walk into a suite: the room mounts its chat and its four zones; the lobby stays behind. */
-export async function oeffneSuite(suite: Pick<Suite, 'id' | 'resolvedId'> & Partial<Suite>): Promise<void> {
-  $aktiveSuite.set({ id: suite.id, resolvedId: suite.resolvedId, titel: suite.titel ?? suite.id })
+let ladeGeneration = 0
+
+/** Read the tails of the newest rooms and mark which need the person. Stale reads never win. */
+async function verfeinern(suites: readonly Suite[], generation: number): Promise<void> {
+  const staende = await Promise.all(
+    suites.slice(0, DETAIL_HOECHSTENS).map(async suite => {
+      try {
+        const [events, stand] = await Promise.all([schweif(suite), ladeStand(suite.id).catch(() => undefined)])
+
+        return [suite.id, suiteStand(events, suite, stand?.driver_status)] as const
+      } catch {
+        return [suite.id, undefined] as const
+      }
+    })
+  )
+
+  if (generation !== ladeGeneration) {
+    return
+  }
+
+  const nachId = new Map(staende)
+
+  $suites.set(
+    $suites.get().map(suite => {
+      const stand = nachId.get(suite.id)
+
+      return stand ? { ...suite, brauche: stand.brauche, fertig: stand.fertig, arbeitet: stand.arbeitet } : suite
+    })
+  )
+  $suitesBrauchen.set(
+    staende.filter(([, stand]) => stand && (stand.brauche || stand.freigaben.length > 0)).map(([id]) => id)
+  )
+}
+
+/** The rooms, as the gateway has them. A thrown error is an error, never "no suites". */
+export async function ladeSuites(): Promise<void> {
+  $suitesStatus.set('laedt')
+  const generation = ++ladeGeneration
+
+  try {
+    const result = await anfrage<{ rooms?: RaumZeile[] }>('groups.list', { limit: 200 })
+
+    if (generation !== ladeGeneration) {
+      return
+    }
+
+    const bekannt = new Map($suites.get().map(s => [s.id, s]))
+
+    const suites = suitenAusRaeumen(result?.rooms ?? []).map(suite => {
+      const alt = bekannt.get(suite.id)
+
+      return alt ? { ...suite, brauche: alt.brauche, fertig: alt.fertig, arbeitet: alt.arbeitet } : suite
+    })
+
+    $suites.set(suites)
+    $suitesFehler.set(null)
+    $suitesStatus.set('bereit')
+    await verfeinern(suites, generation)
+  } catch (error) {
+    if (generation === ladeGeneration) {
+      $suitesFehler.set(fehlertext(error))
+      $suitesStatus.set('fehler')
+    }
+  }
+}
+
+/** Walk into a suite: the room mounts its log and its four zones; the lobby stays behind. */
+export function oeffneSuite(suite: Suite): void {
+  $aktiveSuite.set(suite)
   setArea('suites')
 }
 
-/** Back to the lobby. The session keeps running on the backend. */
+/** Back to the lobby. The room keeps running on the gateway. */
 export function verlasseSuite(): void {
   $aktiveSuite.set(null)
 }
@@ -143,78 +517,78 @@ export function eroeffnungsText(name: string, ziel: string, { annahmen, takt }: 
   return lines.join('\n')
 }
 
-async function suiteMitTitel(name: string): Promise<Suite | undefined> {
-  const result = await anfrage<{ sessions?: SessionListRow[] }>('session.list', {
-    include_hidden: true,
-    title: name
+const ereignisId = (): string => `tikki:${crypto.randomUUID().replace(/-/g, '')}`
+
+/** One `message.user` into the room's main thread, text as given (the core knows no names). */
+async function senden(roomId: string, text: string): Promise<RaumEreignis> {
+  const result = await anfrage<{ event: RaumEreignis }>('groups.send', {
+    room_id: roomId,
+    event_id: ereignisId(),
+    payload: { text, thread_id: HAUPTFADEN }
   })
 
-  return suitenAusZeilen(result?.sessions ?? [])[0]
+  return result.event
 }
 
-interface RaumAnlage {
-  model?: string
-  provider?: string
-  spawnPriority?: 'background' | 'foreground'
+/** The person speaks: the name goes in front so several people stay apart in one room. */
+export const auftragGeben = (suite: Pick<Suite, 'id'>, text: string): Promise<RaumEreignis> =>
+  senden(suite.id, `${$mensch.get()}: ${text.trim()}`)
+
+/** A door: this room speaks into another, addressed to its room lead. */
+export const tuerSenden = (von: Pick<Suite, 'titel'>, nach: Pick<Suite, 'id'>, text: string): Promise<RaumEreignis> =>
+  senden(nach.id, `[Tür aus „${von.titel}“] @raumleiter ${text.trim()}`)
+
+/** Answer one pending approval of a member in the room. */
+export const freigeben = (suite: Pick<Suite, 'id'>, freigabe: Freigabe, choice: 'once' | 'deny'): Promise<unknown> =>
+  anfrage('groups.approve', {
+    room_id: suite.id,
+    member_id: freigabe.member_id ?? '',
+    task_id: freigabe.task_id ?? '',
+    execution_generation: freigabe.execution_generation ?? 0,
+    choice,
+    request_id: freigabe.request_id ?? ''
+  })
+
+export const aufloesen = (suite: Pick<Suite, 'id'>): Promise<unknown> =>
+  anfrage('groups.disband', { room_id: suite.id })
+
+export const umbenennen = async (suite: Pick<Suite, 'id'>, name: string): Promise<void> => {
+  await anfrage('groups.rename', { room_id: suite.id, event_id: `tikki-name:${crypto.randomUUID()}`, name })
+  await ladeSuites()
 }
 
 /**
- * One room on the backend: exact-title lookup first (titles are unique per
- * profile, so a second attempt adopts instead of forking), then create and
- * title (which materialises the lazy row). `neu` says whether the room is
- * fresh and still needs its brief.
+ * One room on the gateway: an existing room of exactly this name is adopted
+ * (a repeated handoff is a no-op), else it is created with the base crew and
+ * the chosen roles. `neu` says whether the room still needs its brief.
  */
-async function raumAnlegen(
-  titel: string,
-  { model, provider, spawnPriority = 'foreground' }: RaumAnlage = {}
-): Promise<{ neu: boolean; runtime?: string; suite: Suite }> {
-  const vorhanden = await suiteMitTitel(titel)
+async function raumAnlegen(titel: string, rollen: readonly string[] = []): Promise<{ neu: boolean; suite: Suite }> {
+  if ($suitesStatus.get() !== 'bereit') {
+    await ladeSuites()
+  }
+
+  const vorhanden = $suites.get().find(s => s.titel === titel)
 
   if (vorhanden) {
     return { neu: false, suite: vorhanden }
   }
 
-  const created = await anfrage<SessionCreateResult>(
-    'session.create',
-    {
-      follow_profile_config: true,
-      source: SUITE_QUELLE,
-      title: titel,
-      ...(model ? { model, provider } : {})
-    },
-    undefined,
-    spawnPriority
-  )
+  const created = await anfrage<{ room: RaumZeile }>('groups.create', {
+    room_id: raumId(titel),
+    name: titel,
+    members: raumMitglieder(rollen)
+  })
 
-  const runtime = created?.session_id
-  const stored = created?.stored_session_id
-
-  if (!runtime || !stored) {
-    throw new Error('session.create returned no session id')
+  if (!created?.room?.room_id) {
+    throw new Error('groups.create returned no room')
   }
 
-  try {
-    await anfrage('session.title', { session_id: runtime, title: titel }, undefined, spawnPriority)
-  } catch (error) {
-    if (/already in use/i.test(fehlertext(error))) {
-      const gewinner = await suiteMitTitel(titel)
-
-      if (gewinner) {
-        return { neu: false, suite: gewinner }
-      }
-    }
-
-    throw error
-  }
-
-  return { neu: true, runtime, suite: { id: stored, titel } }
+  return { neu: true, suite: alsSuite(created.room) }
 }
 
-/** The brief is the first turn; its answer arrives over the session socket, so it is not awaited. */
-function auftragGeben(runtime: string, text: string, spawnPriority: 'background' | 'foreground' = 'foreground') {
-  void anfrage('prompt.submit', { session_id: runtime, text }, PROMPT_SUBMIT_REQUEST_TIMEOUT_MS, spawnPriority).catch(
-    error => $suitesFehler.set(fehlertext(error))
-  )
+/** The brief is the first message; the room lead's answer arrives in the log. */
+function eroeffnen(suite: Suite, text: string): void {
+  void auftragGeben(suite, `@raumleiter ${text}`).catch(error => $suitesFehler.set(fehlertext(error)))
 }
 
 /**
@@ -222,23 +596,19 @@ function auftragGeben(runtime: string, text: string, spawnPriority: 'background'
  * them: the person's own room never waits on them. A standing order is not
  * practised (repeating a permanent job N times teaches nothing).
  */
-async function uebungenStarten(name: string, ziel: string): Promise<number> {
+async function uebungenStarten(name: string, ziel: string, rollen: readonly string[]): Promise<number> {
   const gewuenscht = $uebungslaeufe.get()
-  const frei = freieUebungen(gewuenscht, $workingSessionIds.get().length, $kapazitaet.get())
+  const laufend = $suites.get().filter(s => s.arbeitet).length
+  const frei = freieUebungen(gewuenscht, laufend, $kapazitaet.get())
   let gestartet = 0
 
   for (let nr = 2; nr < 2 + frei; nr += 1) {
-    const ansatz = ansatzFuer(nr)
-
     try {
-      const raum = await raumAnlegen(uebungsTitel(name, $mensch.get(), nr), {
-        model: ansatz.model,
-        provider: ansatz.provider,
-        spawnPriority: 'background'
-      })
+      const raum = await raumAnlegen(uebungsTitel(name, $mensch.get(), nr), rollen)
 
-      if (raum.neu && raum.runtime) {
-        auftragGeben(raum.runtime, uebungsEroeffnung(nr, gewuenscht, ansatz, name, ziel), 'background')
+      if (raum.neu) {
+        $suites.set([raum.suite, ...$suites.get()])
+        eroeffnen(raum.suite, uebungsEroeffnung(nr, gewuenscht, ansatzFuer(nr), name, ziel))
         gestartet += 1
       }
     } catch {
@@ -250,19 +620,21 @@ async function uebungenStarten(name: string, ziel: string): Promise<number> {
 }
 
 export interface NeueSuiteOptionen extends Eroeffnung {
-  /** False opens the room on the backend without walking into it (Vorzimmer handoff). */
+  /** Catalogue roles at the table from the start, besides the base crew. */
+  rollen?: readonly string[]
+  /** False opens the room on the gateway without walking into it (Vorzimmer handoff). */
   oeffnen?: boolean
 }
 
 /**
- * Open a new suite: the person's room first — created, titled, entered and
- * briefed before anything else — then, in the background, the practice runs.
+ * Open a new suite: the person's room first — created, entered and briefed
+ * before anything else — then, in the background, the practice runs.
  * Returns the person's suite, or undefined when nothing could be opened.
  */
 export async function neueSuite(
   name: string,
   ziel: string,
-  { oeffnen = true, ...eroeffnung }: NeueSuiteOptionen = {}
+  { oeffnen = true, rollen = [], ...eroeffnung }: NeueSuiteOptionen = {}
 ): Promise<Suite | undefined> {
   const titel = name.trim()
 
@@ -273,26 +645,109 @@ export async function neueSuite(
   $suiteEntsteht.set(titel)
 
   try {
-    const raum = await raumAnlegen(titel)
+    const raum = await raumAnlegen(titel, rollen)
 
-    if (oeffnen) {
-      await oeffneSuite(raum.suite)
+    if (raum.neu) {
+      $suites.set([raum.suite, ...$suites.get()])
     }
 
-    if (raum.neu && raum.runtime) {
-      auftragGeben(raum.runtime, eroeffnungsText(titel, ziel, eroeffnung))
+    if (oeffnen) {
+      oeffneSuite(raum.suite)
+    }
+
+    if (raum.neu) {
+      eroeffnen(raum.suite, eroeffnungsText(titel, ziel, eroeffnung))
 
       if (!eroeffnung.takt?.trim()) {
-        void uebungenStarten(titel, ziel).then(gestartet => (gestartet ? ladeSuites() : undefined))
+        void uebungenStarten(titel, ziel, rollen).then(gestartet => (gestartet ? ladeSuites() : undefined))
       }
-
-      await ladeSuites()
     }
 
     return raum.suite
   } catch (error) {
     $suitesFehler.set(fehlertext(error))
     $suitesStatus.set($suites.get().length ? 'bereit' : 'fehler')
+
+    return undefined
+  } finally {
+    $suiteEntsteht.set(null)
+  }
+}
+
+/** The last words of a room as a quote, for a merged room's opening. */
+export function zusammenfassung(
+  suite: Suite,
+  messages: readonly Nachricht[],
+  anzahl = VERSCHMELZEN_NACHRICHTEN
+): string {
+  const letzte = messages.filter(m => !m.still).slice(-anzahl)
+
+  return [
+    `## ${suite.titel}`,
+    ...(letzte.length
+      ? letzte.map(n => `- ${n.name}: ${n.text.split(/\s+/).join(' ').slice(0, 600)}`)
+      : ['- (noch nichts gesagt)'])
+  ].join('\n')
+}
+
+export const verschmelzenText = (a: Suite, b: Suite, standA: string, standB: string): string =>
+  `@raumleiter Dieser Raum ist aus zwei Räumen verschmolzen: „${a.titel}“ und „${b.titel}“. ` +
+  'Hier der Stand beider; führe sie zu einem Ziel zusammen und sag, was als Nächstes dran ist.\n\n' +
+  `${standA}\n\n${standB}`
+
+/** Members of both rooms, one per profile, first room first. */
+export function vereinteMitglieder(a: readonly Mitglied[], b: readonly Mitglied[]): Mitglied[] {
+  const aus: Mitglied[] = []
+
+  for (const m of [...a, ...b]) {
+    if (!aus.some(x => x.profile === m.profile)) {
+      aus.push({ member_id: m.member_id, profile: m.profile, handle: m.handle, display_name: m.display_name })
+    }
+  }
+
+  return aus
+}
+
+const nachrichtenVon = async (suite: Suite): Promise<Nachricht[]> => {
+  const { events } = await ladeVerlauf(suite.id)
+
+  return events.map(e => nachrichtAus(e, suite.mitglieder)).filter((m): m is Nachricht => m !== undefined)
+}
+
+/**
+ * Two rooms become one: members united, the last words of both as the
+ * opening, the old rooms disbanded. The core cannot change a roster, hence a
+ * new room; the members' sessions from the old rooms remain as memory.
+ */
+export async function verschmelzen(a: Suite, b: Suite): Promise<Suite | undefined> {
+  const titel = `${a.titel} + ${b.titel}`
+
+  if ($suiteEntsteht.get()) {
+    return undefined
+  }
+
+  $suiteEntsteht.set(titel)
+
+  try {
+    const [na, nb] = await Promise.all([nachrichtenVon(a), nachrichtenVon(b)])
+
+    const created = await anfrage<{ room: RaumZeile }>('groups.create', {
+      room_id: raumId(titel),
+      name: titel,
+      members: vereinteMitglieder(a.mitglieder, b.mitglieder)
+    })
+
+    const neu = alsSuite(created.room)
+
+    await senden(neu.id, `${$mensch.get()}: ${verschmelzenText(a, b, zusammenfassung(a, na), zusammenfassung(b, nb))}`)
+    await Promise.all([aufloesen(a), aufloesen(b)])
+    $suites.set([neu, ...$suites.get().filter(s => s.id !== a.id && s.id !== b.id)])
+    oeffneSuite(neu)
+    void ladeSuites()
+
+    return neu
+  } catch (error) {
+    $suitesFehler.set(fehlertext(error))
 
     return undefined
   } finally {

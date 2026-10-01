@@ -122,7 +122,6 @@ interface AreaLabels {
     todoWand: string
     zurueck: string
     betreten: string
-    einfuehrung: string
     erneut: string
     fehler: string
     hauptmodell: string
@@ -132,9 +131,9 @@ interface AreaLabels {
     leerHinweis: string
     name: string
     namePlatzhalter: string
-    nachrichten: (n: number) => string
+    mitglieder: (n: number) => string
     neu: string
-    profilFehlt: string
+    raumdienstFehlt: string
     verlauf: string
     wirdEroeffnet: string
     ziel: string
@@ -146,17 +145,35 @@ interface AreaLabels {
     verbindenName: string
     aufmerksamkeit: string
     allesRuhig: string
-    neueNachrichten: string
     wartetAufDich: string
+    fertigGemeldet: string
+    brauchtDich: string
+    stand: string
     takt: string
     taktEinmalig: string
     taktEigener: string
     taktPlatzhalter: string
     dauerauftrag: string
+    rollen: string
     uebungenGeplant: (n: number) => string
     uebungslaeufe: (n: number) => string
     uebungslauf: (nr: number) => string
-    ansatz: string
+    keineNachrichten: string
+    denkt: (name: string) => string
+    schreiben: string
+    senden: string
+    freigabe: string
+    freigabeEinmal: string
+    freigabeAblehnen: string
+    tuerNach: (name: string) => string
+    tuerText: string
+    tuerPlatzhalter: string
+    tuerSenden: string
+    tuerBetreten: string
+    tuerGesendet: (name: string) => string
+    verschmelzen: string
+    verschmelzenHinweis: string
+    verschmelzenMit: (name: string) => string
   }
 }
 
@@ -354,8 +371,6 @@ const de: AreaLabels = {
     todoWand: 'To-do-Wand',
     zurueck: 'Zur Lobby',
     betreten: 'Betreten',
-    einfuehrung:
-      'Eine Suite ist ein eigener Raum für ein Vorhaben. Der Raumleiter sitzt von Anfang an am Tisch, bespricht mit dir das Ziel und holt die Bots dazu, die er braucht. Alles, was zur Suite gehört, bleibt in der Suite.',
     erneut: 'Erneut versuchen',
     fehler: 'Die Suites konnten nicht geladen werden.',
     hauptmodell: 'Hauptmodell',
@@ -365,10 +380,10 @@ const de: AreaLabels = {
     leerHinweis: 'Die erste entsteht, wenn du hier eine eröffnest oder Tikki im Vorzimmer einen Auftrag bekommt.',
     name: 'Name der Suite',
     namePlatzhalter: 'z. B. Urlaub Ostsee',
-    nachrichten: n => (n === 1 ? '1 Nachricht' : `${n} Nachrichten`),
+    mitglieder: n => (n === 1 ? '1 am Tisch' : `${n} am Tisch`),
     neu: 'Neue Suite',
-    profilFehlt:
-      'Das Profil „raumleiter“ gibt es auf diesem Backend noch nicht. Auf dem Rechner tikki/werkzeuge/rollen-einrichten.sh ausführen.',
+    raumdienstFehlt:
+      'Der Raumdienst läuft auf diesem Backend nicht. Das Hermes-Gateway neu starten (tikki/werkzeuge/rollen-einrichten.sh richtet es ein).',
     verlauf: 'Verlauf',
     wirdEroeffnet: 'Suite wird eröffnet …',
     ziel: 'Ziel',
@@ -379,17 +394,36 @@ const de: AreaLabels = {
     verbindenName: 'Name der Suite',
     aufmerksamkeit: 'Benötigt deine Aufmerksamkeit',
     allesRuhig: 'Alles ruhig. Keine Suite wartet auf dich.',
-    neueNachrichten: 'Neue Nachrichten in diesem Raum',
     wartetAufDich: 'Wartet auf deine Antwort',
+    fertigGemeldet: 'Der Raumleiter meldet: fertig',
+    brauchtDich: 'Braucht dich',
+    stand: 'Stand',
     takt: 'Takt',
     taktEinmalig: 'Einmalig – fertig ist fertig',
     taktEigener: 'Eigener Takt …',
     taktPlatzhalter: 'z. B. alle 2 Stunden, montags 09:00, 0 7 * * *',
     dauerauftrag: 'Dauerauftrag',
-    uebungenGeplant: n => (n > 1 ? `Dazu ${n - 1} Übungsläufe mit anderen Modellen, wenn Kapazität frei ist.` : ''),
+    rollen: 'Bots von Anfang an am Tisch (Raumleiter und deine KI sitzen immer dort)',
+    uebungenGeplant: n => (n > 1 ? `Dazu ${n - 1} Übungsläufe mit anderen Ansätzen, wenn Kapazität frei ist.` : ''),
     uebungslaeufe: n => (n === 1 ? '1 Übungslauf' : `${n} Übungsläufe`),
     uebungslauf: nr => `Übungslauf ${nr}`,
-    ansatz: 'Ansatz',
+    keineNachrichten: 'Noch nichts gesagt. Der Raumleiter meldet sich, sobald er geplant hat.',
+    denkt: name => `${name} denkt …`,
+    schreiben: 'In den Raum sprechen … (Enter sendet, @raumleiter weckt nur ihn)',
+    senden: 'Senden',
+    freigabe: 'bittet um Freigabe',
+    freigabeEinmal: 'Einmal erlauben',
+    freigabeAblehnen: 'Ablehnen',
+    tuerNach: name => `Durch die Tür nach „${name}“`,
+    tuerText: 'Nachricht an den anderen Raum',
+    tuerPlatzhalter: 'Was soll der Raumleiter dort wissen oder tun?',
+    tuerSenden: 'Durch die Tür schicken',
+    tuerBetreten: 'Hinübergehen',
+    tuerGesendet: name => `An „${name}“ geschickt.`,
+    verschmelzen: 'Verschmelzen',
+    verschmelzenHinweis:
+      'Zwei Räume werden einer: alle Bots beider Räume an einem Tisch, der Stand beider als Auftakt. Die alten Räume werden aufgelöst.',
+    verschmelzenMit: name => `Mit „${name}“ verschmelzen`,
     zielPlatzhalter: 'Ein Satz: Was muss am Ende fertig sein?'
   }
 }
@@ -587,8 +621,6 @@ const en: AreaLabels = {
     todoWand: 'To-do wall',
     zurueck: 'To the lobby',
     betreten: 'Enter',
-    einfuehrung:
-      'A suite is a room of its own for one undertaking. The room lead sits at the table from the start, works out the goal with you and brings in the bots it needs. Everything that belongs to the suite stays in the suite.',
     erneut: 'Try again',
     fehler: 'The suites could not be loaded.',
     hauptmodell: 'Primary model',
@@ -598,10 +630,10 @@ const en: AreaLabels = {
     leerHinweis: 'The first one appears when you open one here or Tikki is given a task at the front desk.',
     name: 'Suite name',
     namePlatzhalter: 'e.g. Baltic Sea holiday',
-    nachrichten: n => (n === 1 ? '1 message' : `${n} messages`),
+    mitglieder: n => (n === 1 ? '1 at the table' : `${n} at the table`),
     neu: 'New suite',
-    profilFehlt:
-      'The profile "raumleiter" does not exist on this backend yet. Run tikki/werkzeuge/rollen-einrichten.sh on the machine.',
+    raumdienstFehlt:
+      'The room service is not running on this backend. Restart the Hermes gateway (tikki/werkzeuge/rollen-einrichten.sh sets it up).',
     verlauf: 'History',
     wirdEroeffnet: 'Opening suite …',
     ziel: 'Goal',
@@ -612,17 +644,36 @@ const en: AreaLabels = {
     verbindenName: 'Suite name',
     aufmerksamkeit: 'Needs your attention',
     allesRuhig: 'All quiet. No suite is waiting for you.',
-    neueNachrichten: 'New messages in this room',
     wartetAufDich: 'Waiting for your answer',
+    fertigGemeldet: 'The room lead reports: done',
+    brauchtDich: 'Needs you',
+    stand: 'Status',
     takt: 'Schedule',
     taktEinmalig: 'Once – done is done',
     taktEigener: 'Custom schedule …',
     taktPlatzhalter: 'e.g. alle 2 Stunden, montags 09:00, 0 7 * * *',
     dauerauftrag: 'Standing order',
-    uebungenGeplant: n => (n > 1 ? `Plus ${n - 1} practice runs with other models when capacity allows.` : ''),
+    rollen: 'Bots at the table from the start (the room lead and your AI always sit there)',
+    uebungenGeplant: n => (n > 1 ? `Plus ${n - 1} practice runs with other approaches when capacity allows.` : ''),
     uebungslaeufe: n => (n === 1 ? '1 practice run' : `${n} practice runs`),
     uebungslauf: nr => `Practice run ${nr}`,
-    ansatz: 'Approach',
+    keineNachrichten: 'Nothing said yet. The room lead speaks up once it has planned.',
+    denkt: name => `${name} is thinking …`,
+    schreiben: 'Speak into the room … (Enter sends, @raumleiter wakes only the lead)',
+    senden: 'Send',
+    freigabe: 'asks for approval',
+    freigabeEinmal: 'Allow once',
+    freigabeAblehnen: 'Deny',
+    tuerNach: name => `Through the door to “${name}”`,
+    tuerText: 'Message to the other room',
+    tuerPlatzhalter: 'What should the room lead over there know or do?',
+    tuerSenden: 'Send through the door',
+    tuerBetreten: 'Walk over',
+    tuerGesendet: name => `Sent to “${name}”.`,
+    verschmelzen: 'Merge',
+    verschmelzenHinweis:
+      'Two rooms become one: every bot of both rooms at one table, the state of both as the opening. The old rooms are disbanded.',
+    verschmelzenMit: name => `Merge with “${name}”`,
     zielPlatzhalter: 'One sentence: what has to be done in the end?'
   }
 }

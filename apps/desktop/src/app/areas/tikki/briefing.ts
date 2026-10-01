@@ -26,8 +26,8 @@ export interface BriefingDaten {
   datum: Date
   mails: BriefingMail[] | null
   chats: BriefingChat[] | null
-  wartend: Suite[]
-  zuletzt: Suite[]
+  wartend: Pick<Suite, 'id' | 'titel'>[]
+  zuletzt: Pick<Suite, 'id' | 'titel'>[]
 }
 
 const WA_BRIDGE = 'http://127.0.0.1:8765'

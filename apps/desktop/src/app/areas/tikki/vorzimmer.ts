@@ -1,14 +1,14 @@
 // The Vorzimmer hands work over by protocol: when Tikki's finished reply
 // carries `RAUM:` and `ZIEL:` lines, the room opens on its own — in the
 // background, the person stays where they are, a toast offers the way in.
-// The exact-title adopt in neueSuite makes a repeated handoff a no-op.
+// The exact-name adopt in neueSuite makes a repeated handoff a no-op.
 
 import { chatMessageText } from '@/lib/chat-messages/parts'
 import { notify } from '@/store/notifications'
 import { $sessionStates, runtimeSessionOwner } from '@/store/session-states'
 
 import { oeffneImBrowser } from '../browser-area'
-import { $aktiveSuite, $suites, neueSuite, oeffneSuite, SUITE_PROFIL } from '../suites/store'
+import { neueSuite, oeffneSuite, RAUMLEITER } from '../suites/store'
 
 export interface RaumAuftrag {
   name: string
@@ -48,16 +48,6 @@ export function raumAuftragAusText(text: string): RaumAuftrag | undefined {
   return { name, ziel, ...(annahmen ? { annahmen } : {}), ...(takt ? { takt } : {}) }
 }
 
-const istSuite = (storedId: null | string | undefined): boolean => {
-  if (!storedId) {
-    return false
-  }
-
-  const aktiv = $aktiveSuite.get()
-
-  return aktiv?.id === storedId || $suites.get().some(s => s.id === storedId || s.resolvedId === storedId)
-}
-
 const ownerProfil = (runtimeId: string): string | undefined => {
   const owner = runtimeSessionOwner(runtimeId)
 
@@ -73,7 +63,7 @@ async function uebergeben(auftrag: RaumAuftrag): Promise<void> {
 
   if (suite) {
     notify({
-      action: { label: 'Suite betreten', onClick: () => void oeffneSuite(suite) },
+      action: { label: 'Suite betreten', onClick: () => oeffneSuite(suite) },
       id: `suite-eroeffnet:${suite.id}`,
       kind: 'success',
       message: auftrag.takt
@@ -85,8 +75,9 @@ async function uebergeben(auftrag: RaumAuftrag): Promise<void> {
 }
 
 /**
- * Watch every session for a turn that just settled (busy → idle). Suites and
- * the room lead's own sessions are skipped: only the Vorzimmer opens rooms.
+ * Watch every session for a turn that just settled (busy → idle). The room
+ * lead's own sessions are skipped (rooms are no sessions of this app, their
+ * members' turns run on the gateway): only the Vorzimmer opens rooms.
  * Returns the unsubscribe.
  */
 export function startVorzimmerWache(): () => void {
@@ -98,7 +89,7 @@ export function startVorzimmerWache(): () => void {
       const vorher = warBeschaeftigt.get(runtimeId)
       warBeschaeftigt.set(runtimeId, Boolean(state.busy))
 
-      if (!vorher || state.busy || istSuite(state.storedSessionId) || ownerProfil(runtimeId) === SUITE_PROFIL) {
+      if (!vorher || state.busy || ownerProfil(runtimeId) === RAUMLEITER) {
         continue
       }
 

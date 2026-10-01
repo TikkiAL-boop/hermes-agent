@@ -481,48 +481,75 @@ Offen an den Suites: Räume aus dem Vorzimmer heraus öffnen (Tikkis `RAUM:`-Ant
 Vorschau von Dateien direkt im Output-Screen (heute öffnen Links extern, Dateien sind nur
 gelistet), Umbenennen, Archivieren, Nutzerrechte je Suite, Raum-Postfach.
 
-### 4.8 Dauerbetrieb: Takt, Wachhalter, Übungsläufe (`tikki/werkzeuge/suite_takt.py`)
+### 4.8 Dauerbetrieb: Takt, Türen, Wachhalter, Übungsläufe (`tikki/werkzeuge/suite_takt.py`)
 
-**Takt steht im Raum.** Die letzte Zeile `TAKT: …` im Raum (vom Menschen im Eröffnungstext, von
-Tikki im Vorzimmer oder vom Raumleiter bestätigt) gilt; `TAKT: aus` beendet ihn. Verstanden:
-stündlich, halbstündlich, alle N Minuten/Stunden, täglich [HH:MM], werktags [HH:MM], montags …
-sonntags [HH:MM], Cron mit fünf Feldern und alles, was Hermes' `parse_schedule` kennt.
+**Was wo läuft.** Die Räume fährt Hermes selbst: ein Tikki-Raum ist ein gehosteter Gruppenraum
+(`gateway/hosted_rooms.py`, Speicher `<Hermes-Wurzel>/shared-state.db`, Regeln
+`gateway/hosted_room_discussion.py`). Der **Gateway-Prozess** (`hermes gateway run`, oder jedes
+`hermes serve`) plant nach jeder Nachricht des Menschen die Runden der Mitglieder und führt sie in
+den Profilen aus – auch bei geschlossener App. Der 24/7-Treiber ist deshalb `hermes gateway install`
+(ein Gateway genügt; es bedient alle Profile). Sitzungen der Mitglieder heißen `Group: <raum-id>` im
+jeweiligen Profil – **nie** per `hermes chat --resume` anfassen, sie sind eingezäunt; alles geht über
+`raeume.senden`. Grenzen des Kerns: je Mensch-Nachricht höchstens **3 Runden und 10 veröffentlichte
+Antworten**, **ein laufender Turn je Profil** über alle Räume (`turn_lock` in
+`tui_gateway/hosted_room_driver.py` – zwei Räume mit demselben Rechercheur warten aufeinander),
+**4 Räume gleichzeitig je Gateway-Prozess** (`HostedRoomRuntime(max_concurrent_rooms=4)`), 128
+Mitglieder je Raum, 256 aktive Räume. Eine Nachricht ohne `@` fragt **jedes** Mitglied der Reihe
+nach – darum sprechen Takt, Türen, Wachhalter und Übungsergebnisse immer `@raumleiter` an.
 
-**Runden im Backend.** Ein Hermes-Cronjob `tikki-takt` im Profil `raumleiter` (alle 5 Minuten,
-ohne Modell, Skript `scripts/tikki-takt.sh`) ruft `suite_takt takt`. Der liest `state.db`
-read-only, findet fällige Räume (Hermes' `compute_next_run` ab der letzten Runde; ein neuer Takt
-beginnt beim ersten Sehen) und startet je Raum einen eigenen Prozess
-`hermes -p raumleiter chat --resume <sitzung> -Q --query-file …`. Zustand in
-`<profil>/tikki/takt.json` (Dateisperre), Protokolle in `<profil>/tikki/runden/<id>.log`,
-höchstens 8 Runden gleichzeitig (`--parallel`). **Ein Schreiber je Sitzung:** Hermes lehnt die
-Runde ab, solange der Raum in der App offen ist; die Runde wartet bis 30 Minuten. Deshalb gibt
-der Raum beim Verlassen die ruhende Sitzung frei (`session.close` in `suite-runtime.ts`). Nach
-Stromausfall holt der nächste Takt die versäumte Runde einmal nach; drei Fehlschläge hintereinander
-verschieben auf die nächste Gelegenheit. Damit das nach einem Neustart weiterläuft, muss das
-Gateway des Raumleiters als Dienst laufen: `hermes -p raumleiter gateway install`.
+**Konventionen** (fest, mit dem Desktop-Team geteilt): Raum-Kennungen beginnen mit `tikki-`, der
+Hauptfaden heißt `haupt`, Nachrichten des Menschen stehen als `"<Name>: <text>"` im Log. Mitglieder
+sprechen nur mit etwas Neuem, sonst genau `(pass)`. Der Raumleiter schreibt je Zeile `STAND: …`,
+`BRAUCHE: …`, `FERTIG: …`, `AUFGABEN:` mit `- [ ] …`/`- [x] …`, `TÜR: <Raum> | <Text>`; `TAKT: …`
+steht in der Eröffnung des Menschen (oder der Raumleiter bestätigt sie; die letzte Zeile gilt,
+`TAKT: aus` beendet). Nur Zeilen des Raumleiters zählen – das `STAND: <Datum>` des Rechercheurs ist
+keine Raumaussage. `BRAUCHE:` gilt nur, wenn danach keine Nachricht des Menschen kam
+(Systemnachrichten `TAKT-RUNDE`, `WACHHALTER:`, `ÜBUNGSERGEBNIS`, `LERNEN:`, `[Tür …]` zählen nicht).
 
-**Wachhalter** (Rolle `wachhalter`, Port 8662, Claude-Abo → Codex-Abo → lokal): Cronjob
-`tikki-rundgang` alle 15 Minuten, Vorlauf-Skript `tikki-raumbericht.sh` (= `suite_takt bericht`:
-je Suite Zustand, Stille, Takt, offene To-dos, `BRAUCHE:`, `STAND:`). Er weckt stille Räume mit
-`suite_takt runde <id> --text "WACHHALTER: …"`, lässt Ergebnisse prüfen, beantwortet nie
-`BRAUCHE:`-Fragen. SOUL: `tikki/rollen/wachhalter/SOUL.md`.
+**Taktgeber ohne Modell.** Cronjob `tikki-takt` im Profil `raumleiter` (alle 5 Minuten,
+`--no-agent`, Skript `scripts/tikki-takt.sh`) ruft `suite_takt takt`. Der liest alle Räume über
+`raeume.liste()`/`verlauf()` (lange Räume: Anfang + die letzten 1500 Ereignisse), hält seinen
+Zustand in `<Hermes-Wurzel>/tikki/takt.json` (fcntl-Sperre) und stellt drei Arten von Nachrichten
+ein, alle über `raeume.senden`/`raeume.tuer`:
 
-**Übungsläufe.** Admin → Betrieb: „Übungsläufe je Auftrag“ (Standard 4, 1 = aus), „Gleichzeitige
-Räume“ (Standard 40), „Name des Menschen“ (`areas/admin/betrieb-store.ts`, je Installation
-gespeichert). `neueSuite()` legt zuerst den Raum des Menschen an, betritt ihn und gibt den Auftrag;
-erst danach, im Hintergrund, die Übungsräume `<Projekt>-<mensch>-<nr>@tikki.team` mit anderem Modell
-und Ansatz (`suites/uebung.ts`: xAI schnell, Claude gründlich, Codex breit, lokal, …), nur so viele,
-wie die Kapazität minus laufende Räume erlaubt, nie bei Daueraufträgen. Das Backend (`takt`) leitet
-das **erste fertige** Übungsergebnis als `ÜBUNGSERGEBNIS …` in den Hauptraum, solange der nicht
-selbst fertig ist; sind alle durch, schreibt der Hauptraum nach `LERNEN: …` seine
-`ERFAHRUNG:`-Zeilen (landen über das Gedächtnis-Plugin in TencentDB und RAG). Die Lobby hängt
-Übungsräume unter ihr Projekt.
+- **Takt-Runde:** Takt verstanden wie bisher (stündlich, alle N Minuten, täglich HH:MM, werktags,
+  montags …, Cron, alles aus `parse_schedule`); fällig nach Hermes' `compute_next_run` ab der letzten
+  Runde, ein neu gesehener Takt beginnt mit der nächsten Gelegenheit. Dann genau eine Nachricht
+  `@raumleiter TAKT-RUNDE <n> · <Zeit>: …`. Dass der Raum danach wieder nur 3 Runden/10 Antworten
+  bekommt, ist der Sinn: der Takt stößt ihn alle N Minuten neu an.
+- **Türen:** neue `TÜR:`-Zeilen des Raumleiters seit der letzten gelesenen Zeile (`gesehen` je Raum)
+  werden einmal weitergereicht: Ziel nach genauem Namen, dann eindeutigem Namensanfang (ohne Groß-
+  und Kleinschreibung), dann Kennung; im Zielraum steht `[Tür aus „<Raum>“] @raumleiter <Text>`.
+  Unzustellbare Türen bleiben im Zustand (`unzustellbar`) und erscheinen im Bericht.
+- **Übungsläufe:** Räume `<Projekt>-<mensch>-<nr>@tikki.team` gehören zum Hauptraum `<Projekt>`
+  (`uebungsgruppen`). Das **erste fertige** Übungsergebnis geht als `@raumleiter ÜBUNGSERGEBNIS <nr>:
+  <FERTIG-Text + letzter STAND>` einmal in den Hauptraum, solange der nicht selbst fertig ist; sind
+  alle durch (fertig oder einen Tag still) und der Hauptraum fertig, einmal `@raumleiter LERNEN: …`
+  (Merker `_uebung` in takt.json). Anlegen der Übungsräume: App (Admin → Betrieb,
+  `suites/uebung.ts`), unverändert.
+
+**Bericht.** `suite_takt bericht [--json]` je Raum: Kennung, Titel, Mitglieder, still seit,
+Takt, letzte Takt-Runde, `STAND:`, `BRAUCHE:`, fertig, offene/erledigte Aufgaben, wer gerade
+arbeitet (`turn.started` ohne Ende), unzustellbare Türen. Das Briefing der PA (`plugins/pa/
+briefing.py`) nimmt daraus die Räume mit `BRAUCHE:`.
+
+**Wachhalter** (Rolle `wachhalter`, Port 8662, kein Raummitglied): Cronjob `tikki-rundgang` alle
+15 Minuten, Vorlauf-Skript `tikki-raumbericht.sh` (= `suite_takt bericht`). Er weckt stille Räume
+mit `hermes --run-module tikki.werkzeuge.raeume senden <raum> "@raumleiter WACHHALTER: …"` (kommt
+sofort zurück; das Gateway fährt die Runde), lässt `FERTIG:` ohne Prüferurteil prüfen, meldet Hänger
+und offene Türen, beantwortet nie `BRAUCHE:`. SOUL: `tikki/rollen/wachhalter/SOUL.md`.
+
+**SOULs im Raum.** Der Raumleiter ist Mitglied wie alle: seine Runde öffnet die Nachricht des
+Menschen oder die `TAKT-RUNDE`; Kolleginnen und Kollegen spricht er mit `@slug` an und liest ihre
+Antworten in den Folgerunden; `delegation` nur für zusätzliche Hände, die kein Mitglied sind. Jede
+andere Rolle hat einen Abschnitt „Im Raum“ (alles mitlesen, nur angesprochen oder mit Neuem
+sprechen, sonst `(pass)`, nie selbst `BRAUCHE:` – das sagt sie `@raumleiter`). Tests:
+`tests/tikki/test_suite_takt.py` (gegen den echten Speicher), `test_raeume.py`.
 
 **Wichtig – Werkzeuge der Bots:** Hermes gibt einem delegierten Kind nie mehr Werkzeuge als dem
-Elternteil (`tools/delegate_tool_toolsets.py`). Der Raumleiter hatte nur `delegation, todo` –
-seine Bots hätten weder Web noch Browser noch Terminal gehabt. Jetzt trägt er die Vereinigung aller
-Bot-Werkzeuge, und seine SOUL listet je Rolle die `toolsets`, die er mitgibt. Test:
-`test_room_lead_carries_every_bot_toolset_and_its_soul_names_them`.
+Elternteil (`tools/delegate_tool_toolsets.py`). Der Raumleiter trägt deshalb die Vereinigung aller
+Bot-Werkzeuge, und seine SOUL listet je Rolle die `toolsets`, die er mitgibt
+(Format ``- `slug`: tool, tool``). Test: `test_room_lead_carries_every_bot_toolset_and_its_soul_names_them`.
 
 ### 4.9 Gedächtnis-Plugin und TencentDB (`tikki/plugins/gedaechtnis/`, `tikki/dienste/tencentdb/`)
 

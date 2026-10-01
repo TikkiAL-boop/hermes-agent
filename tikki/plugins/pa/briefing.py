@@ -72,15 +72,16 @@ def erledigtes(seit: float, home: Path | None = None) -> list[dict]:
     return treffer
 
 
-def wartende_raeume(home: Path) -> list[dict]:
+def wartende_raeume() -> list[dict]:
+    """Räume, deren Raumleiter auf den Menschen wartet; die Räume liegen neben der Hermes-Wurzel, nicht im Profil."""
     try:
-        from tikki.werkzeuge.suite_takt import raeume
+        from tikki.werkzeuge.suite_takt import alle_raeume
     except Exception:
         return []
     try:
         return [
             {"titel": r.titel, "brauche": r.brauche, "stand": r.stand}
-            for r in raeume(home) if r.brauche
+            for r in alle_raeume() if r.brauche
         ][:10]
     except Exception:
         return []
@@ -125,7 +126,7 @@ def sammeln(home: Path, *, stempeln: bool = True, mails: int = 12) -> dict:
         except Exception as exc:  # Netz, Login – das Briefing fällt deswegen nicht aus
             ergebnis["post"] = None
             ergebnis["post_hinweis"] = f"Postfach nicht erreichbar: {type(exc).__name__}"
-    ergebnis["raeume"] = wartende_raeume(home)
+    ergebnis["raeume"] = wartende_raeume()
     ergebnis["whatsapp"] = neue_whatsapps()
     if stempeln:
         stand_setzen(ergebnis["jetzt"])

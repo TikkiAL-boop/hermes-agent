@@ -17,11 +17,16 @@ Alles darin ist gegen den Code geprüft; Vermutungen sind als solche markiert.
   IMAP/SMTP-Client für `name@tikki.team`) · **Terminal** · **Admin**.
 - **Bot-Truppe**: 13 Rollen (`tikki/rollen/`), je ein Hermes-Profil mit eigenem Port, Modell
   und Ausweichkette, per Skript einrichtbar; neu der **Wachhalter** (Rundgang durch alle Räume).
-- **Hermes-Kern (Python) hat keine geänderte Zeile.** Alle Tikki-Änderungen liegen in
-  `apps/desktop` und `tikki/`. Updates übernimmt `tikki/werkzeuge/hermes-aktualisieren.sh`
-  (Merge, nie Rebase; Abschnitt 4.12).
-- **Suites (Räume)** (4.7a): Lobby, Raum mit sichtbaren Wänden (Raumbild), rundem Tisch,
-  To-do-Wand, Daten- und Output-Screen. **Das Vorzimmer öffnet Suiten selbst**, sobald Tikki mit
+- **Hermes-Kern (Python): zwei bewusste, kleine Änderungen** (Abschnitt 10): der App-Name kommt
+  aus `productName` (`hermes_cli/desktop_identity.py`), und gehostete Gruppenräume nehmen 128
+  statt 6 Mitglieder (`gateway/hosted_room_discussion.py`). Alles andere liegt in `apps/desktop`
+  und `tikki/`. Updates übernimmt `tikki/werkzeuge/hermes-aktualisieren.sh` (Merge, nie Rebase;
+  Abschnitt 4.12).
+- **Räume (Suites)** (4.7a, 4.8): ein Raum ist ein **gehosteter Gruppenraum von Hermes** – er läuft
+  im Gateway weiter, wenn die App zu ist; Tikki, Raumleiter und „Deine KI“ sitzen in jedem Raum,
+  dazu beliebig viele Rollen aus dem Katalog; alle lesen alles mit. Lobby, Raum mit sichtbaren
+  Wänden, rundem Tisch (Raumlog), To-do-Wand, Daten- und Output-Screen, **Türen** zwischen Räumen
+  und **Verschmelzen** zweier Räume. **Die Raumübersicht öffnet Räume selbst**, sobald Tikki mit
   `RAUM:`/`ZIEL:` antwortet.
 - **Dauerbetrieb** (4.8): Räume mit `TAKT:` laufen im Backend rund um die Uhr weiter, auch ohne
   App; der Wachhalter weckt alle 15 Minuten stille Räume. **Übungsläufe** (Standard 4): jeder
@@ -451,35 +456,50 @@ eine Testmail senden.** Wenn der Server anders heißt oder Ports abweichen, die 
 `katalog.ts` importiert `tikki/rollen/KATALOG.json` direkt (relativer Pfad aus
 `apps/desktop/src/app/areas/admin/`), Typ `KatalogRolle`.
 
-### 4.7a Suites (`apps/desktop/src/app/areas/suites/`)
+### 4.7a Räume in der App (`apps/desktop/src/app/areas/suites/`, Stand 01.10.)
 
-Thorstens Bild (28.09.): Man geht in einen neuen Chat hinein wie in einen Raum. Am **runden
-Tisch** sitzt das Basismodell als Raumleiter, man bespricht das Vorhaben, er holt Bots aus
-dem Katalog dazu. An der Wand die **To-do-Liste**, dazu ein **Daten-Screen** (alles, was
-hineingegeben wurde) und ein **Output-Screen** (Ergebnisse: Recherche, Dateien, Vorschau,
-Dokumente). Physisch/virtuell getrennt von allem anderen. Chats heißen **Suites**. Die Liste
-(Verlauf) startet wie ein frisches Hermes: **null Suites**, keine Vorbefüllung.
+Thorstens Bild (28.09., erweitert 01.10.): Man geht in ein Projekt hinein wie in einen Raum. Am
+**runden Tisch** sitzt der Raumleiter, dazu von Anfang an Tikki (die PA) und „Deine KI“, man
+bespricht das Vorhaben, der Raumleiter holt Bots aus dem Katalog dazu – **so viele, wie der Raum
+braucht, alle lesen alles mit**. An der Wand die **To-do-Liste**, dazu ein **Daten-Screen** und
+ein **Output-Screen**. Räume haben **Türen** zueinander und lassen sich **verschmelzen**. Die Liste
+(Verlauf) startet wie ein frisches Hermes: null Räume.
+
+**Ein Raum ist ein gehosteter Gruppenraum von Hermes** (Bot Mode, `gateway/hosted_rooms.py`),
+kein Chat der App. Darum läuft er weiter, wenn die App zu ist (4.8), und darum gibt es keine
+6er-Grenze mehr (Kernänderung Nr. 2, Abschnitt 10). Die App redet mit ihm nur über die
+Gruppen-RPCs des Backends (`groups.list/create/state/send/log/approve/rename/disband`) und
+pollt den Raumlog alle 2 s – es gibt keinen Push. Dieselben Räume sieht und bedient
+`tikki/werkzeuge/raeume.py` von der Kommandozeile (4.8).
 
 | Datei | Zweck |
 |---|---|
-| `store.ts` | Eine Suite = Sitzung des Profils `raumleiter` mit `source: tikki-suite`. `ladeSuites()` = `session.list {profile, include_hidden}` gefiltert auf die Quelle (Fehler bleibt Fehler, nie „leer“). `neueSuite(name, ziel)`: exakte Titelsuche (adoptieren statt gabeln) → `session.create` → `session.title` (legt die Zeile an) → Raum öffnen → `prompt.submit` mit `RAUM:`/`ZIEL:` (Raumprotokoll). Alles über `requestGatewayForProfile('raumleiter')`. `$aktiveSuite` = der Raum, in dem man steht; `oeffneSuite`/`verlasseSuite`. |
-| `suites-area.tsx` | Lobby: Verlauf links (leer bis zur ersten Suite), Formular „Neue Suite“, Karte „Immer am Tisch“ (Raumleiter mit Haupt- und Ausweichmodell aus dem Katalog). Steht eine Suite in `$aktiveSuite`, zeigt der Bereich den Raum. |
-| `suite-room.tsx` | Der Raum: Kopf (Zur Lobby, Titel, Raumleiter, „arbeitet“), links **To-do-Wand** (`$todosBySession`, sonst `$retainedTodosBySession`, `todoTree`) und **Am Tisch** (Raumleiter + `$subagentsBySession`, Rolle per `AN:`-Zeile), Mitte **der Chat der Suite** (`TileChat` aus `app/chat/session-tile.tsx`, jetzt exportiert und mit festgenageltem `ownerRoute` auf `raumleiter`), rechts **Daten-Screen** und **Output-Screen**. |
-| `suite-runtime.ts` | `useSuiteRuntime(storedId)`: Owner-Hinweis für gespeicherte **und** Laufzeit-Id setzen (ohne den zweiten schlagen alle sitzungsgebundenen RPCs auf der Laufzeit-Id fehl), `sessionTileDelegate().resumeTile(storedId, {refreshTranscript})`, bei leerem Transkript einmal `getLatestSessionMessages` nachladen, daraus eine `SessionView` über `$sessionStates[runtimeId]`. Solange der Raum gemountet ist, hält er sein Transkript per `holdSessionTranscript(storedId)` (`store/session-states.ts`): der Zustandsspeicher wirft sonst beim ersten „fertig“-Publish jedes Transkript weg, das weder Hauptansicht noch Kachel ist, und der Raum ist keins von beiden. Kein zweiter Resume-Pfad, kein Layoutbaum, keine Seitenleiste. |
-| `suite-daten.ts` | Reine Funktionen: `eingabenAusNachrichten` (Anhänge und `@file:/@url:/…`-Nennungen aus Nutzer-Nachrichten), `ausgabenAusNachrichten` (Markdown-Links, URLs, absolute Pfade mit Endung aus Bot-Antworten). Der Output-Screen mischt dazu `$previewStatusBySession`, `artifactsForSession` und `filesWritten` der Bots. |
-| `uebung.ts` | Übungsläufe: Ansätze (Modell + Arbeitsweise), Titel `<Projekt>-<mensch>-<nr>@tikki.team`, `freieUebungen` (Kapazität), Eröffnungstext `ÜBUNG k/N` + `ANSATZ:`. |
-| `../tikki/vorzimmer.ts` | Vorzimmer-Wache: kippt eine Sitzung von „arbeitet“ auf „fertig“ und trägt Tikkis letzte Antwort `RAUM:` + `ZIEL:` (dazu `ANNAHMEN`, `TAKT`), öffnet `neueSuite(…, {oeffnen: false})` die Suite im Hintergrund und zeigt „Suite betreten“. Suiten und Raumleiter-Sitzungen lösen nichts aus. |
-| Raumbild | `src/assets/tikki/suite-raum.svg`: Raum in Zentralperspektive (Rückwand mit Screen, Seitenwände mit To-do- und Daten-Tafeln, Bodenraster, runder Tisch), Hintergrund von Raum und Lobby; die Zonen liegen als Glas davor. |
-| Tests | `store.test.ts` (Reihenfolge, Übungsläufe, Kapazität, Takt), `suites-area.test.tsx` (`verlaufGruppen`), `suite-daten.test.ts` (`taktAusNachrichten`), `tikki/vorzimmer.test.ts`. |
+| `store.ts` | Eine `Suite` = Zeile aus `groups.list` (`id`, `titel`, `mitglieder`, `geaendert`, `letzteSeq`, dazu aus dem Log abgeleitet `brauche`, `fertig`, `arbeitet`). `ladeSuites()` liest die Liste und je Raum den Log-Schwanz (`groups.log`). `neueSuite(name, ziel, {rollen, takt})`: `raumId()` = `tikki-<slug>-<base36 ms>`, Besatzung = Katalogrollen mit `im_raum_ab_start` (tikki, raumleiter, deine-ki) + gewählte Rollen (`raumMitglieder`), `groups.create`, dann die Eröffnung als erste Nachricht (`eroeffnungsText`: `@raumleiter RAUM:` / `ZIEL:` / `ANNAHMEN:` / `TAKT:`), danach Übungsläufe als eigene Räume (`uebung.ts`). `auftragGeben` = `groups.send` in den Faden `haupt`; der Mensch ist im Raum anonym, der Text trägt deshalb `"<Name>: "` vorn (`$mensch`). `tuerSenden(von, nach, text)` schreibt `[Tür aus „A“] @raumleiter …` in den anderen Raum. `verschmelzen(a, b)` baut einen neuen Raum mit der Vereinigung der Mitglieder (`vereinteMitglieder`, nach Profil), zitiert die letzten 12 Nachrichten beider (`zusammenfassung`), löst beide auf. `freigeben` beantwortet Werkzeug-Freigaben (`groups.approve`), `aufloesen`, `umbenennen`. Reine Helfer mit Tests: `raumSlug`, `nachrichtAus` (Log-Ereignis → Nachricht; `(pass)` bleibt still), `werArbeitet` (`room.activity`/`turn.*`), `brauchtAus`, `fertigAus`, `standAus`, `aufgabenAus`/`aufgabenWand` (`AUFGABEN:` mit `- [ ]`/`- [x]`), `suiteStand`, `raumdienstFehlt` (Fehlerbild, wenn kein Gateway die Räume fährt). |
+| `suites-area.tsx` | Lobby: Verlauf links (Räume, die auf den Menschen warten, zuerst; Übungsläufe eingeklappt unter ihrem Hauptraum), Formular „Suite erstellen“ (Name, Ziel, Takt, Rollen-Chips – Tikki, Raumleiter und Deine KI sitzen immer dort), „Suite verbinden“ (nach Namen), Karte „Immer am Tisch“ (Raumleiter mit Haupt- und Ausweichmodell). Rechts die Aufmerksamkeits-Leiste (`$suitesBrauchen`). Steht ein Raum in `$aktiveSuite`, zeigt der Bereich den Raum. |
+| `suite-room.tsx` | Der Raum: Kopf (Zur Lobby, Titel, Marken `STAND:`/`BRAUCHE:`, **Türen**-Popover mit allen anderen Räumen und Textfeld, **Verschmelzen**-Popover mit Partnerwahl, Raumleiter „arbeitet“), links **To-do-Wand** (`aufgabenWand`) und **Am Tisch** (alle Mitglieder mit Modell, wer gerade spricht), Mitte **das Raumlog** (`useRaumLog`: `groups.log` ab `letzteSeq`, Freigabe-Leiste aus `groups.state`, Eingabe `Sprechen` → `auftragGeben`, Enter sendet), rechts **Daten-Screen** und **Output-Screen** (`suite-daten.ts` aus den Nachrichten). Unten die Grundbesatzung als Podest. |
+| `suite-daten.ts` | Reine Funktionen: `eingabenAusNachrichten`, `ausgabenAusNachrichten`, `taktAusNachrichten`. |
+| `uebung.ts` | Übungsläufe: Ansätze (Modell + Arbeitsweise), Titel `<Projekt>-<mensch>-<nr>@tikki.team`, `freieUebungen` (Kapazität aus `$kapazitaet`), Eröffnungstext `ÜBUNG k/N` + `ANSATZ:`. Jeder Übungslauf ist ein eigener gehosteter Raum (Mitglieder wie der Hauptraum); das Modell je Raum setzt heute das Profil, nicht der Raum (offen, 4.8). |
+| `../tikki/vorzimmer.ts` | Raumübersicht: erkennt Tikkis `RAUM:` + `ZIEL:` (dazu `ANNAHMEN`, `TAKT`), legt den Raum im Hintergrund an und zeigt „Raum betreten“. |
+| Raumbild | `src/assets/tikki/suite-raum.svg`: Zentralperspektive, Rückwand mit Screen, Seitenwände mit Tafeln, Bodenraster, runder Tisch; die Zonen liegen als Glas davor. |
+| Tests | `store.test.ts` (Kennung, Besatzung aus dem Katalog, Nachrichten aus Ereignissen, Stand/Brauche/Aufgaben, Verschmelzen-Mitglieder, Reihenfolge, Übungsläufe), `suite-room.test.tsx` (Log, Freigaben, Türen, Verschmelzen gegen ein Gateway-Double), `suites-area.test.tsx`, `suite-daten.test.ts`, `tikki/vorzimmer.test.ts`. |
 
-Hermes-Änderungen dafür: `TileChat` in `app/chat/session-tile.tsx` ist exportiert und nimmt
-optional `ownerRoute` (vorher nur Tile-intern); `store/session-states.ts` hat den gezählten
-Halt `holdSessionTranscript` (generisch, mit Test in `session-states-eviction.test.ts`).
-Sonst nichts im Hermes-Code.
+Hermes-Änderungen dafür: im Python-Kern die Mitgliedergrenze (Abschnitt 10). Der frühere Export
+`TileChat` (`app/chat/session-tile.tsx`) und `holdSessionTranscript` (`store/session-states.ts`)
+stehen noch im Baum, die Räume brauchen sie seit dem Umbau nicht mehr (Rückbau beim nächsten
+Hermes-Merge möglich).
 
-Offen an den Suites: Räume aus dem Vorzimmer heraus öffnen (Tikkis `RAUM:`-Antwort → Suite),
-Vorschau von Dateien direkt im Output-Screen (heute öffnen Links extern, Dateien sind nur
-gelistet), Umbenennen, Archivieren, Nutzerrechte je Suite, Raum-Postfach.
+Geprüft am 01.10. in der verpackten App unter Xvfb gegen `hermes serve` + `hermes -p default
+gateway run` (Harness `shots-raum.mjs`): Lobby → „Suite erstellen“ mit Rechercheur → Raum mit
+vier Stühlen (Tikki, Raumleiter, Deine KI, Rechercheur), Eröffnung im Log → Auftrag per Enter
+erscheint als zweite Nachricht → Türen-Popover listet die anderen Räume → Verschmelzen-Popover
+bietet Partner → Zur Lobby (Eintrag „Raumleiter arbeitet“) → Raum erneut öffnen zeigt beide
+Nachrichten. Im Speicher `shared-state.db` steht derselbe Raum mit denselben vier Mitgliedern,
+und das Gateway hat den Turn des Raumleiters geplant (`turn.*`-Ereignisse). Eine Antwort kam in
+der Cloud nicht, weil nur das 135M-Modell zur Verfügung stand (5.0).
+
+Offen an den Räumen: Vorschau von Dateien direkt im Output-Screen, Nutzerrechte je Raum,
+Raum-Postfach, Modellwahl je Raum (Übungsläufe), Raumleiter-Klone für echte Parallelität (ein
+Profil = ein Turn zur Zeit über alle Räume, 4.8).
 
 ### 4.8 Dauerbetrieb: Takt, Türen, Wachhalter, Übungsläufe (`tikki/werkzeuge/suite_takt.py`)
 

@@ -721,8 +721,12 @@ def test_attachment_payload_is_rejected_by_local_text_only_boundary():
 @pytest.mark.parametrize(
     ("members", "match"),
     [
-        (MEMBERS[:1], "between 2 and 6"),
-        (MEMBERS + MEMBERS + MEMBERS[:1], "between 2 and 6"),
+        (MEMBERS[:1], f"between {discussion.MIN_DISCUSSION_MEMBERS} and {discussion.MAX_DISCUSSION_MEMBERS}"),
+        (
+            [{**MEMBERS[0], "member_id": f"m{i}", "profile": f"p{i}", "handle": f"h{i}"}
+             for i in range(discussion.MAX_DISCUSSION_MEMBERS + 1)],
+            f"between {discussion.MIN_DISCUSSION_MEMBERS} and {discussion.MAX_DISCUSSION_MEMBERS}",
+        ),
         (
             [MEMBERS[0], {**MEMBERS[1], "profile": "research"}],
             "profiles must be unique",

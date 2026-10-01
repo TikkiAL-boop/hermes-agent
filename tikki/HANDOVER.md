@@ -828,6 +828,13 @@ Bereich Browser), Post, Terminal.
 
 ## 10. Bekannte Stolpersteine
 
+- **Raumgröße im Kern (bewusste Kernänderung Nr. 2, beim Hermes-Merge erhalten!)**: Hermes'
+  gehostete Gruppenräume (`gateway/hosted_room_discussion.py`) ließen 2–6 Mitglieder zu – die
+  einzige Raum-Maschine, die ohne App weiterläuft. `MAX_DISCUSSION_MEMBERS` steht jetzt auf 128
+  (Speicherdecke `hosted_rooms.MAX_MEMBERS`), die Turn-Kennung erlaubt Positionen bis 127, der
+  Hermes-Test `tests/gateway/test_hosted_room_discussion.py` liest die Konstante statt „2 and 6“.
+  Alles andere (3 Runden, 10 Antworten je Mensch-Nachricht, 24 Zeilen Delta) ist unverändert.
+  Vertrag: `tests/tikki/test_raeume.py` legt einen Raum mit allen Katalogrollen an.
 - **App-Name im Kern (bewusste Kernänderung, beim Hermes-Merge erhalten!)**: Hermes suchte
   die gebaute App fest als `Hermes.app/Contents/MacOS/Hermes` bzw. `linux-unpacked/hermes`.
   Mit `productName: "Tikki"` baut electron-builder aber `Tikki.app`; `install.sh

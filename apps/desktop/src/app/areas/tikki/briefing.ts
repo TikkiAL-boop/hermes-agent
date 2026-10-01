@@ -6,7 +6,7 @@
 import { requestComposerSubmit } from '@/app/chat/composer/focus'
 import { chatMessageText } from '@/lib/chat-messages/parts'
 import { persistString, storedString } from '@/lib/storage'
-import { $activeSessionId } from '@/store/session'
+import { $activeSessionId, $gatewayState } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
 import type { Suite } from '../suites/store'
@@ -122,7 +122,10 @@ const datumText = (d: Date) =>
 
 /** The brief Tikki receives: plain facts first, then how to tell them. */
 export function briefingText({ chats, datum, mails, wartend, zuletzt }: BriefingDaten): string {
-  const zeilen = [`TAGESBRIEFING ${datumText(datum)}`]
+  const zeilen = [
+    `BRIEFING ${datumText(datum)}`,
+    'Ruf zuerst briefing_sammeln auf; was die App hier schon weiß, kommt dazu:'
+  ]
 
   if (mails === null) {
     zeilen.push('POST: nicht angemeldet (Bereich Post).')
@@ -154,7 +157,7 @@ export function briefingText({ chats, datum, mails, wartend, zuletzt }: Briefing
 
   zeilen.push(
     '',
-    'Trag mir das vor wie meine Assistentin am Morgen: erst das Wichtigste, dann der Rest, in drei bis sechs Sätzen, ohne Aufzählung. Wenn etwas eine Antwort von mir braucht, sag es zum Schluss.'
+    'Trag mir das vor wie meine Assistentin am Morgen: erst, was du erledigt hast, dann das Wichtigste, dann der Rest, in drei bis acht Sätzen, ohne Aufzählung. Wenn etwas eine Entscheidung von mir braucht, sag es zum Schluss.'
   )
 
   return zeilen.join('\n')
@@ -163,6 +166,52 @@ export function briefingText({ chats, datum, mails, wartend, zuletzt }: Briefing
 /** Hand the briefing to Tikki. False when no chat input is on screen. */
 export function briefingAbgeben(text: string): boolean {
   return requestComposerSubmit(text, { target: 'main' })
+}
+
+// ─── Automatik ───────────────────────────────────────────────────────────────
+
+const ZULETZT_KEY = 'tikki.briefing.zuletzt'
+const AUTOMATIK_KEY = 'tikki.briefing.automatik'
+/** A briefing on arrival is due again after this long. */
+export const BRIEFING_ABSTAND_MS = 4 * 60 * 60 * 1000
+/** Give the gateway and the chat a moment before Tikki starts talking. */
+export const BRIEFING_VERZUG_MS = 12_000
+
+export const briefingAutomatik = (): boolean => storedString(AUTOMATIK_KEY) !== '0'
+export const setBriefingAutomatik = (an: boolean) => persistString(AUTOMATIK_KEY, an ? null : '0')
+export const letztesBriefing = (): number => Number(storedString(ZULETZT_KEY) ?? 0) || 0
+export const briefingGemerkt = (zeit = Date.now()) => persistString(ZULETZT_KEY, String(zeit))
+
+/** Pure: does Tikki greet with a briefing now? Off, or one recently given, means no. */
+export function briefingFaellig(zuletzt: number, jetzt: number, an: boolean, abstandMs = BRIEFING_ABSTAND_MS): boolean {
+  return an && jetzt - zuletzt >= abstandMs
+}
+
+/**
+ * When the gateway opens and no briefing was given lately, hand one to Tikki
+ * after a short delay. Returns the stop function.
+ */
+export function startBriefingAutomatik(ausloesen: () => Promise<void> | void): () => void {
+  let timer: number | undefined
+
+  const stop = $gatewayState.subscribe(state => {
+    window.clearTimeout(timer)
+
+    if (state !== 'open' || !briefingFaellig(letztesBriefing(), Date.now(), briefingAutomatik())) {
+      return
+    }
+
+    timer = window.setTimeout(() => {
+      if (briefingFaellig(letztesBriefing(), Date.now(), briefingAutomatik())) {
+        void ausloesen()
+      }
+    }, BRIEFING_VERZUG_MS)
+  })
+
+  return () => {
+    window.clearTimeout(timer)
+    stop()
+  }
 }
 
 // ─── Vorlesen ────────────────────────────────────────────────────────────────

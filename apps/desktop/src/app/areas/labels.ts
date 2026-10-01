@@ -33,6 +33,8 @@ interface AreaLabels {
       mensch: string
       menschHinweis: string
       rundUmDieUhr: string
+      briefingAutomatik: string
+      briefingAutomatikHinweis: string
     }
   }
   areas: Record<Area, string>
@@ -71,6 +73,12 @@ interface AreaLabels {
     titel: string
     gespraechsKi: string
     imVorzimmer: string
+    auftraege: string
+    auftraegeHinweis: string
+    keineAuftraege: string
+    auftraegeFehler: string
+    naechster: (wann: string) => string
+    pausiert: string
     geradeImChat: string
     zuletztBesucht: string
     keineBesuche: string
@@ -174,6 +182,8 @@ const de: AreaLabels = {
         'So viele Räume dürfen im ganzen Haus gleichzeitig arbeiten. Übungsläufe halten sich daran, dein Raum nie.',
       mensch: 'Name des Menschen',
       menschHinweis: 'Steht in den Namen der Übungsräume: Projekt-name-2@tikki.team.',
+      briefingAutomatik: 'Briefing beim Ankommen',
+      briefingAutomatikHinweis: 'Tikki begrüßt dich mit dem Briefing, wenn das letzte länger als vier Stunden her ist.',
       rundUmDieUhr:
         'Rund um die Uhr: Räume mit Takt laufen im Backend weiter, auch wenn die App zu ist; der Wachhalter geht alle 15 Minuten durch alle Räume. Beides richtet tikki/werkzeuge/rollen-einrichten.sh ein.'
     },
@@ -282,13 +292,19 @@ const de: AreaLabels = {
       post: 'Deine Mails',
       suites: 'Arbeitsräume',
       terminal: 'Kommandozeile',
-      tikki: 'Dein Empfang'
+      tikki: 'Übersicht'
     }
   },
   vorzimmer: {
-    titel: 'Vorzimmer',
+    titel: 'Übersicht',
     gespraechsKi: 'Deine Gesprächs-KI',
-    imVorzimmer: 'Tikki im Vorzimmer',
+    imVorzimmer: 'Tikki',
+    auftraege: 'Tikkis Daueraufträge',
+    auftraegeHinweis: 'Sag ihr im Chat, was sie regelmäßig tun soll – „guck alle 4 Minuten nach Mails“.',
+    keineAuftraege: 'Noch keine. Tikki legt sie an, sobald du ihr einen Auftrag gibst.',
+    auftraegeFehler: 'Aufträge gerade nicht lesbar.',
+    naechster: (wann: string) => `nächster Lauf ${wann}`,
+    pausiert: 'pausiert',
     geradeImChat: 'Gerade im Chat',
     zuletztBesucht: 'Zuletzt besucht',
     keineBesuche: 'Noch keine Suite besucht.',
@@ -297,7 +313,7 @@ const de: AreaLabels = {
     neueSuite: 'Neue Suite',
     neueSuiteHinweis: 'Platz für einen Auftrag',
     einstellungen: 'Einstellungen',
-    briefing: 'Tagesbriefing',
+    briefing: 'Briefing',
     briefingLaeuft: 'Sammle …',
     vorlesen: 'Antwort vorlesen',
     vorlesenAn: 'an',
@@ -450,6 +466,8 @@ const en: AreaLabels = {
         'How many rooms may work at once across the house. Practice runs respect it, your own room never waits.',
       mensch: 'Person name',
       menschHinweis: 'Used in practice room names: project-name-2@tikki.team.',
+      briefingAutomatik: 'Briefing on arrival',
+      briefingAutomatikHinweis: 'Tikki greets you with the briefing when the last one is more than four hours old.',
       rundUmDieUhr:
         'Around the clock: rooms with a schedule keep running on the backend even when the app is closed; the watchkeeper walks all rooms every 15 minutes. tikki/werkzeuge/rollen-einrichten.sh sets both up.'
     },
@@ -507,13 +525,19 @@ const en: AreaLabels = {
       post: 'Your mail',
       suites: 'Workrooms',
       terminal: 'Command line',
-      tikki: 'Reception'
+      tikki: 'Overview'
     }
   },
   vorzimmer: {
-    titel: 'Reception',
+    titel: 'Overview',
     gespraechsKi: 'Your conversation AI',
-    imVorzimmer: 'Tikki at reception',
+    imVorzimmer: 'Tikki',
+    auftraege: 'Tikki’s standing orders',
+    auftraegeHinweis: 'Tell her in the chat what to do regularly – “check the mail every 4 minutes”.',
+    keineAuftraege: 'None yet. Tikki creates them as soon as you give her an order.',
+    auftraegeFehler: 'Orders cannot be read right now.',
+    naechster: (wann: string) => `next run ${wann}`,
+    pausiert: 'paused',
     geradeImChat: 'In this chat',
     zuletztBesucht: 'Recently visited',
     keineBesuche: 'No suite visited yet.',
@@ -522,7 +546,7 @@ const en: AreaLabels = {
     neueSuite: 'New suite',
     neueSuiteHinweis: 'Room for an order',
     einstellungen: 'Settings',
-    briefing: 'Daily briefing',
+    briefing: 'Briefing',
     briefingLaeuft: 'Collecting …',
     vorlesen: 'Read replies aloud',
     vorlesenAn: 'on',

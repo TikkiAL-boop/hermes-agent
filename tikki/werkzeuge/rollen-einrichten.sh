@@ -163,17 +163,20 @@ while IFS=$'\t' read -r SLUG NAME PORT; do
     konfig honcho "$VORLAGE_HONCHO" "$SLUG" "$ZIEL/honcho.json"
   fi
 
-  # 3c) Tikki-Plugin „gedaechtnis“ verlinken (config.yaml schaltet es unter plugins.enabled ein)
-  if [ "$DRY_RUN" = 1 ]; then
-    echo "  [dry-run] plugins/gedaechtnis -> $TIKKI/plugins/gedaechtnis"
-  else
-    mkdir -p "$ZIEL/plugins"
-    if [ "$(readlink "$ZIEL/plugins/gedaechtnis" 2>/dev/null)" != "$TIKKI/plugins/gedaechtnis" ]; then
-      rm -rf "$ZIEL/plugins/gedaechtnis"
-      ln -s "$TIKKI/plugins/gedaechtnis" "$ZIEL/plugins/gedaechtnis"
-      sagen "Plugin gedaechtnis verlinkt"
+  # 3c) Tikki-Plugins verlinken (config.yaml schaltet sie unter plugins.enabled ein)
+  for plugin_pfad in "$TIKKI"/plugins/*/; do
+    plugin="$(basename "$plugin_pfad")"
+    if [ "$DRY_RUN" = 1 ]; then
+      echo "  [dry-run] plugins/$plugin -> $TIKKI/plugins/$plugin"
+    else
+      mkdir -p "$ZIEL/plugins"
+      if [ "$(readlink "$ZIEL/plugins/$plugin" 2>/dev/null)" != "$TIKKI/plugins/$plugin" ]; then
+        rm -rf "${ZIEL:?}/plugins/$plugin"
+        ln -s "$TIKKI/plugins/$plugin" "$ZIEL/plugins/$plugin"
+        sagen "Plugin $plugin verlinkt"
+      fi
     fi
-  fi
+  done
 
   # 3d) Dauerbetrieb: Takt der Suiten (raumleiter) und Rundgang des Wachhalters.
   #     Hermes-Cron führt nur Skripte aus ~/.hermes/profiles/<slug>/scripts/ aus.
@@ -191,7 +194,7 @@ while IFS=$'\t' read -r SLUG NAME PORT; do
 
   # 4) .env-Hinweis (wird nie vom Skript befüllt)
   if [ "$DRY_RUN" = 0 ] && [ ! -f "$ZIEL/.env" ]; then
-    printf '# Tikki-Rolle %s – Schlüssel hier eintragen (Datei bleibt lokal, nie ins Repo)\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n# HONCHO_API_KEY=\n# LOKAL_API_KEY=lokal\n# CLAUDE_CODE_OAUTH_TOKEN=   (Claude-Abo: claude setup-token)\n# WA_BRIDGE_TOKEN=\n# Alle auf einmal aus einer Textdatei: tikki/werkzeuge/schluessel-einlesen.sh <datei>\n' "$SLUG" > "$ZIEL/.env"
+    printf '# Tikki-Rolle %s – Schlüssel hier eintragen (Datei bleibt lokal, nie ins Repo)\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n# HONCHO_API_KEY=\n# LOKAL_API_KEY=lokal\n# CLAUDE_CODE_OAUTH_TOKEN=   (Claude-Abo: claude setup-token)\n# WA_BRIDGE_TOKEN=\n# TIKKI_MAIL_ADDRESS=   (Postfach der PA, z. B. tikki@tikki.team)\n# TIKKI_MAIL_PASSWORD=\n# Alle auf einmal aus einer Textdatei: tikki/werkzeuge/schluessel-einlesen.sh <datei>\n' "$SLUG" > "$ZIEL/.env"
     chmod 600 "$ZIEL/.env"
     sagen ".env-Vorlage angelegt (ohne Werte): $ZIEL/.env"
   fi

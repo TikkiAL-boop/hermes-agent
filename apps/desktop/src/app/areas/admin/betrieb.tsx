@@ -1,9 +1,10 @@
 import { useStore } from '@nanostores/react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { useI18n } from '@/i18n'
 
 import { areaLabels } from '../labels'
+import { briefingAutomatik, setBriefingAutomatik } from '../tikki/briefing'
 
 import {
   $kapazitaet,
@@ -34,6 +35,7 @@ export function BetriebSection() {
   const b = areaLabels(locale).admin.betrieb
   const uebungen = useStore($uebungslaeufe)
   const kapazitaet = useStore($kapazitaet)
+  const [automatik, setAutomatik] = useState(briefingAutomatik)
   const mensch = useStore($mensch)
 
   return (
@@ -57,6 +59,18 @@ export function BetriebSection() {
             onChange={e => setKapazitaet(Number(e.target.value))}
             type="number"
             value={kapazitaet}
+          />
+        </Feld>
+        <Feld hinweis={b.briefingAutomatikHinweis} titel={b.briefingAutomatik}>
+          <input
+            checked={automatik}
+            className="size-4 accent-(--tikki-gelb-tief)"
+            data-betrieb-briefing=""
+            onChange={e => {
+              setAutomatik(e.target.checked)
+              setBriefingAutomatik(e.target.checked)
+            }}
+            type="checkbox"
           />
         </Feld>
         <Feld hinweis={b.menschHinweis} titel={b.mensch}>

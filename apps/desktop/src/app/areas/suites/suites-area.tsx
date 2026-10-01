@@ -256,7 +256,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
   )
 }
 
-function SuiteTafel({
+export function SuiteTafel({
   braucht = false,
   suite,
   uebungen = []

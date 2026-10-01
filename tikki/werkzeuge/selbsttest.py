@@ -92,17 +92,18 @@ def pruefe_vorzimmer(home: Path) -> Punkt:
 
 
 def pruefe_gedaechtnis(profile: Path) -> Punkt:
-    ziel = (TIKKI / "plugins" / "gedaechtnis").resolve()
+    plugins = sorted(p.name for p in (TIKKI / "plugins").iterdir() if (p / "plugin.yaml").is_file())
     fehlend = []
     for e in katalog():
         profil = profile / e["hermes_profil"]
-        link = profil / "plugins" / "gedaechtnis"
-        an = "gedaechtnis" in ((_config(profil).get("plugins") or {}).get("enabled") or [])
-        if not (link.exists() and link.resolve() == ziel and an):
-            fehlend.append(e["hermes_profil"])
+        an = set((_config(profil).get("plugins") or {}).get("enabled") or [])
+        for plugin in plugins:
+            link = profil / "plugins" / plugin
+            if not (link.exists() and link.resolve() == (TIKKI / "plugins" / plugin).resolve() and plugin in an):
+                fehlend.append(f"{e['hermes_profil']}/{plugin}")
     if fehlend:
-        return Punkt("Gedächtnis", FEHLER, "Plugin fehlt in: " + ", ".join(fehlend))
-    return Punkt("Gedächtnis", OK, "Plugin in allen Profilen verlinkt und eingeschaltet")
+        return Punkt("Gedächtnis", FEHLER, "Plugin fehlt in: " + ", ".join(fehlend[:8]) + (" …" if len(fehlend) > 8 else ""))
+    return Punkt("Gedächtnis", OK, f"Plugins {', '.join(plugins)} in allen Profilen verlinkt und eingeschaltet")
 
 
 def pruefe_takt(profile: Path) -> Punkt:

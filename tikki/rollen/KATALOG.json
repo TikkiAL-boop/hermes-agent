@@ -3,15 +3,39 @@
     "slug": "tikki",
     "name": "Tikki",
     "icon": "🐾",
-    "kurz": "Assistentin im Vorzimmer: Small Talk, nimmt Aufträge an, öffnet Räume.",
+    "kurz": "Persönliche Assistentin: empfängt mit dem Briefing, erledigt Daueraufträge (Post, Lernen, Nachrichtenlage) selbst, öffnet Räume für Projekte.",
     "kategorie": "vorzimmer",
-    "modell": { "primary": "cursor/claude-haiku-4-5", "fallback": "xai/grok-4.7", "weitere": ["cursor/claude-opus-5.5", "lokal/tikki-schnell"] },
-    "werkzeuge": ["gedaechtnis"],
+    "modell": {
+      "primary": "cursor/claude-haiku-4-5",
+      "fallback": "xai/grok-4.7",
+      "weitere": [
+        "cursor/claude-opus-5.5",
+        "lokal/tikki-schnell"
+      ]
+    },
+    "werkzeuge": [
+      "gedaechtnis",
+      "pa",
+      "web",
+      "browser",
+      "file",
+      "terminal",
+      "skills",
+      "cronjob",
+      "todo"
+    ],
     "freigabe": "smart",
     "port": 8650,
     "hermes_profil": "tikki",
     "im_raum_ab_start": false,
-    "einstellungen": { "agent": { "reasoning_effort": "low" }, "display": { "streaming": true } }
+    "einstellungen": {
+      "agent": {
+        "reasoning_effort": "low"
+      },
+      "display": {
+        "streaming": true
+      }
+    }
   },
   {
     "slug": "raumleiter",
@@ -19,8 +43,21 @@
     "icon": "🧭",
     "kurz": "Leitet den Raum rund um die Uhr: plant, holt bis zu 50 Bots an den Tisch, bleibt dran bis zum Ziel.",
     "kategorie": "leitung",
-    "modell": { "primary": "cursor/claude-opus-5.5", "fallback": "xai/grok-4.7" },
-    "werkzeuge": ["delegation", "todo", "gedaechtnis", "web", "browser", "file", "skills", "terminal", "cronjob"],
+    "modell": {
+      "primary": "cursor/claude-opus-5.5",
+      "fallback": "xai/grok-4.7"
+    },
+    "werkzeuge": [
+      "delegation",
+      "todo",
+      "gedaechtnis",
+      "web",
+      "browser",
+      "file",
+      "skills",
+      "terminal",
+      "cronjob"
+    ],
     "freigabe": "smart",
     "port": 8651,
     "hermes_profil": "raumleiter",
@@ -32,8 +69,16 @@
     "icon": "🔎",
     "kurz": "Recherchiert gründlich, belegt jede Aussage mit Quelle und Datum.",
     "kategorie": "wissen",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["web", "browser", "file", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "web",
+      "browser",
+      "file",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8652,
     "hermes_profil": "rechercheur",
@@ -45,8 +90,16 @@
     "icon": "✅",
     "kurz": "Qualitätssicherung: prüft Fakten, Code und Texte, meldet nur echte Befunde.",
     "kategorie": "qualitaet",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["web", "file", "terminal", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "web",
+      "file",
+      "terminal",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8653,
     "hermes_profil": "pruefer",
@@ -58,8 +111,15 @@
     "icon": "✍️",
     "kurz": "Schreibt Texte, Mails, Zusammenfassungen und Dokumente in klarem Deutsch.",
     "kategorie": "text",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["file", "web", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "file",
+      "web",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8654,
     "hermes_profil": "schreiber",
@@ -71,8 +131,17 @@
     "icon": "🎨",
     "kurz": "Baut Oberflächen: HTML, CSS, JavaScript/TypeScript, React, Barrierefreiheit.",
     "kategorie": "entwicklung",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["terminal", "file", "browser", "web", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "browser",
+      "web",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8655,
     "hermes_profil": "frontend-entwickler",
@@ -84,8 +153,16 @@
     "icon": "⚙️",
     "kurz": "Baut Server, APIs, Datenbanken und Skripte; testet, bevor er meldet.",
     "kategorie": "entwicklung",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["terminal", "file", "web", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "web",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8656,
     "hermes_profil": "backend-entwickler",
@@ -97,8 +174,16 @@
     "icon": "🛡️",
     "kurz": "Prüft Sicherheit: Geheimnisse, Rechte, Risiken; bewertet und priorisiert.",
     "kategorie": "qualitaet",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["terminal", "file", "web", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "web",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8657,
     "hermes_profil": "sicherheitsbeauftragter",
@@ -110,8 +195,16 @@
     "icon": "📊",
     "kurz": "Zahlen, Tabellen, Diagramme, Tabellenkalkulation; rechnet nach und erklärt.",
     "kategorie": "daten",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["terminal", "file", "web", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "web",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8658,
     "hermes_profil": "datenanalyst",
@@ -123,8 +216,16 @@
     "icon": "📅",
     "kurz": "Kalender, To-dos, Erinnerungen, Mail-Sichtung; hält den Überblick.",
     "kategorie": "organisation",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["cronjob", "todo", "file", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "cronjob",
+      "todo",
+      "file",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8659,
     "hermes_profil": "organisator",
@@ -136,8 +237,16 @@
     "icon": "🔌",
     "kurz": "Prüft alle 4 h Anbieter-Schlüssel und Modelle, meldet nur Änderungen.",
     "kategorie": "betrieb",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["terminal", "cronjob", "file", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "terminal",
+      "cronjob",
+      "file",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8660,
     "hermes_profil": "api-fachmann",
@@ -149,8 +258,14 @@
     "icon": "🌍",
     "kurz": "Übersetzt DE/EN und weitere Sprachen, trifft den Ton, bleibt beim Sinn.",
     "kategorie": "text",
-    "modell": { "primary": "xai/grok-4.7", "fallback": "cursor/claude-opus-5.5" },
-    "werkzeuge": ["file", "skills"],
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5"
+    },
+    "werkzeuge": [
+      "file",
+      "skills"
+    ],
     "freigabe": "smart",
     "port": 8661,
     "hermes_profil": "uebersetzer",
@@ -162,8 +277,19 @@
     "icon": "🛡️",
     "kurz": "Geht rund um die Uhr von Raum zu Raum, weckt stille Räume und prüft Ergebnisse.",
     "kategorie": "leitung",
-    "modell": { "primary": "anthropic/claude-opus-5-5", "fallback": "openai-codex/gpt-6-sol", "weitere": ["lokal/tikki-gross"] },
-    "werkzeuge": ["terminal", "file", "todo", "gedaechtnis"],
+    "modell": {
+      "primary": "anthropic/claude-opus-5-5",
+      "fallback": "openai-codex/gpt-6-sol",
+      "weitere": [
+        "lokal/tikki-gross"
+      ]
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "todo",
+      "gedaechtnis"
+    ],
     "freigabe": "smart",
     "port": 8662,
     "hermes_profil": "wachhalter",

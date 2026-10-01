@@ -1,8 +1,21 @@
 import { useStore } from '@nanostores/react'
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 
-import { useI18n } from '@/i18n'
-import { Bell, Brain, Clock, Download, Globe, Loader2, Plus, Settings, Volume2, VolumeX } from '@/lib/icons'
+import { type Locale, useI18n } from '@/i18n'
+import {
+  Bell,
+  Brain,
+  Clock,
+  Download,
+  Globe,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+  Volume2,
+  VolumeX
+} from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { notify } from '@/store/notifications'
 import { $currentModel, $gatewayState } from '@/store/session'
@@ -13,12 +26,16 @@ import { oeffneImBrowser } from '../browser-area'
 import { areaLabels } from '../labels'
 import { setArea } from '../store'
 import { $neueSuiteOffen, $suites, ladeSuites, oeffneSuite, type Suite } from '../suites/store'
+import { SuiteTafel, verlaufGruppen } from '../suites/suites-area'
 
+import { $auftraege, $auftraegeStatus, type Auftrag, ladeAuftraege } from './auftraege'
 import {
   briefingAbgeben,
+  briefingGemerkt,
   briefingText,
   neueWhatsApps,
   setVorlesenAktiv,
+  startBriefingAutomatik,
   startVorleser,
   ungeleseneMails,
   vorlesenAktiv,
@@ -27,6 +44,7 @@ import {
 import { $updateStand, startUpdateWaechter } from './update-waechter'
 
 const tikki = rolle('tikki')
+const AUFTRAEGE_ALLE_MS = 60_000
 
 function Karte({ children, icon: Icon, titel }: { children: ReactNode; icon: typeof Bell; titel: string }) {
   return (
@@ -90,12 +108,97 @@ function Adresszeile() {
   )
 }
 
+/** "in 3 Min.", "vor 2 Std." – relative to now, in the person's language. */
+function relativ(zeit: number, locale: string): string {
+  const diff = zeit - Date.now()
+  const abs = Math.abs(diff)
+  const fmt = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+
+  if (abs < 60_000) {
+    return fmt.format(Math.round(diff / 1000), 'second')
+  }
+
+  if (abs < 3_600_000) {
+    return fmt.format(Math.round(diff / 60_000), 'minute')
+  }
+
+  if (abs < 86_400_000) {
+    return fmt.format(Math.round(diff / 3_600_000), 'hour')
+  }
+
+  return fmt.format(Math.round(diff / 86_400_000), 'day')
+}
+
+/** The left wall: every room, the ones that need the person first. */
+function Raumwand({ suites, wartend }: { suites: Suite[]; wartend: readonly string[] }) {
+  const { locale } = useI18n()
+  const s = areaLabels(locale).suites
+  const [suche, setSuche] = useState('')
+
+  const gefiltert = useMemo(() => {
+    const q = suche.trim().toLowerCase()
+
+    return q ? suites.filter(x => x.titel.toLowerCase().includes(q) || x.vorschau?.toLowerCase().includes(q)) : suites
+  }, [suche, suites])
+
+  const braucht = (suite: Suite) =>
+    wartend.includes(suite.id) || (suite.resolvedId ? wartend.includes(suite.resolvedId) : false)
+
+  const gruppen = verlaufGruppen(gefiltert).sort((a, b) => Number(braucht(b.suite)) - Number(braucht(a.suite)))
+
+  return (
+    <aside className="flex min-h-0 flex-col gap-2.5" data-vorzimmer-raeume="">
+      <label className="tikki-glas flex items-center gap-2 px-3 py-1.5">
+        <Search aria-hidden className="size-4 text-(--tikki-tinte-weich)" stroke={2} />
+        <input
+          aria-label={s.suchen}
+          className="w-full bg-transparent text-[13px] text-(--tikki-tinte) outline-none placeholder:text-(--tikki-tinte-weich)"
+          onChange={e => setSuche(e.target.value)}
+          placeholder={s.suchen}
+          value={suche}
+        />
+      </label>
+      <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+        {gruppen.length === 0 ? (
+          <p className="tikki-glas px-3 py-6 text-center text-[12px] text-(--tikki-tinte-weich)">{s.leer}</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {gruppen.map(({ suite, uebungen }) => (
+              <SuiteTafel braucht={braucht(suite)} key={suite.id} suite={suite} uebungen={uebungen} />
+            ))}
+          </ul>
+        )}
+      </div>
+    </aside>
+  )
+}
+
+function AuftragZeile({ auftrag, locale }: { auftrag: Auftrag; locale: Locale }) {
+  const v = areaLabels(locale).vorzimmer
+
+  return (
+    <li className="flex flex-col" data-vorzimmer-auftrag={auftrag.id}>
+      <span className={cn('truncate text-[13px] font-medium text-(--tikki-tinte)', !auftrag.aktiv && 'opacity-60')}>
+        {auftrag.name}
+      </span>
+      <span className="truncate text-[11px] text-(--tikki-tinte-weich)">
+        {auftrag.plan}
+        {!auftrag.aktiv
+          ? ` · ${v.pausiert}`
+          : auftrag.naechster
+            ? ` · ${v.naechster(relativ(auftrag.naechster, locale))}`
+            : ''}
+      </span>
+    </li>
+  )
+}
+
 /**
- * The reception around the Hermes chat: the wordmark and the address line
- * above, the chat itself in glass, and beside it what the person wants at a
- * glance — the daily briefing, which AI is talking, the last suites, which
- * room waits for them, the door to a new one, and whether Tikki has an update.
- * The chat inside is the unchanged Hermes layout tree.
+ * The overview, where everyone arrives: Tikki's chat in the middle, every room
+ * on the left wall, and on the right what she does for the person — the
+ * briefing, her standing orders, rooms that wait, which AI is talking, the
+ * door to a new room, and whether Tikki has an update. The chat inside is the
+ * unchanged Hermes layout tree.
  */
 export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   const { locale } = useI18n()
@@ -105,19 +208,31 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   const wartend = useStore($attentionSessionIds)
   const modell = useStore($currentModel)
   const update = useStore($updateStand)
+  const auftraege = useStore($auftraege)
+  const auftraegeStatus = useStore($auftraegeStatus)
   const [vorlesen, setVorlesen] = useState(vorlesenAktiv)
   const [sammle, setSammle] = useState(false)
 
-  // The list is the backend's truth: read it once the gateway is open, and again whenever it reopens.
+  // The lists are the backend's truth: read them once the gateway is open, and again whenever it reopens.
   useEffect(
     () =>
       $gatewayState.subscribe(state => {
         if (state === 'open') {
           void ladeSuites()
+          void ladeAuftraege()
         }
       }),
     []
   )
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if ($gatewayState.get() === 'open') {
+        void ladeAuftraege()
+      }
+    }, AUFTRAEGE_ALLE_MS)
+
+    return () => window.clearInterval(timer)
+  }, [])
   useEffect(() => startVorleser(), [])
   useEffect(() => startUpdateWaechter(), [])
 
@@ -131,13 +246,17 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
       const [mails, chats] = await Promise.all([ungeleseneMails(), neueWhatsApps()])
       const text = briefingText({ chats, datum: new Date(), mails, wartend: braucht, zuletzt })
 
-      if (!briefingAbgeben(text)) {
+      if (briefingAbgeben(text)) {
+        briefingGemerkt()
+      } else {
         notify({ kind: 'warning', message: v.keinChat })
       }
     } finally {
       setSammle(false)
     }
   }
+
+  useEffect(() => startBriefingAutomatik(briefing), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const vorlesenUmschalten = () => {
     const an = !vorlesen
@@ -166,7 +285,8 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
           {v.einstellungen}
         </button>
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_17rem] gap-4 px-5 pb-5">
+      <div className="grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)_17rem] gap-4 px-5 pb-5">
+        <Raumwand suites={suites} wartend={wartend} />
         <div className="tikki-glas tikki-hermes-glas flex min-h-0 min-w-0 flex-col overflow-hidden">{children}</div>
         <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-0.5">
           <div className="flex gap-2">
@@ -218,18 +338,29 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
               </code>
             </div>
           )}
-          <Karte icon={Brain} titel={v.gespraechsKi}>
-            {modell && (
-              <p className="text-[13px] text-(--tikki-tinte)">
-                <span className="text-(--tikki-tinte-weich)">{v.geradeImChat}: </span>
-                <span className="font-mono text-[12px]">{modell}</span>
+          <Karte icon={RefreshCw} titel={v.auftraege}>
+            {auftraege.length === 0 ? (
+              <p className="text-[12px] text-(--tikki-tinte-weich)" data-vorzimmer-auftraege="leer">
+                {auftraegeStatus === 'fehler' ? v.auftraegeFehler : v.keineAuftraege}
               </p>
+            ) : (
+              <ul className="flex flex-col gap-1.5" data-vorzimmer-auftraege={auftraege.length}>
+                {auftraege.slice(0, 6).map(a => (
+                  <AuftragZeile auftrag={a} key={a.id} locale={locale} />
+                ))}
+              </ul>
             )}
-            {tikki && (
-              <p className="text-[12px] text-(--tikki-tinte-weich)">
-                {v.imVorzimmer}: <span className="font-mono">{tikki.modell.primary}</span> ·{' '}
-                <span className="font-mono">{tikki.modell.fallback}</span>
-              </p>
+            <p className="text-[11px] text-(--tikki-tinte-weich)">{v.auftraegeHinweis}</p>
+          </Karte>
+          <Karte icon={Bell} titel={v.brauchtDich}>
+            {braucht.length === 0 ? (
+              <p className="text-[12px] text-(--tikki-tinte-weich)">{v.keinerWartet}</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {braucht.map(s => (
+                  <SuiteKnopf hinweis={labels.suites.wartetAufDich} key={s.id} suite={s} />
+                ))}
+              </div>
             )}
           </Karte>
           <Karte icon={Clock} titel={v.zuletztBesucht}>
@@ -243,15 +374,18 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
               </div>
             )}
           </Karte>
-          <Karte icon={Bell} titel={v.brauchtDich}>
-            {braucht.length === 0 ? (
-              <p className="text-[12px] text-(--tikki-tinte-weich)">{v.keinerWartet}</p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {braucht.map(s => (
-                  <SuiteKnopf hinweis={labels.suites.wartetAufDich} key={s.id} suite={s} />
-                ))}
-              </div>
+          <Karte icon={Brain} titel={v.gespraechsKi}>
+            {modell && (
+              <p className="text-[13px] text-(--tikki-tinte)">
+                <span className="text-(--tikki-tinte-weich)">{v.geradeImChat}: </span>
+                <span className="font-mono text-[12px]">{modell}</span>
+              </p>
+            )}
+            {tikki && (
+              <p className="text-[12px] text-(--tikki-tinte-weich)">
+                {v.imVorzimmer}: <span className="font-mono">{tikki.modell.primary}</span> ·{' '}
+                <span className="font-mono">{tikki.modell.fallback}</span>
+              </p>
             )}
           </Karte>
           <button

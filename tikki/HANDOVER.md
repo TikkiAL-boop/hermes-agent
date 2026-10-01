@@ -287,6 +287,35 @@ alles Bedienbare als **Glasfläche mit Leuchtrand**, Vorzimmer mit Karten neben 
 - **Admin, Post, Terminal, Browser**: Boden + Glasflächen, Admin-Navigation als Tafeln.
 - Hermes-Code unverändert; kein Hermes-Bereich wurde umgebaut, nur eingerahmt und getönt.
 
+### 4.2a' Raumübersicht und persönliche Assistenz (01.10.)
+
+Das Vorzimmer ist die **Übersicht** geworden (`tikki/vorzimmer-rahmen.tsx`): links die Wand mit allen
+Räumen (Suche, Räume, die den Menschen brauchen, zuerst; `SuiteTafel` aus der Lobby), in der Mitte
+Tikkis Chat (unveränderter Hermes-Baum im Glas), rechts Briefing, **Tikkis Daueraufträge**
+(`tikki/auftraege.ts`: `cron.manage list` im Profil `tikki`, alle 60 s), Braucht dich, Zuletzt
+besucht, Gesprächs-KI, Neue Suite, Update-Karte. **Briefing beim Ankommen**: öffnet das Gateway und
+das letzte Briefing ist > 4 h her, gibt die App nach 12 s von selbst `BRIEFING …` an Tikki
+(`briefing.ts::startBriefingAutomatik`, Schalter in Admin → Betrieb, Schlüssel
+`tikki.briefing.automatik`; der Screenshot-Lauf setzt ihn auf `0`).
+
+Tikki arbeitet jetzt selbst (`rollen/tikki/SOUL.md`, Katalog `werkzeuge`: gedaechtnis, pa, web,
+browser, file, terminal, skills, cronjob, todo). Plugin **`tikki/plugins/pa/`**:
+
+- `post` – Postfach über IMAP/SMTP aus dem Backend (`post.py`, Serverregeln wie
+  `electron/tikki-mail.ts`; Zugang `TIKKI_MAIL_ADDRESS`/`TIKKI_MAIL_PASSWORD` in der `.env`):
+  ungelesen, lesen, antworten (im Faden, markiert erledigt), senden, erledigt. „Schick weg“ heißt
+  schicken, ohne Rückfrage (SOUL).
+- `briefing_sammeln` – Ausgaben der Daueraufträge seit dem letzten Briefing
+  (`<profil>/cron/output/<job>/*.md`, Stempel `~/.tikki/briefing.json`), ungelesene Post, Räume
+  mit `BRAUCHE`, WhatsApp über die WA-Bridge (`WA_BRIDGE_TOKEN`).
+- `hermes -p tikki pa status|briefing|post` zum Prüfen.
+- Daueraufträge legt Tikki mit dem Hermes-Werkzeug `cronjob` in ihrem Profil an; sie laufen nur,
+  solange `hermes -p tikki gateway` läuft (→ `gateway install`, siehe Stolpersteine). Die Karte in
+  der Übersicht zeigt sie (Name, Plan, nächster Lauf, pausiert).
+
+`rollen-einrichten.sh` verlinkt jetzt **alle** `tikki/plugins/*`; der Selbsttest prüft jedes.
+Verträge: `tests/tikki/test_pa.py`, `tikki/briefing.test.ts`, `tikki/auftraege.test.ts`.
+
 ### 4.2b Vorzimmer-Funktionen (29.09., Thorstens Punkte 1–4)
 
 - **Eine schnelle KI im Vorzimmer über Cursor**: Katalog `tikki` → `cursor/claude-haiku-4-5`,

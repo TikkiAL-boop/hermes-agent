@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { briefingText, chatsAusAntwort } from './briefing'
+import { briefingFaellig, briefingText, chatsAusAntwort } from './briefing'
 
 describe('briefingText', () => {
   it('names every source, says which one is missing, and asks Tikki to speak it', () => {
@@ -12,7 +12,8 @@ describe('briefingText', () => {
       zuletzt: [{ id: 'b', titel: 'Urlaub Ostsee' }]
     })
 
-    expect(text.startsWith('TAGESBRIEFING ')).toBe(true)
+    expect(text.startsWith('BRIEFING ')).toBe(true)
+    expect(text).toContain('briefing_sammeln')
     expect(text).toContain('POST: 1 ungelesen')
     expect(text).toContain('- Schule: Elternabend (2026-09-28)')
     expect(text).toContain('WHATSAPP: WA-Bridge nicht erreichbar')
@@ -45,5 +46,16 @@ describe('chatsAusAntwort', () => {
       { name: 'Anna', letzte: 'Bis später' }
     ])
     expect(chatsAusAntwort([{ chat: 'Karin', last: 'ok', unreadCount: 1 }])).toEqual([{ name: 'Karin', letzte: 'ok' }])
+  })
+})
+
+describe('briefingFaellig', () => {
+  it('greets on arrival only when it is on and the last one is old enough', () => {
+    const h = 60 * 60 * 1000
+
+    expect(briefingFaellig(0, 10 * h, true)).toBe(true)
+    expect(briefingFaellig(9 * h, 10 * h, true)).toBe(false)
+    expect(briefingFaellig(5 * h, 10 * h, true)).toBe(true)
+    expect(briefingFaellig(0, 10 * h, false)).toBe(false)
   })
 })

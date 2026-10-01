@@ -99,6 +99,7 @@ memory:
 plugins:
   enabled:
     - "gedaechtnis"
+    - "pa"
 
 # Unnötige Anzeige im Terminal abschalten.
 display:

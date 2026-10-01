@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { KATALOG } from '../admin/katalog'
+
 import type { RaumEreignis, Suite } from './store'
 
 const rpc = vi.fn()
@@ -293,7 +295,9 @@ describe('neueSuite', () => {
 
     expect(create.room_id).toMatch(/^tikki-urlaub-ostsee-[0-9a-z]+$/)
     expect(create.name).toBe('Urlaub Ostsee')
-    expect(members.map(m => m.member_id)).toEqual(['raumleiter', 'deine-ki', 'rechercheur'])
+    const grundbesatzung = KATALOG.filter(r => r.im_raum_ab_start).map(r => r.slug)
+    expect(grundbesatzung.length).toBeGreaterThanOrEqual(2)
+    expect(members.map(m => m.member_id)).toEqual([...grundbesatzung, 'rechercheur'])
     expect(members.every(m => m.profile)).toBe(true)
     expect(calls()[2]![1]).toMatchObject({
       room_id: create.room_id,

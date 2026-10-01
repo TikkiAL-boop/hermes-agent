@@ -2,13 +2,11 @@ import { useStore } from '@nanostores/react'
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '@/i18n'
-import { Armchair, Bell, Loader2, Plus, Search } from '@/lib/icons'
+import { Armchair, Bell, CheckCircle2, Loader2, Plus, Search } from '@/lib/icons'
 import { cn } from '@/lib/utils'
-import { $unreadFinishedSessionIds } from '@/store/session'
-import { $attentionSessionIds } from '@/store/session-states'
 
 import { $uebungslaeufe } from '../admin/betrieb-store'
-import { rolle } from '../admin/katalog'
+import { KATALOG, rolle } from '../admin/katalog'
 import { areaLabels } from '../labels'
 
 import {
@@ -16,14 +14,15 @@ import {
   $neueSuiteOffen,
   $suiteEntsteht,
   $suites,
+  $suitesBrauchen,
   $suitesFehler,
   $suitesStatus,
   ladeSuites,
   neueSuite,
   oeffneSuite,
-  profilFehlt,
-  type Suite,
-  SUITE_PROFIL
+  raumdienstFehlt,
+  RAUMLEITER,
+  type Suite
 } from './store'
 import { SuiteRoom } from './suite-room'
 import { uebungsTeil } from './uebung'
@@ -61,7 +60,9 @@ export function verlaufGruppen(suites: readonly Suite[]): { suite: Suite; uebung
 const TAKTE = ['stündlich', 'alle 30 Minuten', 'täglich 06:00', 'werktags 08:00', 'montags 09:00'] as const
 const EIGENER = '__eigener__'
 
-const raumleiter = rolle(SUITE_PROFIL)
+const raumleiter = rolle(RAUMLEITER)
+/** Roles the person may seat at the table from the start; the base crew is there anyway. */
+const WAEHLBARE_ROLLEN = KATALOG.filter(r => !r.im_raum_ab_start && r.slug !== 'tikki' && r.slug !== 'wachhalter')
 
 function RaumleiterKarte() {
   const { locale } = useI18n()
@@ -103,6 +104,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
   const [ziel, setZiel] = useState('')
   const [taktWahl, setTaktWahl] = useState('')
   const [eigenerTakt, setEigenerTakt] = useState('')
+  const [rollen, setRollen] = useState<string[]>([])
   const [verbindeName, setVerbindeName] = useState('')
   const [verbindeFehler, setVerbindeFehler] = useState(false)
   const takt = taktWahl === EIGENER ? eigenerTakt.trim() : taktWahl
@@ -114,12 +116,16 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
       return
     }
 
-    await neueSuite(name, ziel, { takt: takt || undefined })
+    await neueSuite(name, ziel, { rollen, takt: takt || undefined })
     setName('')
     setZiel('')
     setTaktWahl('')
     setEigenerTakt('')
+    setRollen([])
   }
+
+  const rolleUmschalten = (slug: string) =>
+    setRollen(alt => (alt.includes(slug) ? alt.filter(x => x !== slug) : [...alt, slug]))
 
   const verbinden = (event: FormEvent) => {
     event.preventDefault()
@@ -130,7 +136,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
 
     if (gesucht && treffer) {
       setVerbindeFehler(false)
-      void oeffneSuite(treffer)
+      oeffneSuite(treffer)
     } else {
       setVerbindeFehler(true)
     }
@@ -193,6 +199,23 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
               />
             )}
           </div>
+          <fieldset className="flex flex-wrap gap-1.5" data-suite-rollen="">
+            <legend className="mb-1 text-[11px] text-(--tikki-tinte-weich)">{s.rollen}</legend>
+            {WAEHLBARE_ROLLEN.map(r => (
+              <button
+                aria-pressed={rollen.includes(r.slug)}
+                className="tikki-knopf tikki-knopf-still gap-1 rounded-full px-2 py-0.5 text-[11px]"
+                data-aktiv={rollen.includes(r.slug) ? 'true' : undefined}
+                disabled={Boolean(entsteht)}
+                key={r.slug}
+                onClick={() => rolleUmschalten(r.slug)}
+                type="button"
+              >
+                <span aria-hidden>{r.icon}</span>
+                {r.name}
+              </button>
+            ))}
+          </fieldset>
           {!takt && uebungen > 1 && (
             <p className="text-[11px] text-(--tikki-tinte-weich)">{s.uebungenGeplant(uebungen)}</p>
           )}
@@ -203,6 +226,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
               onClick={() => {
                 setName('')
                 setZiel('')
+                setRollen([])
               }}
               type="button"
             >
@@ -256,6 +280,25 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
   )
 }
 
+/** The second line of a room's tablet: what it needs, that it is done, who works, or who sits there. */
+export function suiteHinweis(suite: Suite, s: ReturnType<typeof areaLabels>['suites']): string {
+  if (suite.brauche) {
+    return suite.brauche
+  }
+
+  if (suite.fertig) {
+    return s.fertigGemeldet
+  }
+
+  if (suite.arbeitet) {
+    const wer = suite.mitglieder.find(m => m.member_id === suite.arbeitet)
+
+    return `${wer?.display_name || wer?.handle || suite.arbeitet} ${s.arbeitet}`
+  }
+
+  return s.mitglieder(suite.mitglieder.length)
+}
+
 export function SuiteTafel({
   braucht = false,
   suite,
@@ -276,11 +319,13 @@ export function SuiteTafel({
         className="tikki-knopf w-full px-3 py-2.5 text-left"
         data-braucht={braucht ? 'true' : undefined}
         data-suite-id={suite.id}
-        onClick={() => void oeffneSuite(suite)}
+        onClick={() => oeffneSuite(suite)}
         type="button"
       >
         {braucht ? (
           <Bell aria-hidden className="size-5 shrink-0" stroke={2} />
+        ) : suite.fertig ? (
+          <CheckCircle2 aria-hidden className="size-5 shrink-0" stroke={1.9} />
         ) : (
           <Armchair aria-hidden className="size-5 shrink-0" stroke={1.9} />
         )}
@@ -288,9 +333,7 @@ export function SuiteTafel({
           <span className="truncate text-[13px] font-semibold">
             {teil ? `${teil.basis} · ${s.uebungslauf(teil.nr)}` : suite.titel}
           </span>
-          <span className="truncate text-[11px] opacity-75">
-            {suite.vorschau ?? (suite.nachrichten !== undefined ? s.nachrichten(suite.nachrichten) : s.betreten)}
-          </span>
+          <span className="truncate text-[11px] opacity-75">{suiteHinweis(suite, s)}</span>
         </span>
       </button>
       {uebungen.length > 0 && (
@@ -311,7 +354,7 @@ export function SuiteTafel({
                   <button
                     className="tikki-knopf tikki-knopf-still w-full px-2.5 py-1.5 text-left text-[12px]"
                     data-suite-id={u.id}
-                    onClick={() => void oeffneSuite(u)}
+                    onClick={() => oeffneSuite(u)}
                     type="button"
                   >
                     {s.uebungslauf(uebungsTeil(u.titel)?.nr ?? 0)}
@@ -330,16 +373,12 @@ export function SuiteTafel({
 function Aufmerksamkeit({ suites }: { suites: Suite[] }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
-  const wartend = useStore($attentionSessionIds)
-  const ungelesen = useStore($unreadFinishedSessionIds)
-
-  const passt = (liste: readonly string[], suite: Suite) =>
-    liste.includes(suite.id) || (suite.resolvedId ? liste.includes(suite.resolvedId) : false)
+  const wartend = useStore($suitesBrauchen)
 
   const karten = suites
     .map(suite => ({
       suite,
-      grund: passt(wartend, suite) ? s.wartetAufDich : passt(ungelesen, suite) ? s.neueNachrichten : null
+      grund: wartend.includes(suite.id) ? (suite.brauche ?? s.wartetAufDich) : suite.fertig ? s.fertigGemeldet : null
     }))
     .filter((k): k is { suite: Suite; grund: string } => k.grund !== null)
 
@@ -352,7 +391,7 @@ function Aufmerksamkeit({ suites }: { suites: Suite[] }) {
           <button
             className="tikki-glas flex flex-col items-start gap-1 p-3.5 text-left hover:bg-(--tikki-glas-dicht)"
             key={suite.id}
-            onClick={() => void oeffneSuite(suite)}
+            onClick={() => oeffneSuite(suite)}
             type="button"
           >
             <span className="flex items-center gap-2 text-[13px] font-semibold text-(--tikki-tinte)">
@@ -377,7 +416,7 @@ function Aufmerksamkeit({ suites }: { suites: Suite[] }) {
 export function SuitesArea() {
   const aktive = useStore($aktiveSuite)
 
-  return aktive ? <SuiteRoom key={aktive.resolvedId || aktive.id} suite={aktive} /> : <SuitesLobby />
+  return aktive ? <SuiteRoom key={aktive.id} suite={aktive} /> : <SuitesLobby />
 }
 
 function SuitesLobby() {
@@ -387,7 +426,7 @@ function SuitesLobby() {
   const status = useStore($suitesStatus)
   const fehler = useStore($suitesFehler)
   const formularOffen = useStore($neueSuiteOffen)
-  const wartend = useStore($attentionSessionIds)
+  const wartend = useStore($suitesBrauchen)
   const [suche, setSuche] = useState('')
   const nameFeld = useRef<HTMLInputElement | null>(null)
 
@@ -405,7 +444,7 @@ function SuitesLobby() {
   const gefiltert = useMemo(() => {
     const q = suche.trim().toLowerCase()
 
-    return q ? suites.filter(x => x.titel.toLowerCase().includes(q) || x.vorschau?.toLowerCase().includes(q)) : suites
+    return q ? suites.filter(x => x.titel.toLowerCase().includes(q) || x.brauche?.toLowerCase().includes(q)) : suites
   }, [suche, suites])
 
   return (
@@ -433,8 +472,8 @@ function SuitesLobby() {
           )}
           {status === 'fehler' && (
             <div className="tikki-glas my-2 p-3 text-sm" role="alert">
-              <p className="text-(--tikki-tinte)">{fehler && profilFehlt(fehler) ? s.profilFehlt : s.fehler}</p>
-              {fehler && !profilFehlt(fehler) && (
+              <p className="text-(--tikki-tinte)">{fehler && raumdienstFehlt(fehler) ? s.raumdienstFehlt : s.fehler}</p>
+              {fehler && !raumdienstFehlt(fehler) && (
                 <p className="mt-1 font-mono text-xs text-(--tikki-tinte-weich)">{fehler}</p>
               )}
               <button
@@ -456,14 +495,7 @@ function SuitesLobby() {
           {suites.length > 0 && (
             <ul className={cn('flex flex-col gap-2', status === 'laedt' && 'opacity-70')}>
               {verlaufGruppen(gefiltert).map(({ suite, uebungen }) => (
-                <SuiteTafel
-                  braucht={
-                    wartend.includes(suite.id) || (suite.resolvedId ? wartend.includes(suite.resolvedId) : false)
-                  }
-                  key={suite.id}
-                  suite={suite}
-                  uebungen={uebungen}
-                />
+                <SuiteTafel braucht={wartend.includes(suite.id)} key={suite.id} suite={suite} uebungen={uebungen} />
               ))}
             </ul>
           )}

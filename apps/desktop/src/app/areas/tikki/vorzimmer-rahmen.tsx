@@ -19,13 +19,12 @@ import {
 import { cn } from '@/lib/utils'
 import { notify } from '@/store/notifications'
 import { $currentModel, $gatewayState } from '@/store/session'
-import { $attentionSessionIds } from '@/store/session-states'
 
 import { rolle } from '../admin/katalog'
 import { oeffneImBrowser } from '../browser-area'
 import { areaLabels } from '../labels'
 import { setArea } from '../store'
-import { $neueSuiteOffen, $suites, ladeSuites, oeffneSuite, type Suite } from '../suites/store'
+import { $neueSuiteOffen, $suites, $suitesBrauchen, ladeSuites, oeffneSuite, type Suite } from '../suites/store'
 import { SuiteTafel, verlaufGruppen } from '../suites/suites-area'
 
 import { $auftraege, $auftraegeStatus, type Auftrag, ladeAuftraege } from './auftraege'
@@ -63,7 +62,7 @@ function SuiteKnopf({ suite, hinweis }: { suite: Suite; hinweis?: string }) {
     <button
       className="tikki-knopf tikki-knopf-still w-full px-2.5 py-1.5 text-left"
       data-vorzimmer-suite={suite.id}
-      onClick={() => void oeffneSuite(suite)}
+      onClick={() => oeffneSuite(suite)}
       type="button"
     >
       <span className="flex min-w-0 flex-col">
@@ -138,11 +137,10 @@ function Raumwand({ suites, wartend }: { suites: Suite[]; wartend: readonly stri
   const gefiltert = useMemo(() => {
     const q = suche.trim().toLowerCase()
 
-    return q ? suites.filter(x => x.titel.toLowerCase().includes(q) || x.vorschau?.toLowerCase().includes(q)) : suites
+    return q ? suites.filter(x => x.titel.toLowerCase().includes(q) || x.brauche?.toLowerCase().includes(q)) : suites
   }, [suche, suites])
 
-  const braucht = (suite: Suite) =>
-    wartend.includes(suite.id) || (suite.resolvedId ? wartend.includes(suite.resolvedId) : false)
+  const braucht = (suite: Suite) => wartend.includes(suite.id)
 
   const gruppen = verlaufGruppen(gefiltert).sort((a, b) => Number(braucht(b.suite)) - Number(braucht(a.suite)))
 
@@ -205,7 +203,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   const labels = areaLabels(locale)
   const v = labels.vorzimmer
   const suites = useStore($suites)
-  const wartend = useStore($attentionSessionIds)
+  const wartend = useStore($suitesBrauchen)
   const modell = useStore($currentModel)
   const update = useStore($updateStand)
   const auftraege = useStore($auftraege)
@@ -236,7 +234,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   useEffect(() => startVorleser(), [])
   useEffect(() => startUpdateWaechter(), [])
 
-  const braucht = suites.filter(s => wartend.includes(s.id) || (s.resolvedId ? wartend.includes(s.resolvedId) : false))
+  const braucht = suites.filter(s => wartend.includes(s.id))
   const zuletzt = suites.slice(0, 3)
 
   const briefing = async () => {
@@ -358,7 +356,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
             ) : (
               <div className="flex flex-col gap-1.5">
                 {braucht.map(s => (
-                  <SuiteKnopf hinweis={labels.suites.wartetAufDich} key={s.id} suite={s} />
+                  <SuiteKnopf hinweis={s.brauche ?? labels.suites.wartetAufDich} key={s.id} suite={s} />
                 ))}
               </div>
             )}

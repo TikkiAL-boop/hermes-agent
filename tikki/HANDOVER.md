@@ -40,6 +40,46 @@ Alles darin ist gegen den Code geprüft; Vermutungen sind als solche markiert.
 
 ## 1. Was Tikki sein soll (Anforderungen von Thorsten, wörtlich sinngemäß)
 
+### 1.0 Tikki 2 – Räume als Betriebssystem (Spezifikation 01.10., Thorsten)
+
+Leitbild: Windows machte den Computer bedienbar, der Browser das Internet – **Tikki macht
+KI-Agenten bedienbar**. Man denkt nicht in Chats, sondern in Räumen.
+
+- **Ein Projekt = ein Raum.** Jeder Raum hat 4 Wände; Gespräch, Dateien, Pläne, Ergebnisse,
+  Browser liegen sichtbar im Raum. Räume lassen sich **verschmelzen** (Recherche + Website-Bau
+  → ein Raum mit gemeinsamem Gedächtnis).
+- **Nach dem Login nur zwei Türen**: Neues Projekt / In ein Projekt gehen. Login nur für
+  Adressen unserer Domains (z. B. `r@tikki.email`) mit PIN per Mail. **Beim Testen ist der Login
+  aus**, er kommt zum Schluss.
+- **Raumübersicht statt Vorzimmer.** Dort empfängt Tikki (PA) mit dem **Briefing** (ein Wort,
+  egal ob täglich oder stündlich): was sie erledigt hat, was neu ist. Tikki arbeitet eigenständig
+  nach Daueraufträgen – Mails im Takt prüfen („alle 4 Minuten“) und **selbst beantworten** (sagt
+  Thorsten „schick weg“, wird geschickt, kein Nachfragen), Information aus einer Mail für die
+  nächste nutzen, Gelerntes als Skill speichern, täglich YouTube und KI-News auswerten. Honcho
+  ist ihr Gedächtnis über den Menschen.
+- **Im Raum von Anfang an**: der Mensch, **seine KI** (Stimme, Sprachchat, leitet gleichzeitig
+  weiter), **Tikki**, **Grok 4.7 über das Cursor-Abo als Raumleiter**. Dann Bots nach Bedarf,
+  **ohne Obergrenze** (Hermes-Kern: 128 je Raum, 256 aktive Räume; die 2–6 der Hermes-Oberfläche
+  gelten nicht). 100 Räume = 100 Raumleiter-Instanzen, aktiv nur wenn dran.
+- **Alle Bots im Raum lesen mit.** Jeder weiß, was der andere tut. Bridge: jeder Bot erreicht
+  jeden, Räume erreichen Räume (Hermes Bot Mode: Gruppenräume, Bot-zu-Bot-Nachrichten,
+  Räume über Rechner hinweg – darauf wird aufgebaut, nichts Zweites erfunden).
+- **MR-Bot (Model Resources)**: weiß, welche API-Schlüssel mit welchen Limits, welche CLIs,
+  welche lokalen Modelle und Tools frei sind; meldet es dem Raumleiter; holt neue Bots.
+- **Modelle**: Stand 01.10. **API zuerst** (schneller am Start), lokal später im Vergleich.
+  Lokal ist Pflicht MLX (Apple), MoE (Tempo), unzensiert („ich will nicht hören: das mache ich
+  nicht“) – Kandidaten `mlx-community` Qwen3-235B-A22B-4bit (~130 GB), GLM-4.5-Air-4bit (~60 GB),
+  gpt-oss-120b, dazu abliterierte Varianten; Hermes verlangt ≥ 64k Kontext. Zwei Sprachkanäle:
+  lokal und **xAI Ara**. API-Regeln legt Thorsten später fest; bis dahin maximale Leistung.
+- **3D photorealistisch, sehr modern**; die Grafiken kommen von Thorsten, die Struktur muss sie
+  aufnehmen können.
+- Skills: alles Empfohlene aus Hermes plus OpenClaw nach Bedarf, maximal was Sinn ergibt.
+
+Reihenfolge (01.10.): (1) Raumübersicht mit Tikki, Briefing und Daueraufträgen, (2) Räume auf
+Bot-Mode ohne Grenze, Mitlesen, Verschmelzen, Bridge, (3) MR-Bot, (4) Sprache (Ara, lokal),
+(5) lokales Modell im Vergleich, (6) Login, (7) 3D.
+
+
 Diese Anforderungen sind die Messlatte. Nichts davon ist verhandelbar, außer Thorsten sagt
 es ausdrücklich.
 

@@ -7,6 +7,7 @@ Prüft jede Schicht einzeln und sagt, was fehlt – ohne je einen Schlüsselwert
     Vorzimmer    das aktive Profil ist tikki
     Gedächtnis   das Plugin gedaechtnis ist in jedem Profil verlinkt und eingeschaltet
     Takt         Raumleiter-Takt und Wachhalter-Rundgang stehen als Cronjob bereit
+    Gateway      das Host-Gateway läuft (fährt Räume, Takt und Daueraufträge)
     Schlüssel    für das Vorzimmer-Modell liegt mindestens ein Schlüssel (nur Namen)
     App          die gebaute Tikki-App wird gefunden (auf dem Mac auch in /Applications)
     Backend      `hermes serve` startet und beantwortet /api/status
@@ -123,6 +124,15 @@ def pruefe_takt(profile: Path) -> Punkt:
     return Punkt("Takt", OK, "Raumleiter-Takt (5 min) und Wachhalter-Rundgang (15 min) angelegt")
 
 
+def pruefe_gateway() -> Punkt:
+    """Das eine Host-Gateway fährt Räume und Daueraufträge – ohne es steht alles still."""
+    from gateway.status import is_gateway_running
+
+    if is_gateway_running(cleanup_stale=False):
+        return Punkt("Gateway", OK, "Host-Gateway läuft (fährt Räume, Takt und Daueraufträge)")
+    return Punkt("Gateway", WARNUNG, "kein Gateway aktiv → hermes -p default gateway install (oder: gateway run)")
+
+
 def _env_namen(pfad: Path) -> set[str]:
     if not pfad.is_file():
         return set()
@@ -208,7 +218,7 @@ def alle(home: Path, *, app: bool, backend: bool, hermes: str) -> list[Punkt]:
     profile = home / "profiles"
     punkte = [
         pruefe_zweig(), pruefe_rollen(profile), pruefe_vorzimmer(home), pruefe_gedaechtnis(profile),
-        pruefe_takt(profile), pruefe_schluessel(profile),
+        pruefe_takt(profile), pruefe_schluessel(profile), pruefe_gateway(),
     ]
     if app:
         punkte.append(pruefe_app())

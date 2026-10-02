@@ -610,10 +610,13 @@ Bot-Werkzeuge, und seine SOUL listet je Rolle die `toolsets`, die er mitgibt
 - Als Werkzeug der Bots: Skills `claude-code`, `codex` (aus `skills/autonomous-ai-agents/`), `grok`
   (offizieller optionaler Skill, in die Bibliothek installiert), `gemini-cli`, `notebooklm`
   (Browser mit angemeldetem Google-Konto, NotebookLM hat keine private CLI), `openclaw-skills`.
-  Jede Rolle mit dem Werkzeug `skills` sieht `tikki/skills`, die Coding-Agenten, die
-  OpenClaw-Bibliothek und für Dauer-Recherche `skills/media/youtube-content` (Videos und Shorts
-  über Transkripte) sowie `skills/research` (arXiv, Nachrichtenlage, Wiki) über
-  `skills.external_dirs` (von `rollen_config.py` gesetzt).
+  Jede Rolle mit dem Werkzeug `skills` sieht über `skills.external_dirs` (von `rollen_config.py`
+  gesetzt) `tikki/skills`, **alle eingebauten Hermes-Skills** (`<repo>/skills` als ein Eintrag –
+  Coding-Agenten, `research`, `media/youtube-content` usw. folgen Git ohne Kopien) und die
+  OpenClaw-Bibliothek. Ein erneuter `rollen-einrichten.sh`-Lauf lässt `model`/`fallback_providers`
+  einer vorhandenen config.yaml stehen (`hermes model`, Admin → Modelle); Katalogmodelle erzwingt
+  `--modelle-zuruecksetzen`. `known_plugin_toolsets` hält die Plugin-Toolsets `pa`/`gedaechtnis`
+  aus Rollen heraus, die sie im Katalog nicht haben.
 - Perplexity: keine kostenlose CLI, nicht angebunden.
 
 ### 4.11 OpenClaw-Skills (`tikki/werkzeuge/openclaw_skills.py`, `openclaw-einrichten.sh`)
@@ -758,7 +761,10 @@ Ollama sind dort gesperrt). Provider `lokal`, `LOKAL_API_KEY=lokal`, Profile `ti
    Cookie-Klick, Optik der Rail).
 2. `bash tikki/werkzeuge/rollen-einrichten.sh` ausführen; vorher `XAI_API_KEY`,
    `CURSOR_API_KEY` als Umgebungsvariablen. Cursor-Schlüssel neu erzeugen.
-3. Cursor-`base_url` und Modellname für Opus 5.5 bestätigen.
+3. Cursor-`base_url` und Modellname für Opus 5.5 bestätigen. Vor `rollen-einrichten.sh` den
+   Endpunkt testen: `curl -H "Authorization: Bearer $CURSOR_API_KEY" https://api.cursor.com/v1/models`
+   (200 = gut; 404/401 → Katalog auf `xai` umstellen; der Selbsttest-Punkt „Anbieter“ prüft
+   dasselbe für jeden Anbieter mit Schlüssel).
 4. Bestätigen, dass `mail.tikki.email` mit 993/587 der richtige Server ist.
 5. Optional: Logo in ≥ 1024 px liefern.
 6. PR #1 mergen oder offen lassen (beides ist in Ordnung).

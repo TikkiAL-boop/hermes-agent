@@ -2,12 +2,13 @@
 # Tikki – richtet für jede Rolle aus rollen/KATALOG.json ein Hermes-Profil ein.
 #
 # Idempotent: vorhandene Profile werden nicht neu angelegt, SOUL.md und config.yaml
-# werden auf den Stand des Repos gebracht. Mit --dry-run wird nur angezeigt, was
-# passieren würde. Keine Geheimnisse werden geschrieben; Schlüssel kommen aus
+# werden auf den Stand des Repos gebracht; gewählte Modelle (hermes model, Admin →
+# Modelle) bleiben, außer mit --modelle-zuruecksetzen. Mit --dry-run wird nur angezeigt,
+# was passieren würde. Keine Geheimnisse werden geschrieben; Schlüssel kommen aus
 # Umgebungsvariablen (siehe README.md).
 #
 # Verwendung:
-#   tikki/werkzeuge/rollen-einrichten.sh [--dry-run] [--nur <slug>]
+#   tikki/werkzeuge/rollen-einrichten.sh [--dry-run] [--nur <slug>] [--modelle-zuruecksetzen]
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,12 +23,14 @@ MODUL="tikki.werkzeuge.rollen_config"
 
 DRY_RUN=0
 NUR=""
+MODELLE=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
     --nur) shift; NUR="${1:-}" ;;
+    --modelle-zuruecksetzen) MODELLE=(--modelle-zuruecksetzen) ;;
     -h|--help)
-      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+      sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -153,7 +156,7 @@ while IFS=$'\t' read -r SLUG NAME PORT; do
   if [ "$DRY_RUN" = 1 ]; then
     konfig vorschau "$KATALOG" "$VORLAGE" "$SLUG"
   else
-    konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml"
+    konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml" ${MODELLE[@]+"${MODELLE[@]}"}
   fi
 
   # 3b) honcho.json: Workspace tikki, AI-Peer = Rolle, eine Honcho-Sitzung je Suite

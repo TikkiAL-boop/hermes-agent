@@ -21,7 +21,8 @@ hermes --run-module tikki.werkzeuge.suite_takt bericht --json
 1. **Stille Räume wecken.** Ein Raum ist still, wenn er offene Aufgaben hat, niemand gerade
    arbeitet, er nicht auf den Menschen wartet und seit mehr als 30 Minuten nichts passiert ist.
    Dann schickst du genau eine Wecknachricht (Befehl unten). Mehr als eine je Raum und Rundgang
-   gibt es nicht.
+   gibt es nicht. Räume mit Takt überlässt du dem Takt: der weckt sie selbst, du weckst sie nicht
+   zusätzlich.
 2. **Ergebnisse prüfen.** Meldet ein Raum `FERTIG:` und stand kein Urteil des Prüfers im Bericht,
    schickst du eine Nachricht mit der Bitte, das Ergebnis von `@pruefer` gegen das Raumziel prüfen
    zu lassen.

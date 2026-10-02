@@ -21,7 +21,10 @@ Nur der Zustand des Taktgebers (letzte Runde, zuletzt gelesene Zeile, Merker) li
 Unterbefehle:
 
     takt    [--db PFAD]            fällige Runden, Türen und Übungsergebnisse einstellen
-    bericht [--json] [--db PFAD]   Stand aller Räume (für Wachhalter und Briefing)
+                                   (Exit 1, wenn ein Raum eine Nachricht abgelehnt hat)
+    bericht [--json] [--db PFAD]   Stand aller Räume (für Wachhalter und Briefing); ohne --json
+                                   endet er mit ``{"wakeAgent": false}``, wenn kein Raum den
+                                   Wachhalter braucht – Hermes' Cron spart sich dann den Modelllauf
 """
 
 from __future__ import annotations
@@ -37,10 +40,19 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from gateway import hosted_room_discussion as discussion
+from gateway import hosted_rooms
 from tikki.werkzeuge import raeume
 
 #: Das Mitglied, dessen Zeilen (STAND, BRAUCHE, FERTIG, AUFGABEN, TÜR) Takt und Wände lesen.
 RAUMLEITER = "raumleiter"
+#: Womit ein Raum das Einstellen einer Nachricht ablehnt (aufgelöst, Budget voll, Autorität
+#: gewechselt, Text unzulässig). Ein solcher Raum kostet den anderen nicht ihren Tick.
+RAUM_FEHLER = (hosted_rooms.HostedRoomError, discussion.DiscussionPolicyError)
+#: Präfix der Fehlzeilen im Tick; ``main`` endet damit ungleich null.
+FEHLER = "Fehler: "
+#: Ein stiller Raum mit offenen Aufgaben braucht nach so vielen Minuten den Wachhalter.
+STILL_MIN = 30
 #: So viele Ereignisse vom Ende eines Raums werden gelesen; lange Räume halten ihren Anfang extra.
 FENSTER = 1500
 ANFANG = 40
@@ -50,8 +62,9 @@ _BRAUCHE = re.compile(r"(?:^|\n)[ \t>*_]*BRAUCHE:[ \t]*([^\n]+)")
 _FERTIG = re.compile(r"(?:^|\n)[ \t>*_]*FERTIG:[ \t]*")
 _STAND = re.compile(r"(?:^|\n)[ \t>*_]*STAND:[ \t]*([^\n]+)")
 _ANSATZ = re.compile(r"(?:^|\n)[ \t>*_]*ANSATZ:[ \t]*([^\n]+)")
-_AUFGABEN = re.compile(r"(?:^|\n)[ \t>*_]*AUFGABEN:[ \t]*\n((?:[ \t]*-[ \t]*\[[ xX]\][^\n]*\n?)+)")
-_AUFGABE = re.compile(r"^[ \t]*-[ \t]*\[([ xX])\][ \t]*(.+?)[ \t]*$", re.MULTILINE)
+#: ``AUFGABEN:`` darf fett stehen und einen Zusatz tragen; Punkte mit ``-`` oder ``*`` (wie die App).
+_AUFGABEN = re.compile(r"(?:^|\n)[ \t>*_#]*AUFGABEN:[^\n]*\n((?:[ \t]*[-*][ \t]*\[[ xX]\][^\n]*\n?)+)")
+_AUFGABE = re.compile(r"^[ \t]*[-*][ \t]*\[([ xX])\][ \t]*(.+?)[ \t]*$", re.MULTILINE)
 _TUER = re.compile(r"(?:^|\n)[ \t>*_]*TÜR:[ \t]*([^|\n]+?)[ \t]*\|[ \t]*([^\n]+)")
 #: Nachrichten, die das Backend in einen Raum stellt, sind keine Antwort des Menschen – auch wenn
 #: der Mensch ihnen seinen Namen voranstellt oder sie @raumleiter ansprechen.
@@ -190,6 +203,9 @@ def raum_stand(raum: dict, ereignisse: list[dict]) -> RaumStand:
     Gelesen werden die Zeilen des Raumleiters; die Berichtsformate der anderen Rollen (etwa das
     ``STAND: <Datum>`` des Rechercheurs) sind keine Raumaussage. Eine Nachricht des Menschen
     beantwortet die offene Frage und öffnet einen fertigen Raum wieder; Systemnachrichten nicht.
+    Die letzte Raumleiter-Nachricht gilt: ``BRAUCHE:`` bleibt offen, bis der Raumleiter wieder
+    ``STAND:``/``FERTIG:`` ohne ``BRAUCHE:`` schreibt oder der Mensch antwortet (so liest es auch
+    die App, ``suites/store.ts``).
     """
     stand = RaumStand(
         id=raum["room_id"], titel=(raum.get("name") or "").strip() or raum["room_id"],
@@ -219,7 +235,10 @@ def raum_stand(raum: dict, ereignisse: list[dict]) -> RaumStand:
                 stand.fertig = False
             continue
         brauche = _BRAUCHE.findall(text)
-        stand.brauche = brauche[-1].strip() if brauche else None
+        if brauche:
+            stand.brauche = brauche[-1].strip()
+        elif _STAND.search(text) or _FERTIG.search(text):
+            stand.brauche = None
         if treffer := _FERTIG.search(text):
             stand.fertig = True
             stand.fertig_text = text[treffer.start():].strip()[:3000]
@@ -273,7 +292,11 @@ def zustand_pfad(db: Path) -> Path:
 
 @contextlib.contextmanager
 def _zustand(db: Path):
-    """Der Zustand des Taktgebers, unter Dateisperre gelesen und geschrieben."""
+    """Der Zustand des Taktgebers, unter Dateisperre gelesen und geschrieben.
+
+    Geschrieben wird auch, wenn der Tick abbricht: was bis dahin eingestellt wurde, ist im Raum
+    und darf beim nächsten Lauf nicht noch einmal kommen.
+    """
     import fcntl
 
     pfad = zustand_pfad(db)
@@ -284,10 +307,12 @@ def _zustand(db: Path):
             daten = json.loads(pfad.read_text(encoding="utf-8")) if pfad.exists() else {}
         except ValueError:
             daten = {}
-        yield daten
-        tmp = pfad.with_suffix(".tmp")
-        tmp.write_text(json.dumps(daten, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, pfad)
+        try:
+            yield daten
+        finally:
+            tmp = pfad.with_suffix(".tmp")
+            tmp.write_text(json.dumps(daten, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, pfad)
 
 
 def _zustand_lesen(db: Path) -> dict:
@@ -333,8 +358,8 @@ def runden_text(raum: RaumStand, nummer: int, jetzt: datetime) -> str:
 def tueren_weiterreichen(raum_liste: list[RaumStand], zustand: dict, db: Path, jetzt: float) -> list[str]:
     """Jede neue ``TÜR:``-Zeile eines Raumleiters einmal in den Zielraum stellen.
 
-    Was nicht zustellbar ist (unbekannter Raum, mehrdeutiger Anfang, der Raum selbst), bleibt im
-    Zustand stehen, damit der Bericht es dem Wachhalter zeigt.
+    Was nicht zustellbar ist (unbekannter Raum, mehrdeutiger Anfang, der Raum selbst, ein Zielraum,
+    der die Nachricht ablehnt), bleibt im Zustand stehen, damit der Bericht es dem Wachhalter zeigt.
     """
     meldungen = []
     for raum in raum_liste:
@@ -344,12 +369,18 @@ def tueren_weiterreichen(raum_liste: list[RaumStand], zustand: dict, db: Path, j
             if tuer.seq <= gesehen:
                 continue
             ziel = raum_finden(tuer.ziel, raum_liste)
-            if ziel is None or ziel.id == raum.id:
-                eintrag["unzustellbar"] = [*eintrag.get("unzustellbar", [])[-4:], {"ziel": tuer.ziel, "text": tuer.text[:200], "seq": tuer.seq}]
+            grund = "kein solcher Raum" if ziel is None or ziel.id == raum.id else None
+            if grund is None:
+                try:
+                    raeume.tuer(raum.id, ziel.id, tuer.text, db=db, jetzt=jetzt)
+                    meldungen.append(f"Tür: {raum.titel} → {ziel.titel}")
+                    continue
+                except RAUM_FEHLER as e:
+                    grund = str(e)
+                    meldungen.append(f"{FEHLER}Tür {raum.titel} → {ziel.titel}: {e}")
+            else:
                 meldungen.append(f"Tür nicht zustellbar: {raum.titel} → „{tuer.ziel}“")
-                continue
-            raeume.tuer(raum.id, ziel.id, tuer.text, db=db, jetzt=jetzt)
-            meldungen.append(f"Tür: {raum.titel} → {ziel.titel}")
+            eintrag["unzustellbar"] = [*eintrag.get("unzustellbar", [])[-4:], {"ziel": tuer.ziel, "text": tuer.text[:200], "seq": tuer.seq, "grund": grund}]
         eintrag["gesehen"] = max(gesehen, raum.letzte_seq)
     return meldungen
 
@@ -439,8 +470,25 @@ def _jetzt(jetzt: datetime | None) -> datetime:
     return now()
 
 
+def _einstellen(zustand: dict, raum: RaumStand, text: str, db: Path, stempel: float, meldungen: list[str]) -> bool:
+    """Eine Nachricht in einen Raum; ein Raum, der sie ablehnt, kostet die anderen nicht den Tick.
+
+    Der letzte Fehler steht im Zustand (``fehler``), damit der Bericht ihn dem Wachhalter zeigt,
+    und verschwindet, sobald der Raum wieder annimmt.
+    """
+    eintrag = zustand.setdefault(raum.id, {})
+    try:
+        raeume.senden(raum.id, text, db=db, jetzt=stempel)
+    except RAUM_FEHLER as e:
+        eintrag["fehler"] = f"{datetime.fromtimestamp(stempel).strftime('%d.%m. %H:%M')} {e}"
+        meldungen.append(f"{FEHLER}{raum.titel}: {e}")
+        return False
+    eintrag.pop("fehler", None)
+    return True
+
+
 def takt(*, db: Path | None = None, jetzt: datetime | None = None) -> list[str]:
-    """Ein Tick des Taktgebers. Rückgabe: je eingestellter Nachricht eine Zeile."""
+    """Ein Tick des Taktgebers. Rückgabe: je eingestellter Nachricht eine Zeile, Fehler mit ``FEHLER``."""
     db = db or raeume.db_pfad()
     jetzt = _jetzt(jetzt)
     stempel = jetzt.timestamp()
@@ -449,15 +497,15 @@ def takt(*, db: Path | None = None, jetzt: datetime | None = None) -> list[str]:
     with _zustand(db) as zustand:
         meldungen += tueren_weiterreichen(raum_liste, zustand, db, stempel)
         for haupt, text, grund, (projekt, feld, wert) in uebungs_runden(raum_liste, zustand, stempel):
-            raeume.senden(haupt.id, text, db=db, jetzt=stempel)
-            zustand.setdefault("_uebung", {}).setdefault(projekt, {})[feld] = wert
-            meldungen.append(f"{grund}: {haupt.titel}")
+            if _einstellen(zustand, haupt, text, db, stempel, meldungen):
+                zustand.setdefault("_uebung", {}).setdefault(projekt, {})[feld] = wert
+                meldungen.append(f"{grund}: {haupt.titel}")
         for raum in faellige(raum_liste, zustand, jetzt):
             eintrag = zustand[raum.id]
             nummer = int(eintrag.get("runden", 0)) + 1
-            raeume.senden(raum.id, runden_text(raum, nummer, jetzt), db=db, jetzt=stempel)
-            eintrag["letzte"], eintrag["runden"] = jetzt.isoformat(), nummer
-            meldungen.append(f"Takt-Runde {nummer} ({raum.takt}): {raum.titel}")
+            if _einstellen(zustand, raum, runden_text(raum, nummer, jetzt), db, stempel, meldungen):
+                eintrag["letzte"], eintrag["runden"] = jetzt.isoformat(), nummer
+                meldungen.append(f"Takt-Runde {nummer} ({raum.takt}): {raum.titel}")
         bekannt = {raum.id for raum in raum_liste}
         for alt in [k for k in zustand if not k.startswith("_") and k not in bekannt]:
             zustand.pop(alt, None)
@@ -481,8 +529,30 @@ def bericht(*, db: Path | None = None, jetzt: float | None = None) -> list[dict]
         daten["letzte_takt_runde"] = eintrag.get("letzte") if raum.plan else None
         daten["takt_runden"] = int(eintrag.get("runden", 0))
         daten["tueren_unzustellbar"] = eintrag.get("unzustellbar", [])
+        daten["fehler"] = eintrag.get("fehler")
         zeilen.append(daten)
     return zeilen
+
+
+def weckbedarf(zeilen: list[dict]) -> bool:
+    """Ob der Wachhalter (ein Modelllauf) gebraucht wird, oder ob der Bericht nur Ruhe meldet.
+
+    Gebraucht wird er, wenn ein Raum auf den Menschen wartet (``BRAUCHE:``), wenn ein Raum ohne
+    Takt bei offenen Aufgaben länger als ``STILL_MIN`` Minuten still ist und niemand arbeitet,
+    oder wenn ein Raum einen Fehler oder eine unzustellbare Tür meldet. Räume mit Takt überlässt
+    er dem Takt.
+    """
+    return any(
+        z["brauche"]
+        or z["fehler"]
+        or z["tueren_unzustellbar"]
+        or (z["aufgaben_offen"] and not z["plan"] and not z["arbeitet"] and (z["still_seit_min"] or 0) > STILL_MIN)
+        for z in zeilen
+    )
+
+
+#: Die letzte Ausgabezeile, bei der Hermes' Cron den Lauf ohne Modell beendet (``cron/scheduler_prompt.py``).
+KEIN_WECKEN = json.dumps({"wakeAgent": False})
 
 
 def _bericht_text(zeilen: list[dict]) -> str:
@@ -504,6 +574,7 @@ def _bericht_text(zeilen: list[dict]) -> str:
             + (f" · STAND: {z['stand']}" if z["stand"] else "")
             + (f" · Tür nicht zustellbar: {', '.join('„' + t['ziel'] + '“' for t in z['tueren_unzustellbar'])}"
                if z["tueren_unzustellbar"] else "")
+            + (f" · Fehler: {z['fehler']}" if z["fehler"] else "")
         )
     return "\n".join(teile)
 
@@ -519,11 +590,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.befehl == "takt":
-        for zeile in takt(db=args.db):
+        zeilen = takt(db=args.db)
+        for zeile in zeilen:
             print(zeile)
-        return 0
+        return 1 if any(z.startswith(FEHLER) for z in zeilen) else 0
     zeilen = bericht(db=args.db)
-    print(json.dumps(zeilen, ensure_ascii=False, indent=2) if args.json else _bericht_text(zeilen))
+    if args.json:
+        print(json.dumps(zeilen, ensure_ascii=False, indent=2))
+        return 0
+    print(_bericht_text(zeilen))
+    if not weckbedarf(zeilen):
+        print(KEIN_WECKEN)
     return 0
 
 

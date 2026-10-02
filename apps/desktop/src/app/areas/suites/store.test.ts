@@ -17,6 +17,7 @@ const {
   $suitesFehler,
   $suitesStatus,
   aufgabenAus,
+  auftragGeben,
   brauchtAus,
   fertigAus,
   ladeSuites,
@@ -73,6 +74,24 @@ const MITGLIEDER = [
 
 const nachrichten = (events: RaumEreignis[]) =>
   events.map(e => nachrichtAus(e, MITGLIEDER)).filter((m): m is NonNullable<typeof m> => m !== undefined)
+
+// The same three example texts the schedule reads in tests/tikki/test_suite_takt.py.
+const BRAUCHE_TEXT = 'STAND: Ort gesucht.\nBRAUCHE: Budget? Vorschlag 150 €'
+
+const SYSTEM_NACHRICHTEN = [
+  'thorsten: @raumleiter TAKT-RUNDE 2 · 01.10.2026 12:00: Neue Runde nach Takt (stündlich).',
+  '@raumleiter WACHHALTER: bitte weiterarbeiten',
+  '[Tür aus „Recherche“] @raumleiter Die Quellen liegen vor.',
+  '@raumleiter ÜBUNGSERGEBNIS 2: Übungsraum „App-thorsten-2@tikki.team“ ist zuerst fertig.',
+  '@raumleiter LERNEN: Alle Übungsläufe zu „App“ sind durch.'
+]
+
+const ZWISCHENRUF = '@rechercheur such inzwischen drei Orte heraus.'
+const STAND_OHNE_BRAUCHE = 'STAND: Ort gebucht, Budget nicht mehr nötig.'
+
+const AUFGABEN_TEXT =
+  'STAND: zweite Runde\n**AUFGABEN:** (Stand 12:00)\n* [x] Häuser an der Ostsee sammeln\n' +
+  '- [ ] Preise vergleichen\n\nTÜR: Recherche | bitte Preise'
 
 /** A gateway with rooms whose logs and driver status are given per room id. */
 function gateway(
@@ -184,8 +203,21 @@ describe('nachrichtAus', () => {
   it('keeps a message without a name prefix whole', () => {
     expect(nachrichtAus(mensch('[Tür aus „A“] @raumleiter Bitte Stand'), MITGLIEDER)).toMatchObject({
       name: 'Mensch',
-      text: '[Tür aus „A“] @raumleiter Bitte Stand'
+      text: '[Tür aus „A“] @raumleiter Bitte Stand',
+      system: true
     })
+  })
+
+  it('marks what the backend puts into the room as system, the person and the members never', () => {
+    expect(SYSTEM_NACHRICHTEN.map(t => nachrichtAus(mensch(t), MITGLIEDER)?.system)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true
+    ])
+    expect(nachrichtAus(mensch('thorsten: ja, 150 € passen'), MITGLIEDER)?.system).toBe(false)
+    expect(nachrichtAus(bot('raumleiter', 'WACHHALTER: hat gefragt'), MITGLIEDER)?.system).toBe(false)
   })
 })
 
@@ -208,6 +240,23 @@ describe('brauchtAus / fertigAus / standAus', () => {
 
     expect(fertigAus(nachrichten(fertig))).toBe(true)
     expect(fertigAus(nachrichten([...fertig, mensch('thorsten: danke, weiter')]))).toBe(false)
+    expect(fertigAus(nachrichten([...fertig, mensch(SYSTEM_NACHRICHTEN[1]!)]))).toBe(true)
+  })
+
+  it('keeps BRAUCHE open across system messages until the room lead closes with STAND/FERTIG or the person answers', () => {
+    const offen = [mensch('thorsten: @raumleiter Plane die Feier.'), bot('raumleiter', BRAUCHE_TEXT)]
+
+    for (const text of SYSTEM_NACHRICHTEN) {
+      offen.push(mensch(text))
+      expect(brauchtAus(nachrichten(offen)), text).toBe('Budget? Vorschlag 150 €')
+    }
+
+    // The last room-lead message counts; one without STAND/FERTIG leaves the question standing.
+    expect(brauchtAus(nachrichten([...offen, bot('raumleiter', ZWISCHENRUF)]))).toBe('Budget? Vorschlag 150 €')
+    expect(
+      brauchtAus(nachrichten([...offen, bot('raumleiter', ZWISCHENRUF), bot('raumleiter', STAND_OHNE_BRAUCHE)]))
+    ).toBeUndefined()
+    expect(brauchtAus(nachrichten([...offen, mensch('thorsten: ja, 150 € passen')]))).toBeUndefined()
   })
 })
 
@@ -229,6 +278,45 @@ describe('aufgabenAus', () => {
       { text: 'Packliste', erledigt: false }
     ])
     expect(aufgabenAus('- [ ] ohne Kopf')).toEqual([])
+  })
+
+  it('reads a bold header with a remark and star bullets the way the schedule does', () => {
+    expect(aufgabenAus(AUFGABEN_TEXT)).toEqual([
+      { text: 'Häuser an der Ostsee sammeln', erledigt: true },
+      { text: 'Preise vergleichen', erledigt: false }
+    ])
+  })
+})
+
+describe('auftragGeben', () => {
+  const suite = {
+    id: 'tikki-feier-1',
+    mitglieder: [...MITGLIEDER, { member_id: 'tikki', profile: 'tikki', handle: 'tikki', display_name: 'Tikki' }]
+  }
+
+  const gesendet = () => (calls().at(-1)![1].payload as { text: string }).text
+
+  it('addresses the room lead when the person names nobody, so the core does not ask every member in turn', async () => {
+    gateway([])
+
+    await auftragGeben(suite, '  2000 Euro  ')
+    expect(gesendet()).toBe('thorsten: @raumleiter 2000 Euro')
+
+    await auftragGeben(suite, 'Schreib an mail@example.org, @niemand')
+    expect(gesendet()).toBe('thorsten: @raumleiter Schreib an mail@example.org, @niemand')
+  })
+
+  it('leaves a text alone that already addresses a member (any case) or everyone', async () => {
+    gateway([])
+
+    await auftragGeben(suite, '@tikki was meinst du?')
+    expect(gesendet()).toBe('thorsten: @tikki was meinst du?')
+
+    await auftragGeben(suite, 'Bitte @Rechercheur, drei Quellen')
+    expect(gesendet()).toBe('thorsten: Bitte @Rechercheur, drei Quellen')
+
+    await auftragGeben(suite, '@all kurz melden')
+    expect(gesendet()).toBe('thorsten: @all kurz melden')
   })
 })
 

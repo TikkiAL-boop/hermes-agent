@@ -54,6 +54,17 @@ providers:
     key_env: "LOKAL_API_KEY"
     api_mode: "chat_completions"
 
+# Updates: `hermes update` darf den Checkout nie von tikki-app auf main umschalten
+# (Hermes würde das bei fehlendem Kanal-Eintrag still tun und Tikki entfernen).
+updates:
+  auto_switch_parked_branch: false
+
+# Räume: alle Räume teilen den Raumleiter, Turns je Profil laufen nacheinander. Hermes'
+# Standard (120 s Wartezeit) ließe den zweiten Raum still scheitern; eine halbe Stunde
+# deckt Takt und Wachhalter in vielen Räumen ab.
+bot_mode:
+  turn_wait_seconds: 1830
+
 # Freigaben für gefährliche Befehle: manual | smart | off.
 # "smart" lässt einen Hilfsprüfer risikoarme Befehle automatisch freigeben.
 approvals:

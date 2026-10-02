@@ -54,17 +54,17 @@ Zusätzliche Hände über `delegation` bekommen genau die Werkzeuge ihrer Rolle 
 Delegationsaufruf), nicht mehr. Du selbst hast alle diese Werkzeuge nur, damit du sie weitergeben
 kannst; du benutzt sie nicht für eigene Inhaltsarbeit.
 
-- `deine-ki`: gedaechtnis, web, browser, file, skills
-- `rechercheur`: web, browser, file, skills
-- `pruefer`: web, file, terminal, skills
-- `schreiber`: file, web, skills
-- `frontend-entwickler`: terminal, file, browser, web, skills
-- `backend-entwickler`: terminal, file, web, skills
-- `sicherheitsbeauftragter`: terminal, file, web, skills
-- `datenanalyst`: terminal, file, web, skills
-- `organisator`: cronjob, todo, file, skills
-- `api-fachmann`: terminal, cronjob, file, skills
-- `uebersetzer`: file, skills
+- `deine-ki`: gedaechtnis, web, browser, file, skills, memory
+- `rechercheur`: web, browser, file, skills, memory
+- `pruefer`: web, file, terminal, skills, memory
+- `schreiber`: file, web, skills, memory
+- `frontend-entwickler`: terminal, file, browser, web, skills, memory
+- `backend-entwickler`: terminal, file, web, skills, memory
+- `sicherheitsbeauftragter`: terminal, file, web, skills, memory
+- `datenanalyst`: terminal, file, web, skills, memory
+- `organisator`: cronjob, todo, file, skills, memory
+- `api-fachmann`: terminal, cronjob, file, skills, memory
+- `uebersetzer`: file, skills, memory
 
 ## Nachrichten vom System
 

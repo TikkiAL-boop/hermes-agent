@@ -22,7 +22,8 @@
       "terminal",
       "skills",
       "cronjob",
-      "todo"
+      "todo",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8650,
@@ -34,6 +35,11 @@
       },
       "display": {
         "streaming": true
+      },
+      "tools": {
+        "tool_search": {
+          "enabled": "off"
+        }
       }
     }
   },
@@ -59,12 +65,20 @@
       "file",
       "skills",
       "terminal",
-      "cronjob"
+      "cronjob",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8651,
     "hermes_profil": "raumleiter",
-    "im_raum_ab_start": true
+    "im_raum_ab_start": true,
+    "einstellungen": {
+      "tools": {
+        "tool_search": {
+          "enabled": "off"
+        }
+      }
+    }
   },
   {
     "slug": "deine-ki",
@@ -84,12 +98,20 @@
       "web",
       "browser",
       "file",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8663,
     "hermes_profil": "deine-ki",
-    "im_raum_ab_start": true
+    "im_raum_ab_start": true,
+    "einstellungen": {
+      "tools": {
+        "tool_search": {
+          "enabled": "off"
+        }
+      }
+    }
   },
   {
     "slug": "rechercheur",
@@ -105,7 +127,8 @@
       "web",
       "browser",
       "file",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8652,
@@ -126,7 +149,8 @@
       "web",
       "file",
       "terminal",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8653,
@@ -146,7 +170,8 @@
     "werkzeuge": [
       "file",
       "web",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8654,
@@ -168,7 +193,8 @@
       "file",
       "browser",
       "web",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8655,
@@ -189,7 +215,8 @@
       "terminal",
       "file",
       "web",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8656,
@@ -210,7 +237,8 @@
       "terminal",
       "file",
       "web",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8657,
@@ -231,7 +259,8 @@
       "terminal",
       "file",
       "web",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8658,
@@ -252,7 +281,8 @@
       "cronjob",
       "todo",
       "file",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8659,
@@ -273,7 +303,8 @@
       "terminal",
       "cronjob",
       "file",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8660,
@@ -292,7 +323,8 @@
     },
     "werkzeuge": [
       "file",
-      "skills"
+      "skills",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8661,
@@ -316,11 +348,19 @@
       "terminal",
       "file",
       "todo",
-      "gedaechtnis"
+      "gedaechtnis",
+      "memory"
     ],
     "freigabe": "smart",
     "port": 8662,
     "hermes_profil": "wachhalter",
-    "im_raum_ab_start": false
+    "im_raum_ab_start": false,
+    "einstellungen": {
+      "tools": {
+        "tool_search": {
+          "enabled": "off"
+        }
+      }
+    }
   }
 ]

@@ -157,6 +157,14 @@ else
   hinweis "Gateway-Dienst nicht installierbar – Ausgabe:"
   printf '%s\n' "$AUSGABE" | sed 's/^/    /' | tail -12
 fi
+# Hauptprofil: Updates bleiben auf dem Tikki-Zweig (ein nacktes `hermes update` würde sonst
+# auf main umschalten), und das Gateway wartet lange genug, wenn viele Räume denselben
+# Raumleiter brauchen (Hermes-Standard 120 s → stiller Fehlschlag im zweiten Raum).
+"$HERMES" -p default config set updates.auto_switch_parked_branch false >/dev/null 2>&1 \
+  && gut "Updates festgenagelt auf tikki-app (tikki/werkzeuge/tikki-update.sh)" \
+  || hinweis "updates.auto_switch_parked_branch konnte nicht gesetzt werden"
+"$HERMES" -p default config set bot_mode.turn_wait_seconds 1830 >/dev/null 2>&1 \
+  || hinweis "bot_mode.turn_wait_seconds konnte nicht gesetzt werden"
 
 # 8) Selbsttest
 selbsttest

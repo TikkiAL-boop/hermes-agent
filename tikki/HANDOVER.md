@@ -178,6 +178,15 @@ und endet mit `tikki/werkzeuge/selbsttest.py` (✓/⚠/✗ je Schicht, Exit 1 be
 Nur prüfen: `tikki/installieren.sh --nur-pruefen`; Hermes schon da: `--ohne-kern`. Der Klon gehört nach `~/.hermes/hermes-agent`,
 weil Hermes nur für diesen Ort die App in `/Applications` bei `hermes update` erneuert.
 
+**Aktualisieren: immer `tikki/werkzeuge/tikki-update.sh`** (= `hermes update --branch tikki-app`).
+Ein nacktes `hermes update` oder `/update` im Chat würde den Checkout auf `main` umschalten,
+sobald der Update-Kanal keinen Eintrag für den Zweig kennt – dann fehlt `tikki/`, die Cronjobs
+brechen mit ImportError und das Gateway startet als nacktes Hermes neu (02.10. nachgestellt;
+rückgängig mit `git checkout tikki-app`). Darum setzen Installer und Rollenvorlage
+`updates.auto_switch_parked_branch: false` (Hermes bricht dann mit „CODE UPDATE SKIPPED“ ab
+statt zu wechseln). Upstream-Hermes holt weiterhin `tikki/werkzeuge/hermes-aktualisieren.sh`
+per Merge herein (4.12).
+
 Von Hand (Entwicklung):
 
 ```bash

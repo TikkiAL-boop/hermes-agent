@@ -17,9 +17,11 @@
 //
 // Tikki adds one more job to this preload: the Browser area accepts cookie
 // banners on its own (preview-guest-cookie-consent.ts). That, too, is DOM
-// only — it clicks buttons the page rendered, and nothing else.
+// only — it clicks buttons the page rendered, and nothing else. The same
+// webview also shows Hermes' agent preview (dev servers, local files), so the
+// auto-click is gated on the page's URL: never on local or `file:` pages.
 
-import { type ConsentElement, installCookieConsentAutoAccept } from './preview-guest-cookie-consent'
+import { consentAllowedFor, type ConsentElement, installCookieConsentAutoAccept } from './preview-guest-cookie-consent'
 import { installGuestExternalHandoff } from './preview-guest-preload'
 
 const electron = require('electron') as {
@@ -119,8 +121,10 @@ function startConsent() {
   })
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', startConsent, { once: true })
-} else {
-  startConsent()
+if (consentAllowedFor(location.href)) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startConsent, { once: true })
+  } else {
+    startConsent()
+  }
 }

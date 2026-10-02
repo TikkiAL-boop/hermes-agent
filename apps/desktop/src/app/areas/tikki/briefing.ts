@@ -6,10 +6,13 @@
 import { requestComposerSubmit } from '@/app/chat/composer/focus'
 import { chatMessageText } from '@/lib/chat-messages/parts'
 import { persistString, storedString } from '@/lib/storage'
+import { activeGatewayProfileKey } from '@/store/gateway'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
 import type { Suite } from '../suites/store'
+
+import { PA_PROFIL } from './auftraege'
 
 export interface BriefingMail {
   von: string
@@ -190,6 +193,10 @@ export function briefingFaellig(zuletzt: number, jetzt: number, an: boolean, abs
 /**
  * When the gateway opens and no briefing was given lately, hand one to Tikki
  * after a short delay. Returns the stop function.
+ *
+ * The briefing is addressed to Tikki: it goes out only while the active
+ * gateway serves the Vorzimmer profile. Another profile's open chat (a room
+ * leader, a bot) must never receive it, and a skipped briefing stays due.
  */
 export function startBriefingAutomatik(ausloesen: () => Promise<void> | void): () => void {
   let timer: number | undefined
@@ -202,6 +209,10 @@ export function startBriefingAutomatik(ausloesen: () => Promise<void> | void): (
     }
 
     timer = window.setTimeout(() => {
+      if (activeGatewayProfileKey() !== PA_PROFIL) {
+        return
+      }
+
       if (briefingFaellig(letztesBriefing(), Date.now(), briefingAutomatik())) {
         void ausloesen()
       }

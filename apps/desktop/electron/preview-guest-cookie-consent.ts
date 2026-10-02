@@ -15,6 +15,11 @@
 //
 // Clicks are capped per page so a banner that refuses to go away cannot
 // turn into a click storm.
+//
+// The preload is shared with Hermes' agent preview (dev servers, Streamlit,
+// local HTML), which has no cookie banners but may well render a
+// `class="banner"` with an "OK" link. `consentAllowedFor(url)` keeps the
+// auto-click off local and file pages altogether.
 
 export interface ConsentElement {
   /** `id`, `class`, `data-*` attributes joined, lowercase. */
@@ -77,7 +82,51 @@ export const ACCEPT_TEXT =
 
 /** A container looks like a consent dialog when its attributes say so. */
 export const CONSENT_CONTAINER =
-  /cookie|consent|cmp|gdpr|privacy|datenschutz|tracking|banner|didomi|onetrust|usercentrics|sourcepoint|quantcast|cookiebot|truste|trustarc|cc-window/
+  /cookie|consent|cmp|gdpr|datenschutz|didomi|onetrust|usercentrics|sourcepoint|quantcast|cookiebot|truste|trustarc|cc-window/
+
+/**
+ * Weak words: a page's own `class="banner"` or a privacy footer is not a
+ * dialog. They count only when cookie/consent appears beside them, in the
+ * attributes or in the button's text.
+ */
+const WEAK_CONTAINER = /banner|privacy|tracking/
+const WEAK_CONTEXT = /cookie|consent/
+
+/** Do these attributes (plus the button's text) describe a consent dialog? */
+export function looksLikeConsentContainer(attrs: string, text = ''): boolean {
+  if (CONSENT_CONTAINER.test(attrs)) {
+    return true
+  }
+
+  return WEAK_CONTAINER.test(attrs) && WEAK_CONTEXT.test(text)
+}
+
+/** Hosts that are this machine (or the home network): never a site with a cookie banner. */
+const LOCAL_HOST = /^(?:localhost|0\.0\.0\.0|127(?:\.\d{1,3}){3}|::1|.+\.local)$/i
+
+/**
+ * Pure: may the auto-accept run on this page? Only on http(s) pages of
+ * non-local hosts. `file:`, localhost, 127.0.0.0/8, ::1, 0.0.0.0 and `*.local`
+ * are the agent preview's and the family's own pages: nothing there is a
+ * cookie banner, and a clicked `<a>` would navigate the guest.
+ */
+export function consentAllowedFor(url: string): boolean {
+  let parsed: URL
+
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false
+  }
+
+  const host = parsed.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '')
+
+  return host.length > 0 && !LOCAL_HOST.test(host)
+}
 
 /** Never click these even inside a consent dialog. */
 const REJECT_TEXT =
@@ -97,7 +146,7 @@ export function pickGenericAccept(candidates: ConsentElement[]): ConsentElement 
     if (!ACCEPT_TEXT.test(el.text.replace(/\s+/g, ' '))) {
       continue
     }
-    if (!CONSENT_CONTAINER.test(el.ancestorAttrs) && !CONSENT_CONTAINER.test(el.attrs)) {
+    if (!looksLikeConsentContainer(el.ancestorAttrs, el.text) && !looksLikeConsentContainer(el.attrs, el.text)) {
       continue
     }
 

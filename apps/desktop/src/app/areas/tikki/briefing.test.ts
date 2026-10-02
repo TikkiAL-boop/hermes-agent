@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { briefingFaellig, briefingText, chatsAusAntwort } from './briefing'
+import { $activeGatewayRoute } from '@/store/gateway'
+import { $gatewayState } from '@/store/session'
+
+import { PA_PROFIL } from './auftraege'
+import {
+  BRIEFING_VERZUG_MS,
+  briefingFaellig,
+  briefingGemerkt,
+  briefingText,
+  chatsAusAntwort,
+  letztesBriefing,
+  startBriefingAutomatik
+} from './briefing'
 
 describe('briefingText', () => {
   it('names every source, says which one is missing, and asks Tikki to speak it', () => {
@@ -57,5 +69,53 @@ describe('briefingFaellig', () => {
     expect(briefingFaellig(9 * h, 10 * h, true)).toBe(false)
     expect(briefingFaellig(5 * h, 10 * h, true)).toBe(true)
     expect(briefingFaellig(0, 10 * h, false)).toBe(false)
+  })
+})
+
+describe('startBriefingAutomatik', () => {
+  let stop = () => {}
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    localStorage.clear()
+    $gatewayState.set('idle')
+  })
+
+  afterEach(() => {
+    stop()
+    $gatewayState.set('idle')
+    $activeGatewayRoute.set('default')
+    localStorage.clear()
+    vi.useRealTimers()
+  })
+
+  // Mirrors the Vorzimmer: a delivered briefing stamps the time.
+  const ausloeser = () =>
+    vi.fn(() => {
+      briefingGemerkt()
+    })
+
+  it("hands the briefing to Tikki once the gateway opens on Tikki's profile", () => {
+    const ausloesen = ausloeser()
+    $activeGatewayRoute.set(PA_PROFIL)
+    stop = startBriefingAutomatik(ausloesen)
+
+    $gatewayState.set('open')
+    vi.advanceTimersByTime(BRIEFING_VERZUG_MS)
+
+    expect(ausloesen).toHaveBeenCalledTimes(1)
+    expect(letztesBriefing()).toBeGreaterThan(0)
+  })
+
+  it("stays silent in another profile's chat and leaves the briefing due", () => {
+    const ausloesen = ausloeser()
+    $activeGatewayRoute.set('raumleiter')
+    stop = startBriefingAutomatik(ausloesen)
+
+    $gatewayState.set('open')
+    vi.advanceTimersByTime(BRIEFING_VERZUG_MS * 2)
+
+    expect(ausloesen).not.toHaveBeenCalled()
+    expect(letztesBriefing()).toBe(0)
   })
 })

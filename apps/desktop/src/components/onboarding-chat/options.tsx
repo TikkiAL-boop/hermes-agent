@@ -1,11 +1,11 @@
 import { selectableClass } from '@/components/onboarding-chat/chip'
 import { Codicon } from '@/components/ui/codicon'
 import { Tip } from '@/components/ui/tooltip'
+import { BRAND_NAME } from '@/i18n/brand'
 import { IS_MAC } from '@/lib/keybinds/combo'
 import { cn } from '@/lib/utils'
 import type { InterfaceMode } from '@/store/interface-mode'
 import { readableInk } from '@/themes/color'
-import { BRAND_NAME } from '@/i18n/brand'
 
 // Curated leaders for the first-run picker. Other enabled catalog entries
 // remain searchable, so newly deployed connectors need no client list update.

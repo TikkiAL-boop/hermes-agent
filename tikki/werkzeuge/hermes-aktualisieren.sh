@@ -36,7 +36,7 @@ pruefen() {
   else
     echo "  (kein Test-Python unter $py – Python-Tests übersprungen; siehe AGENTS.md, Testing)"
   fi
-  (cd apps/desktop && npx tsc --noEmit -p . && npx vitest run src/app/areas src/store/session-states-eviction.test.ts | tail -4)
+  (cd apps/desktop && npx tsc --noEmit -p . && npx eslint src/ electron/ --quiet && npx vitest run src/app/areas src/store/session-states-eviction.test.ts | tail -4)
   tikki/werkzeuge/rollen-einrichten.sh --dry-run | tail -3
 }
 

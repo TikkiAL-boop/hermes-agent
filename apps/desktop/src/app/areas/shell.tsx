@@ -31,8 +31,11 @@ function AreaLayer({ active, children, id }: { active: boolean; children: ReactN
 
 /**
  * Rail on the left, one layer per area on the right. `children` is the chat
- * (the Hermes layout tree). Browser and terminal mount on first visit and stay
- * mounted afterwards; Post is cheap and mounts only while shown.
+ * (the Hermes layout tree). Browser mounts on first visit and stays mounted
+ * afterwards; Post is cheap and mounts only while shown. Terminal mounts only
+ * while shown: it holds no state of its own (the shells live in the single
+ * `PersistentTerminal` overlay), and that overlay can chase only ONE slot — a
+ * terminal area left mounted would keep the chat's terminal pane blank.
  */
 export function AreaShell({ children }: { children: ReactNode }) {
   const area = useStore($area)
@@ -76,8 +79,8 @@ export function AreaShell({ children }: { children: ReactNode }) {
             <PostArea />
           </AreaLayer>
         )}
-        {visited.terminal && (
-          <AreaLayer active={area === 'terminal'} id="terminal">
+        {area === 'terminal' && (
+          <AreaLayer active id="terminal">
             <TerminalArea />
           </AreaLayer>
         )}

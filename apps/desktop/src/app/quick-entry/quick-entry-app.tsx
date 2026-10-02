@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef } from 'react'
 
+import { BRAND_NAME } from '@/i18n/brand'
 import { isSubmitEnter } from '@/lib/ime'
 import {
   initialQuickComposerState,
@@ -9,7 +10,6 @@ import {
   quickComposerReducer,
   type QuickComposerState
 } from '@/store/quick-entry'
-import { BRAND_NAME } from '@/i18n/brand'
 
 /**
  * The Quick Entry composer — the whole renderer surface of the global-hotkey

@@ -218,8 +218,9 @@ Komplette Suite: `npx vitest run` (ca. 16 Minuten, 12.3k Tests). Bekannte Fehlsc
 (braucht `HERMES_PYTHON`), `electron/backend-probes-runtime.test.ts`,
 `electron/updater/checkout-source.test.ts` (brauchen die Python-Laufzeit),
 `src/store/voice-prefs.test.ts` (2 Tests), `electron/source-backend.test.ts` (Modul `ws`
-fehlt im Workspace). ESLint startet nicht (`globals` fehlt im Workspace); noch nicht
-untersucht.
+fehlt im Workspace). ESLint läuft (`npx eslint src/ electron/ --quiet` aus `apps/desktop`,
+Teil von `hermes-aktualisieren.sh --nur-pruefen`): 0 Fehler sind Pflicht, Warnungen dürfen
+bleiben.
 
 **Tikki komplett einrichten (Reihenfolge, auf dem Mac):**
 
@@ -309,7 +310,10 @@ Tikkis Chat (unveränderter Hermes-Baum im Glas), rechts Briefing, **Tikkis Daue
 besucht, Gesprächs-KI, Neue Suite, Update-Karte. **Briefing beim Ankommen**: öffnet das Gateway und
 das letzte Briefing ist > 4 h her, gibt die App nach 12 s von selbst `BRIEFING …` an Tikki
 (`briefing.ts::startBriefingAutomatik`, Schalter in Admin → Betrieb, Schlüssel
-`tikki.briefing.automatik`; der Screenshot-Lauf setzt ihn auf `0`).
+`tikki.briefing.automatik`; der Screenshot-Lauf setzt ihn auf `0`). Gesendet wird nur, wenn das
+aktive Gateway-Profil die PA ist (`activeGatewayProfileKey() === PA_PROFIL`); steht gerade ein
+anderes Profil im Chat (Raumleiter, Bot), passiert nichts und der Stempel `tikki.briefing.zuletzt`
+bleibt, das Briefing ist weiter fällig.
 
 Tikki arbeitet jetzt selbst (`rollen/tikki/SOUL.md`, Katalog `werkzeuge`: gedaechtnis, pa, web,
 browser, file, terminal, skills, cronjob, todo). Plugin **`tikki/plugins/pa/`**:
@@ -394,21 +398,21 @@ Verträge: `tests/tikki/test_pa.py`, `tikki/briefing.test.ts`, `tikki/auftraege.
 | `store.ts` | `AREAS = ['tikki','browser','post','terminal','admin']`, Atom `$area`, persistiert unter localStorage `tikki.desktop.area`, `setArea()`. |
 | `labels.ts` | Alle Tikki-eigenen Oberflächentexte, de und en (`areaLabels(locale)`). Deutsch ist Standard, alle anderen Sprachen bekommen Englisch. Enthält `areas`, `browser`, `post` (kompletter Mail-Client), `admin` (Sektionen, Intros, Rollen, Bots, Nutzer, Rechner), `rail`. |
 | `rail.tsx` | Linke Leiste (`data-area-rail`, 4,5 rem breit), fünf große beschriftete Knöpfe. Admin ganz unten (`marginTop: auto`). Auf dem Mac `pt-10` wegen Ampel-Knöpfen. |
-| `shell.tsx` | `AreaShell`: Rail links, rechts eine `AreaLayer` je Bereich (absolute, `inset-0`). Inaktive Ebenen bekommen `invisible` + `hiddenPaneProps` (`data-pane-hidden`, `PaneVisibleContext`), damit Hermes-Panes wissen, dass sie unsichtbar sind. **Tikki** (Chat = `children`, der Hermes-Layoutbaum) ist immer gemountet. **Browser** und **Terminal** werden beim ersten Besuch gemountet und bleiben es (Zustand geht nicht verloren). **Post** und **Admin** werden nur gemountet, wenn aktiv. |
+| `shell.tsx` | `AreaShell`: Rail links, rechts eine `AreaLayer` je Bereich (absolute, `inset-0`). Inaktive Ebenen bekommen `invisible` + `hiddenPaneProps` (`data-pane-hidden`, `PaneVisibleContext`), damit Hermes-Panes wissen, dass sie unsichtbar sind. **Tikki** (Chat = `children`, der Hermes-Layoutbaum) ist immer gemountet. **Browser** wird beim ersten Besuch gemountet und bleibt es (Zustand geht nicht verloren). **Terminal**, **Post**, **Suiten** und **Admin** werden nur gemountet, wenn aktiv. Terminal bewusst: der Bereich hält keinen eigenen Zustand (die Shells leben im `PersistentTerminal`-Overlay), und das Overlay kann nur **einen** Slot bedienen – bliebe der Bereich gemountet, bliebe das Terminal-Pane im Chat nach dem ersten Besuch leer. |
 | `browser-area.tsx` | Tab-Leiste über den bestehenden Hermes-Vorschau-Tabs (`$previewTabs`, nur `kind: 'url'`). Aktiver Tab persistiert unter `tikki.desktop.browser.activeTab`. Tabs werden per `markBrowserTabPopped(id, true)` als „herausgelöst“ markiert, damit der Chat-Baum sie nicht doppelt zeigt. `newBrowserTab()`, `closeRightRailTab()`. Rendert `PreviewTilePane` (Hermes-Komponente mit `<webview partition="persist:hermes-preview">`). |
 | `terminal-area.tsx` | `ensureTerminal()` + `TerminalPaneChrome`. Nutzt den persistenten xterm-Overlay von Hermes. |
 | `post-area.tsx`, `post/store.ts` | Mail-Client, siehe 4.5. |
 | `admin/` | siehe 4.6. |
 | Andockpunkt | `src/app/contrib/controller.tsx`: `<AreaShell><LayoutTreeRoot titlebar /></AreaShell>`. |
-| Terminal-Overlay | `src/app/right-sidebar/terminal/persistent.tsx`: `registeredSlots[]` + `publishSlot()` (neuester Slot gewinnt), `terminalTakeover = takeoverPref || area === 'terminal'`. |
+| Terminal-Overlay | `src/app/right-sidebar/terminal/persistent.tsx`: `registeredSlots[]` + `publishSlot()` (neuester Slot gewinnt; verschwindet er, übernimmt der vorige wieder – Test `persistent.test.tsx`, „returns to the earlier slot“), `terminalTakeover = takeoverPref || area === 'terminal'`. |
 
 ### 4.4 Browser: Cookie-Auto-Klick
 
 | Datei | Zweck |
 |---|---|
-| `electron/preview-guest-cookie-consent.ts` | Reine Regeln, ohne DOM, testbar. `KNOWN_CONSENT_SELECTORS` (OneTrust, Cookiebot, Didomi, Quantcast, Sourcepoint, Usercentrics, TrustArc, Google `#L2AGLb`, Amazon `#sp-cc-accept`, Facebook, Bing …). `ACCEPT_TEXT` (deutsch zuerst: „alle akzeptieren“, „zustimmen“, „einverstanden“, …; dann en/fr/es/it/nl). `CONSENT_CONTAINER` (Regex über Attribute der Vorfahren: cookie, consent, cmp, gdpr, privacy, datenschutz …). `REJECT_TEXT` (ablehnen, einstellungen, verwalten, reject, manage …) wird nie geklickt. `MAX_CLICKS_PER_PAGE = 4`. `acceptOnce(host)`: erst bekannte Selektoren, dann generischer Knopf **nur innerhalb eines Consent-Containers**. `installCookieConsentAutoAccept(host)`: sofort, nach 800 ms, nach 2,5 s, dann bei DOM-Mutationen (entprellt 300 ms), Stopp nach Budget oder 45 s. |
-| `electron/preview-guest-preload-entry.ts` | Der gebündelte Guest-Preload (`dist/preview-guest-preload.js`), den `main.ts` per `will-attach-webview` **nur** an Webviews mit Partition `persist:hermes-preview` hängt. Enthält den Upstream-Teil (Weiterleitung von `_blank`-Links an den Host) und neu den Consent-Teil: `deepQuery()` durchsucht Dokument **und offene Shadow Roots**, `describe()` baut `ConsentElement` (Attribute, Vorfahren-Attribute bis 12 Ebenen, sichtbarer Text, `getClientRects().length > 0`). Start bei `DOMContentLoaded`. |
-| Tests | `electron/preview-guest-cookie-consent.test.ts` (Regeln, Prioritäten, Budget, Entprellung). |
+| `electron/preview-guest-cookie-consent.ts` | Reine Regeln, ohne DOM, testbar. `KNOWN_CONSENT_SELECTORS` (OneTrust, Cookiebot, Didomi, Quantcast, Sourcepoint, Usercentrics, TrustArc, Google `#L2AGLb`, Amazon `#sp-cc-accept`, Facebook, Bing …). `ACCEPT_TEXT` (deutsch zuerst: „alle akzeptieren“, „zustimmen“, „einverstanden“, …; dann en/fr/es/it/nl). `CONSENT_CONTAINER` (Regex über Attribute der Vorfahren: cookie, consent, cmp, gdpr, datenschutz …); die schwachen Wörter **banner/privacy/tracking** zählen nur, wenn daneben `cookie|consent` steht (Attribute oder Knopftext) – `looksLikeConsentContainer(attrs, text)`. Ein `class="banner"` mit „OK“-Link (Dev-Server, Streamlit, lokale HTML) wird nicht angefasst. `REJECT_TEXT` (ablehnen, einstellungen, verwalten, reject, manage …) wird nie geklickt. `MAX_CLICKS_PER_PAGE = 4`. `acceptOnce(host)`: erst bekannte Selektoren, dann generischer Knopf **nur innerhalb eines Consent-Containers**. `installCookieConsentAutoAccept(host)`: sofort, nach 800 ms, nach 2,5 s, dann bei DOM-Mutationen (entprellt 300 ms), Stopp nach Budget oder 45 s. `consentAllowedFor(url)`: Host-Tor, siehe nächste Zeile. |
+| `electron/preview-guest-preload-entry.ts` | Der gebündelte Guest-Preload (`dist/preview-guest-preload.js`), den `main.ts` per `will-attach-webview` **nur** an Webviews mit Partition `persist:hermes-preview` hängt. Enthält den Upstream-Teil (Weiterleitung von `_blank`-Links an den Host) und neu den Consent-Teil: `deepQuery()` durchsucht Dokument **und offene Shadow Roots**, `describe()` baut `ConsentElement` (Attribute, Vorfahren-Attribute bis 12 Ebenen, sichtbarer Text, `getClientRects().length > 0`). Start bei `DOMContentLoaded`, aber **nur wenn `consentAllowedFor(location.href)`**: dieselbe Webview zeigt auch Hermes' Agenten-Vorschau (Dev-Server, Streamlit, lokale HTML). Der Auto-Klick läuft darum nur auf `http(s)`-Seiten fremder Hosts – nie auf `file:`, `localhost`, `127.0.0.0/8`, `::1`, `0.0.0.0` oder `*.local`. |
+| Tests | `electron/preview-guest-cookie-consent.test.ts` (Regeln, Prioritäten, Budget, Entprellung, Host-Tor, `class="banner"` + OK-Link bleibt unberührt). |
 | Sicherheit | Der Preload teilt nur das DOM mit der Seite, nie die JS-Welt (contextIsolation). Er klickt nur Knöpfe, die die Seite selbst gerendert hat. |
 
 ### 4.5 Post: Mail-Client
@@ -897,7 +901,8 @@ Bereich Browser), Post, Terminal.
 ## 9. Konventionen im Code
 
 - TypeScript strikt im Renderer, locker im Electron-Ordner (siehe `tsconfig.electron.json`).
-- Prettier vor jedem Commit (`npx prettier --write …`); ESLint aktuell nicht lauffähig.
+- Prettier vor jedem Commit (`npx prettier --write …`); ESLint ohne Fehler
+  (`npx eslint src/ electron/ --quiet`, bei Bedarf `npx eslint --fix <dateien>`).
 - Tests: Renderer-Tests `src/**/*.test.tsx` (jsdom, `@testing-library/react`,
   `I18nProvider configClient={null} initialLocale="de"`); Electron-Tests
   `electron/**/*.test.ts` (node, `node:assert/strict`).

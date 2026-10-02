@@ -4,6 +4,7 @@ import { describe, test } from 'vitest'
 
 import {
   acceptOnce,
+  consentAllowedFor,
   type ConsentElement,
   type ConsentHost,
   installCookieConsentAutoAccept,
@@ -60,6 +61,25 @@ describe('pickGenericAccept', () => {
     assert.equal(pickGenericAccept([el({ ancestorAttrs: 'form.login', text: 'OK' })]), null)
   })
 
+  test('a page\'s own class="banner" with an OK link is not a consent dialog', () => {
+    // The agent preview (dev server, Streamlit, local HTML) renders banners of
+    // its own; an `<a>` clicked there navigates the guest. "banner", "privacy"
+    // and "tracking" count only beside cookie/consent.
+    const clicked: string[] = []
+    const list = [
+      el({ ancestorAttrs: 'class=banner', text: 'OK' }, clicked),
+      el({ ancestorAttrs: 'id=privacy-footer', text: 'Accept' }, clicked),
+      el({ attrs: 'class=tracking-toggle', text: 'Verstanden' }, clicked)
+    ]
+
+    assert.equal(pickGenericAccept(list), null)
+    assert.deepEqual(clicked, [])
+
+    // ...while the same weak word next to the cookie wording still qualifies.
+    const pick = pickGenericAccept([el({ ancestorAttrs: 'class=banner', text: 'Accept cookies' }, clicked)])
+    assert.equal(pick?.text, 'accept cookies')
+  })
+
   test('hidden buttons, reject/settings buttons and long labels are skipped', () => {
     const list = [
       el({ ancestorAttrs: 'consent', text: 'Accept all', visible: false }),
@@ -69,6 +89,28 @@ describe('pickGenericAccept', () => {
     ]
 
     assert.equal(pickGenericAccept(list), null)
+  })
+})
+
+describe('consentAllowedFor', () => {
+  test('runs on web sites only, never on local or file pages', () => {
+    for (const url of ['https://www.spiegel.de/', 'http://example.org:8080/x', 'https://tikki.team/post']) {
+      assert.equal(consentAllowedFor(url), true, url)
+    }
+
+    for (const url of [
+      'file:///Users/karin/index.html',
+      'http://localhost:8501/',
+      'http://127.0.0.1:5173/app',
+      'http://127.1.2.3/',
+      'http://[::1]:3000/',
+      'http://0.0.0.0:8000/',
+      'http://pi.local/',
+      'about:blank',
+      'not a url'
+    ]) {
+      assert.equal(consentAllowedFor(url), false, url)
+    }
   })
 })
 

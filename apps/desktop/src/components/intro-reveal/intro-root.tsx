@@ -3,10 +3,10 @@ import '@nous-research/ui/styles/fonts.css'
 import { createRoot } from 'react-dom/client'
 
 import { OverlayErrorBoundary } from '@/components/overlay-error-boundary'
+import { BRAND_NAME } from '@/i18n/brand'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 
 import { IntroRevealSurface } from './intro-reveal-surface'
-import { BRAND_NAME } from '@/i18n/brand'
 
 export function mountIntroReveal(): void {
   if (!isOnboardingEnabled()) {

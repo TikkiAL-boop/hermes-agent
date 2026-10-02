@@ -37,16 +37,24 @@ describe('brand filter', () => {
     const leaks: string[] = []
     const walk = (value: unknown, path: string): void => {
       if (typeof value === 'string') {
-        if (/\bHermes\b/.test(value)) leaks.push(path)
+        if (/\bHermes\b/.test(value)) {
+          leaks.push(path)
+        }
       } else if (typeof value === 'function') {
         // Functions are wrapped; probe with neutral arguments.
         const out = (value as (...a: string[]) => unknown)('x', 'y', 'z')
-        if (typeof out === 'string' && /\bHermes\b/.test(out)) leaks.push(path + '()')
+        if (typeof out === 'string' && /\bHermes\b/.test(out)) {
+          leaks.push(path + '()')
+        }
       } else if (value && typeof value === 'object') {
-        for (const [k, v] of Object.entries(value as Record<string, unknown>)) walk(v, `${path}.${k}`)
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+          walk(v, `${path}.${k}`)
+        }
       }
     }
-    for (const [locale, t] of Object.entries(TRANSLATIONS)) walk(t, locale)
+    for (const [locale, t] of Object.entries(TRANSLATIONS)) {
+      walk(t, locale)
+    }
     expect(leaks).toEqual([])
     // Sanity: the upstream file itself still says Hermes, so the filter did real work.
     expect(JSON.stringify(en)).toMatch(/Hermes/)

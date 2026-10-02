@@ -8,7 +8,6 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
-import { Puzzle } from '@/lib/icons'
 import { $chatLayoutPicked, assembleChatOnboarding } from '@/components/onboarding-chat/assembly'
 import { CardFrame, type CardProps, useCardCommit } from '@/components/onboarding-chat/cards/frame'
 import { Chip } from '@/components/onboarding-chat/chip'
@@ -24,7 +23,9 @@ import type { LayoutNode } from '@/components/pane-shell/tree/model'
 import { ConnectorLogo } from '@/components/ui/connector-logo'
 import { SearchField } from '@/components/ui/search-field'
 import { registry } from '@/contrib/registry'
+import { BRAND_NAME } from '@/i18n/brand'
 import { connectorIconUrl, connectorTitle } from '@/lib/connector-tools'
+import { Puzzle } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { type ConnectorCatalog, useConnectorCatalog } from '@/store/connector-catalog'
 import { $onboardingAnswers, setOnboardingAnswers } from '@/store/onboarding-answers'
@@ -32,7 +33,6 @@ import { type OnboardingPlugin, pluginNeedsApp, useOnboardingPlugins } from '@/s
 import { useTheme } from '@/themes'
 import { setAccentOverride } from '@/themes/accent-override'
 import { normalizeHex } from '@/themes/color'
-import { BRAND_NAME } from '@/i18n/brand'
 
 export function ConnectorsCard({ locked }: CardProps) {
   const view = useSessionView()

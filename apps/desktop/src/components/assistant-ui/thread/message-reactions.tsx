@@ -3,12 +3,12 @@ import { type FC, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { BRAND_NAME } from '@/i18n/brand'
 import { triggerHaptic } from '@/lib/haptics'
 import { Plus } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { QUICK_REACTIONS } from '@/store/reactions'
 import type { MessageReaction } from '@/types/hermes'
-import { BRAND_NAME } from '@/i18n/brand'
 
 // Served from the app's own origin (vite.config.ts `hermes:emojibase-assets`
 // plugin bundles emojibase-data): Electron must work offline, and the app

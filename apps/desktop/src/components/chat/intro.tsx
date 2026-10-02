@@ -1,11 +1,11 @@
 import { useState } from 'react'
 
 import { useI18n } from '@/i18n'
+import { BRAND_NAME } from '@/i18n/brand'
 import { capitalize, normalize } from '@/lib/text'
 
 import introCopyJsonl from './intro-copy.jsonl?raw'
 import { Wordmark } from './wordmark'
-import { BRAND_NAME } from '@/i18n/brand'
 
 type IntroCopy = {
   headline: string

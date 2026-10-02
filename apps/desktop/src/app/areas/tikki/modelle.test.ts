@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MARKE, modellsucheAusAusgabe, modellZeile } from './modelle'
+import { MARKE, modellsucheArgv, modellsucheAusAusgabe, modellZeile } from './modelle'
 
 describe('modellsucheAusAusgabe', () => {
   it('finds the marked JSON line between warnings and ignores everything else', () => {
@@ -22,6 +22,10 @@ describe('modellsucheAusAusgabe', () => {
     expect(s?.empfehlung).toEqual({ raeume: 'Qwen3-235B-A22B-4bit', sprache: null })
     expect(modellsucheAusAusgabe('nur Rauschen')).toBeNull()
     expect(modellsucheAusAusgabe(MARKE + '{kaputt')).toBeNull()
+  })
+
+  it('carries the PA profile in argv because cli.exec ignores routed profiles', () => {
+    expect(modellsucheArgv()).toEqual(['-p', 'tikki', 'pa', 'modelle', '--json'])
   })
 
   it('describes a model with what matters for choosing it', () => {

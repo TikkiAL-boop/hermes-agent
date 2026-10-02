@@ -321,8 +321,9 @@ browser, file, terminal, skills, cronjob, todo). Plugin **`tikki/plugins/pa/`**:
   Modellserver gerade antwortet (Ports 1234/11434/8080/8000/8081/5000 plus `providers.lokal.base_url`),
   je Modell Größe, Parameter (auch MoE „235B, 22B aktiv“), Quantisierung und Startbefehl mit 64k Kontext;
   Ergebnis in `~/.tikki/modelle.json`. CLI `hermes pa modelle [--json] [--ordner …]`. **Die App sucht beim
-  Start**: `areas/tikki/modelle.ts` ruft `cli.exec ['pa','modelle','--json']` im Profil `tikki` auf (läuft
-  also auf dem Backend-Rechner, auch remote) und zeigt die Karte „Modelle im Haus“ in der Übersicht
+  Start**: `areas/tikki/modelle.ts` ruft `cli.exec ['-p','tikki','pa','modelle','--json']` auf dem aktiven
+  Gateway auf (läuft also auf dem Backend-Rechner, auch remote; `cli.exec` ignoriert den gerouteten
+  `profile`-Parameter, darum steckt das Profil in argv) und zeigt die Karte „Modelle im Haus“ in der Übersicht
   (Server zuerst, dann bis zu sechs Modelle, Vorschlag Räume/Sprache). Tests `tests/tikki/test_modelle.py`
   (GGUF-Shards, MLX im HF-Cache, Ollama-Manifest, echter HTTP-Server), `areas/tikki/modelle.test.ts`.
 

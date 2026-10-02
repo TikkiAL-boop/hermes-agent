@@ -70,7 +70,9 @@ def test_room_lead_carries_every_bot_toolset_and_its_soul_names_them():
         assert f"- `{slug}`: {', '.join(rolle['werkzeuge'])}" in soul, slug
 
 
-def test_skill_roles_see_tikki_skills_coding_agents_and_the_openclaw_library(tmp_path):
+def test_skill_roles_see_tikki_skills_every_builtin_hermes_skill_and_the_openclaw_library(tmp_path):
+    """One entry for ``<repo>/skills`` instead of three hand-picked subfolders: every built-in
+    Hermes skill (coding agents, research, youtube-content, ...) follows git without copies."""
     from ruamel.yaml import YAML
 
     ziel = tmp_path / "profiles" / "rechercheur" / "config.yaml"
@@ -79,4 +81,59 @@ def test_skill_roles_see_tikki_skills_coding_agents_and_the_openclaw_library(tmp
     ordner = YAML().load(ziel.read_text(encoding="utf-8"))["skills"]["external_dirs"]
 
     assert ordner[0] == str(TIKKI / "skills") and (TIKKI / "skills").is_dir()
+    assert ordner[1] == str(TIKKI.parent / "skills")
+    assert (Path(ordner[1]) / "autonomous-ai-agents").is_dir() and (Path(ordner[1]) / "research").is_dir()
     assert ordner[2] == str(tmp_path / "profiles" / "openclaw" / "skills")
+    assert not any(Path(o).is_relative_to(TIKKI.parent / "skills") for o in ordner[2:])
+
+
+@pytest.mark.parametrize("rolle", _rollen(), ids=lambda r: r["slug"])
+@pytest.mark.parametrize("plattform", ["api_server", "cli"])
+def test_plugin_toolsets_reach_only_the_roles_that_list_them(tmp_path, monkeypatch, rolle, plattform):
+    """Hermes treats a plugin toolset absent from ``known_plugin_toolsets`` as "new" and enables it
+    everywhere; the role's catalog ``werkzeuge`` must be the only thing that decides."""
+    from ruamel.yaml import YAML
+    import hermes_cli.tools_config as tools_config
+
+    plugin_toolsets = {"pa", "gedaechtnis"}
+    monkeypatch.setattr(tools_config, "_get_plugin_toolset_keys", lambda: set(plugin_toolsets))
+    ziel = tmp_path / "profiles" / rolle["hermes_profil"] / "config.yaml"
+    ziel.parent.mkdir(parents=True)
+    rollen_config.schreiben(str(KATALOG), str(VORLAGE), rolle["slug"], str(ziel))
+    cfg = YAML(typ="safe").load(ziel.read_text(encoding="utf-8"))
+
+    aktiv = set(tools_config._get_platform_tools(cfg, plattform)) & plugin_toolsets
+    assert aktiv == set(rolle["werkzeuge"]) & plugin_toolsets
+
+
+def test_rerun_keeps_the_model_hermes_wrote_and_hermes_indentation(tmp_path, monkeypatch):
+    """``hermes model`` / Admin → Modelle go through ``atomic_config_write``; a later installer run
+    must neither reset the choice nor rewrite the file over a mere indentation difference."""
+    from ruamel.yaml import YAML
+    from hermes_cli.config import atomic_config_write
+    from hermes_yaml import roundtrip_yaml
+
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    ziel = tmp_path / "profiles" / "raumleiter" / "config.yaml"
+    ziel.parent.mkdir(parents=True)
+    assert rollen_config.schreiben(str(KATALOG), str(VORLAGE), "raumleiter", str(ziel))
+
+    stand = roundtrip_yaml().load(ziel.read_text(encoding="utf-8"))
+    stand["model"]["provider"] = "lokal"
+    stand["model"]["default"] = "tikki-gross"
+    stand["model"]["context_length"] = 65536
+    stand["fallback_providers"] = [{"provider": "xai", "model": "grok-4.7"}]
+    atomic_config_write(ziel, stand)
+    nach_hermes = ziel.read_bytes()
+
+    assert not rollen_config.schreiben(str(KATALOG), str(VORLAGE), "raumleiter", str(ziel))
+    assert ziel.read_bytes() == nach_hermes
+    cfg = YAML(typ="safe").load(ziel.read_text(encoding="utf-8"))
+    assert (cfg["model"]["provider"], cfg["model"]["default"], cfg["model"]["context_length"]) == ("lokal", "tikki-gross", 65536)
+    assert cfg["fallback_providers"] == [{"provider": "xai", "model": "grok-4.7"}]
+
+    assert rollen_config.schreiben(str(KATALOG), str(VORLAGE), "raumleiter", str(ziel), modelle_zuruecksetzen=True)
+    cfg = YAML(typ="safe").load(ziel.read_text(encoding="utf-8"))
+    rolle = next(r for r in _rollen() if r["slug"] == "raumleiter")
+    assert cfg["model"]["provider"] + "/" + cfg["model"]["default"] == rolle["modell"]["primary"]
+    assert "context_length" not in cfg["model"]

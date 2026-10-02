@@ -6,9 +6,10 @@ Prüft jede Schicht einzeln und sagt, was fehlt – ohne je einen Schlüsselwert
     Rollen       jede Rolle aus rollen/KATALOG.json hat ihr Profil mit config.yaml
     Vorzimmer    das aktive Profil ist tikki
     Gedächtnis   das Plugin gedaechtnis ist in jedem Profil verlinkt und eingeschaltet
-    Takt         Raumleiter-Takt und Wachhalter-Rundgang stehen als Cronjob bereit
+    Takt         Raumleiter-Takt und Wachhalter-Rundgang stehen als Cronjob bereit und laufen
     Gateway      das Host-Gateway läuft (fährt Räume, Takt und Daueraufträge)
     Schlüssel    für das Vorzimmer-Modell liegt mindestens ein Schlüssel (nur Namen)
+    Anbieter     jeder Anbieter mit Schlüssel (providers.*) beantwortet GET /models
     App          die gebaute Tikki-App wird gefunden (auf dem Mac auch in /Applications)
     Backend      `hermes serve` startet und beantwortet /api/status
 
@@ -27,6 +28,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -108,7 +110,9 @@ def pruefe_gedaechtnis(profile: Path) -> Punkt:
 
 
 def pruefe_takt(profile: Path) -> Punkt:
-    fehlend = []
+    """Jobname allein genügt nicht: ein Job, der seit Läufen scheitert oder abgeschaltet ist, steht
+    genauso in jobs.json (Felder aus cron/jobs.py::mark_job_run: enabled, last_status, last_error)."""
+    fehlend, aus, kaputt = [], [], []
     for profil, job in CRONJOBS.items():
         datei = profile / profil / "cron" / "jobs.json"
         try:
@@ -116,32 +120,87 @@ def pruefe_takt(profile: Path) -> Punkt:
         except (OSError, ValueError):
             daten = {}
         jobs = daten.get("jobs", daten) if isinstance(daten, dict) else daten
-        namen = {j.get("name") for j in jobs if isinstance(j, dict)} if isinstance(jobs, list) else set()
-        if job not in namen:
+        eintrag = next((j for j in jobs if isinstance(j, dict) and j.get("name") == job), None) \
+            if isinstance(jobs, list) else None
+        if eintrag is None:
             fehlend.append(f"{profil}/{job}")
-    if fehlend:
-        return Punkt("Takt", FEHLER, "Cronjob fehlt: " + ", ".join(fehlend))
+        elif eintrag.get("enabled") is False:
+            aus.append(f"{profil}/{job}")
+        elif eintrag.get("last_status") == "error":
+            grund = str(eintrag.get("last_error") or "").strip().splitlines() or ["ohne Fehlertext"]
+            kaputt.append(f"{profil}/{job}: {grund[-1][:160]}")
+    if fehlend or aus:
+        return Punkt("Takt", FEHLER, "; ".join(
+            filter(None, ["Cronjob fehlt: " + ", ".join(fehlend) if fehlend else "",
+                          "Cronjob abgeschaltet: " + ", ".join(aus) + " → hermes -p <profil> cron enable" if aus else ""])))
+    if kaputt:
+        return Punkt("Takt", WARNUNG, "letzter Lauf gescheitert – " + "; ".join(kaputt) + " → hermes -p <profil> cron logs")
     return Punkt("Takt", OK, "Raumleiter-Takt (5 min) und Wachhalter-Rundgang (15 min) angelegt")
 
 
 def pruefe_gateway() -> Punkt:
     """Das eine Host-Gateway fährt Räume und Daueraufträge – ohne es steht alles still."""
-    from gateway.status import is_gateway_running
+    from gateway.status import get_running_pid
 
-    if is_gateway_running(cleanup_stale=False):
+    if get_running_pid(cleanup_stale=False) is not None:
         return Punkt("Gateway", OK, "Host-Gateway läuft (fährt Räume, Takt und Daueraufträge)")
     return Punkt("Gateway", WARNUNG, "kein Gateway aktiv → hermes -p default gateway install (oder: gateway run)")
 
 
-def _env_namen(pfad: Path) -> set[str]:
+def _env_werte(pfad: Path) -> dict[str, str]:
+    """Gesetzte Einträge einer .env (Name → Wert). Werte bleiben in diesem Modul – nie in einem Punkt-Text."""
     if not pfad.is_file():
-        return set()
-    namen = set()
+        return {}
+    werte = {}
     for zeile in pfad.read_text(encoding="utf-8", errors="replace").splitlines():
         name, gleich, wert = zeile.strip().partition("=")
         if gleich and not name.startswith("#") and wert.strip().strip("'\""):
-            namen.add(name.strip())
-    return namen
+            werte[name.strip()] = wert.strip().strip("'\"")
+    return werte
+
+
+def _env_namen(pfad: Path) -> set[str]:
+    return set(_env_werte(pfad))
+
+
+#: Handlungshinweis je Anbieter, wenn /models nicht mit 200 antwortet.
+ANBIETER_HINWEIS = {"cursor": "Endpunkt prüfen, Katalog ggf. auf xai umstellen"}
+
+
+def pruefe_anbieter(profile: Path, profil: str = "raumleiter") -> Punkt:
+    """``GET {base_url}/models`` je Anbieter unter ``providers.*`` der Rollen-Config, dessen
+    Schlüssel in der .env steht – ein falscher Cursor-Endpunkt fällt so vor dem ersten Raum auf."""
+    anbieter = _config(profile / profil).get("providers") or {}
+    if not isinstance(anbieter, dict) or not anbieter:
+        return Punkt("Anbieter", WARNUNG, f"keine providers in {profil}/config.yaml → rollen-einrichten.sh")
+    werte = _env_werte(profile / profil / ".env")
+    ok, warnungen, uebersprungen = [], [], []
+    for name, eintrag in anbieter.items():
+        eintrag = eintrag if isinstance(eintrag, dict) else {}
+        schluessel = werte.get(str(eintrag.get("key_env") or eintrag.get("api_key_env") or ""))
+        basis = str(eintrag.get("base_url") or eintrag.get("api") or "").rstrip("/")
+        if not schluessel or not basis:
+            uebersprungen.append(name)
+            continue
+        anfrage = urllib.request.Request(f"{basis}/models", headers={"Authorization": f"Bearer {schluessel}"})
+        try:
+            with urllib.request.urlopen(anfrage, timeout=5) as antwort:
+                befund = "" if antwort.status == 200 else f"HTTP {antwort.status}"
+        except urllib.error.HTTPError as e:
+            befund = f"HTTP {e.code}"
+        except OSError as e:
+            befund = f"keine Verbindung ({getattr(e, 'reason', e)})"
+        if befund:
+            hinweis = ANBIETER_HINWEIS.get(name, "base_url und Schlüssel prüfen")
+            warnungen.append(f"{name}: {befund} ({basis}/models) → {hinweis}")
+        else:
+            ok.append(name)
+    rest = f" (ohne Schlüssel übersprungen: {', '.join(uebersprungen)})" if uebersprungen else ""
+    if warnungen:
+        return Punkt("Anbieter", WARNUNG, "; ".join(warnungen) + rest)
+    if not ok:
+        return Punkt("Anbieter", OK, "kein Anbieterschlüssel gesetzt – nichts geprüft" + rest)
+    return Punkt("Anbieter", OK, "/models antwortet: " + ", ".join(ok) + rest)
 
 
 def pruefe_schluessel(profile: Path) -> Punkt:
@@ -218,7 +277,7 @@ def alle(home: Path, *, app: bool, backend: bool, hermes: str) -> list[Punkt]:
     profile = home / "profiles"
     punkte = [
         pruefe_zweig(), pruefe_rollen(profile), pruefe_vorzimmer(home), pruefe_gedaechtnis(profile),
-        pruefe_takt(profile), pruefe_schluessel(profile), pruefe_gateway(),
+        pruefe_takt(profile), pruefe_schluessel(profile), pruefe_anbieter(profile), pruefe_gateway(),
     ]
     if app:
         punkte.append(pruefe_app())

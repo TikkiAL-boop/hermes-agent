@@ -11,7 +11,10 @@ Unterbefehle (alle Pfade absolut):
     --pruefen                                      "ok", wenn ruamel.yaml importierbar ist
     zeilen <katalog>                               slug<TAB>name<TAB>port je Rolle
     vorschau <katalog> <vorlage> <slug>            eine Zeile, was geschrieben würde
-    schreiben <katalog> <vorlage> <slug> <ziel>    config.yaml schreiben, wenn abweichend
+    schreiben <katalog> <vorlage> <slug> <ziel> [--modelle-zuruecksetzen]
+                                                   config.yaml schreiben, wenn abweichend; eine
+                                                   vorhandene Datei behält model/fallback_providers
+                                                   (hermes model, Admin → Modelle), außer mit Flag
     honcho <vorlage-honcho> <slug> <ziel>         honcho.json der Rolle schreiben, wenn abweichend
 """
 
@@ -66,17 +69,54 @@ def aktuelle_config_version() -> int | None:
     return int(version) if isinstance(version, int) else None
 
 
-def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None):
+def _yaml():
+    """Derselbe Emitter wie Hermes' config.yaml-Schreiber (``hermes_yaml.roundtrip_yaml``): sonst
+    schreibt Hermes die Datei beim ersten ``hermes model`` mit anderer Einrückung neu, und der
+    nächste Installer-Lauf sähe eine Abweichung und drehte alles zurück."""
+    try:
+        from hermes_yaml import roundtrip_yaml
+
+        return roundtrip_yaml()
+    except ImportError:
+        from ruamel.yaml import YAML
+
+        yaml = YAML(typ="rt")
+        yaml.width = 2**31 - 1
+        yaml.preserve_quotes = True
+        yaml.allow_unicode = True
+        yaml.default_flow_style = False
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        return yaml
+
+
+def _bestehende_modelle(ziel: str | None) -> dict:
+    """``model``/``fallback_providers`` einer vorhandenen config.yaml – was Thorsten über
+    ``hermes model`` oder Admin → Modelle gewählt hat, überlebt den nächsten Installer-Lauf."""
+    if not ziel or not Path(ziel).is_file():
+        return {}
+    try:
+        alt = _yaml().load(Path(ziel).read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
+    if not isinstance(alt, dict):
+        return {}
+    return {
+        k: alt[k] for k, art in (("model", dict), ("fallback_providers", list))
+        if isinstance(alt.get(k), art)
+    }
+
+
+def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None, *,
+                  modelle_zuruecksetzen: bool = False):
     """Vorlage laden und mit Modellen, Werkzeugen und Port der Rolle füllen.
 
-    ``ziel`` (Pfad der config.yaml) verankert die Skill-Ordner: die Tikki-Skills und die
-    Coding-Agenten aus dem Repo, dazu die OpenClaw-Bibliothek im Profil ``openclaw``.
+    ``ziel`` (Pfad der config.yaml) verankert die Skill-Ordner (Tikki-Skills, alle eingebauten
+    Hermes-Skills, die OpenClaw-Bibliothek im Profil ``openclaw``) und liefert bei einer
+    vorhandenen Datei die gewählten Modelle; die Katalogmodelle gelten nur für eine neue Datei
+    oder mit ``modelle_zuruecksetzen``.
     """
-    from ruamel.yaml import YAML
-
     rolle = _rolle(katalog, slug)
-    yaml = YAML()
-    yaml.preserve_quotes = True
+    yaml = _yaml()
     with open(vorlage, encoding="utf-8") as f:
         cfg = yaml.load(f)
 
@@ -90,11 +130,20 @@ def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None
         {"provider": prov, "model": model}
         for prov, model in (eintrag.split("/", 1) for eintrag in rolle["modell"].get("weitere", []))
     ]
+    if not modelle_zuruecksetzen:
+        for schluessel, wert in _bestehende_modelle(ziel).items():
+            cfg[schluessel] = wert
     cfg.setdefault("approvals", {})["mode"] = rolle.get("freigabe", "smart")
     werkzeuge = list(rolle.get("werkzeuge", []))
     cfg.setdefault("platform_toolsets", {})
     cfg["platform_toolsets"]["api_server"] = list(werkzeuge)
     cfg["platform_toolsets"]["cli"] = list(werkzeuge)
+    # Plugin-Toolsets (heißen wie die Plugins: pa, gedaechtnis) gelten Hermes ohne diesen Eintrag
+    # als „neu“ und damit auf jeder Oberfläche als eingeschaltet – auch bei Rollen, die sie im
+    # Katalog nicht haben (hermes_cli/tools_config.py::_enabled_plugin_toolsets). Als „bekannt“
+    # eingetragen zählt allein die Werkzeugliste der Rolle.
+    plugin_toolsets = sorted(str(p) for p in (cfg.get("plugins") or {}).get("enabled") or [])
+    cfg["known_plugin_toolsets"] = {"api_server": list(plugin_toolsets), "cli": list(plugin_toolsets)}
     api = cfg.setdefault("platforms", {}).setdefault("api_server", {})
     api["enabled"] = True
     api.setdefault("extra", {})["port"] = int(rolle["port"])
@@ -105,13 +154,11 @@ def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None
     if "skills" in werkzeuge and ziel:
         repo = Path(katalog).resolve().parents[2]
         profile = Path(ziel).resolve().parent.parent
+        # Alle eingebauten Hermes-Skills als ein Ordner: folgen Git ohne Kopien.
         cfg.setdefault("skills", {})["external_dirs"] = [
             str(repo / "tikki" / "skills"),
-            str(repo / "skills" / "autonomous-ai-agents"),
+            str(repo / "skills"),
             str(profile / "openclaw" / "skills"),
-            # Dauer-Recherche: Videos/Shorts per Transkript, Paper, Nachrichtenlagen, Wiki.
-            str(repo / "skills" / "media" / "youtube-content"),
-            str(repo / "skills" / "research"),
         ]
     _einmischen(cfg, rolle.get("einstellungen") or {})
 
@@ -120,9 +167,9 @@ def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None
     return buf.getvalue()
 
 
-def schreiben(katalog: str, vorlage: str, slug: str, ziel: str) -> bool:
+def schreiben(katalog: str, vorlage: str, slug: str, ziel: str, *, modelle_zuruecksetzen: bool = False) -> bool:
     """Schreibt config.yaml nur, wenn sich der Inhalt ändert. True = geschrieben."""
-    neu = rollen_config(katalog, vorlage, slug, ziel)
+    neu = rollen_config(katalog, vorlage, slug, ziel, modelle_zuruecksetzen=modelle_zuruecksetzen)
     zielpfad = Path(ziel)
     alt = zielpfad.read_text(encoding="utf-8") if zielpfad.exists() else None
     if alt == neu:
@@ -180,8 +227,9 @@ def main(argv: list[str]) -> int:
               f"port={rolle['port']} approvals={rolle['freigabe']} toolsets={rolle['werkzeuge']}{stempel}")
         return 0
     if befehl == "schreiben":
-        katalog, vorlage, slug, ziel = rest
-        if schreiben(katalog, vorlage, slug, ziel):
+        zuruecksetzen = "--modelle-zuruecksetzen" in rest
+        katalog, vorlage, slug, ziel = [r for r in rest if r != "--modelle-zuruecksetzen"]
+        if schreiben(katalog, vorlage, slug, ziel, modelle_zuruecksetzen=zuruecksetzen):
             print(f"  config.yaml geschrieben: {ziel}")
         else:
             print("  config.yaml unverändert")

@@ -317,7 +317,12 @@ browser, file, terminal, skills, cronjob, todo). Plugin **`tikki/plugins/pa/`**:
 - `post` – Postfach über IMAP/SMTP aus dem Backend (`post.py`, Serverregeln wie
   `electron/tikki-mail.ts`; Zugang `TIKKI_MAIL_ADDRESS`/`TIKKI_MAIL_PASSWORD` in der `.env`):
   ungelesen, lesen, antworten (im Faden, markiert erledigt), senden, erledigt. „Schick weg“ heißt
-  schicken, ohne Rückfrage (SOUL).
+  schicken, ohne Rückfrage (SOUL). Seit 02.10.: IMAP/SMTP prüfen Zertifikate
+  (`ssl.create_default_context`), Automaten (Auto-Submitted, Precedence bulk/list, List-Id/
+  -Unsubscribe, noreply/mailer-daemon – Tabelle wie Hermes' E-Mail-Adapter) stehen in `ungelesen`
+  als `automatisch` und werden nie beantwortet, Antworten gehen an Reply-To mit
+  `Auto-Submitted: auto-replied`, und `\Answered` wird VOR dem Senden gesetzt (lieber eine
+  Antwort zu wenig als doppelt).
 - `briefing_sammeln` – Ausgaben der Daueraufträge seit dem letzten Briefing
   (`<profil>/cron/output/<job>/*.md`, Stempel `~/.tikki/briefing.json`), ungelesene Post, Räume
   mit `BRAUCHE`, WhatsApp über die WA-Bridge (`WA_BRIDGE_TOKEN`).

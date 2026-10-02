@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+from email.utils import parseaddr
 from pathlib import Path
 
 from . import briefing, modelle, post
@@ -26,10 +27,11 @@ logger = logging.getLogger(__name__)
 _POST_SCHEMA = {
     "name": "post",
     "description": (
-        "Das Postfach der Familie: 'ungelesen' listet neue Mails (uid, von, betreff, kurz), "
+        "Das Postfach der Familie: 'ungelesen' listet neue Mails (uid, von, betreff, kurz, automatisch), "
         "'lesen' holt den ganzen Text einer Mail, 'antworten' schickt eine Antwort im selben Faden "
-        "und markiert sie als erledigt, 'senden' schreibt eine neue Mail, 'erledigt' markiert als "
-        "gelesen. Antworten gehen sofort raus – wenn der Mensch gesagt hat, dass du antworten sollst, "
+        "und markiert sie als beantwortet, 'senden' schreibt eine neue Mail, 'erledigt' markiert als "
+        "gelesen. Mails mit automatisch=true (Newsletter, Autoresponder, Bounces) werden nie beantwortet. "
+        "Antworten gehen sofort raus – wenn der Mensch gesagt hat, dass du antworten sollst, "
         "fragst du nicht noch einmal."
     ),
     "parameters": {
@@ -95,6 +97,8 @@ def post_werkzeug(args: dict, **_kw) -> str:
             an, betreff, text = (str(args.get(k) or "").strip() for k in ("an", "betreff", "text"))
             if not an or not text:
                 return _antwort({"fehler": "an und text werden gebraucht"})
+            if "@" not in parseaddr(an)[1]:
+                return _antwort({"fehler": f"'an' ist keine E-Mail-Adresse: {an!r}"})
             kennung = fach.senden(post.neue_mail_bauen(an, betreff or "(kein Betreff)", text, zugang.adresse))
             return _antwort({"gesendet": True, "an": an, "betreff": betreff, "message_id": kennung})
         if aktion == "erledigt":

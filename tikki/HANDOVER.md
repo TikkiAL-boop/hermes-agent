@@ -38,6 +38,13 @@ Alles darin ist gegen den Code geprüft; Vermutungen sind als solche markiert.
   der ganze ClawHub-Katalog (OpenClaw) durchsuchbar, Skills auf Abruf.
 - **Noch nicht gebaut**: PA-Modi im Vorzimmer, Nutzer-Login (heute fest `thorsten`),
   Rechnerflotte/Verteilung der Bots auf 40 Rechner, Web auf tikki.team.
+- **Gesamtprüfung 02.10.** (`tikki/PRUEFBERICHT-2026-10-02.md`): 8 Prüfer + Gegenprüfung, 25 bestätigte
+  Befunde; die „sofort“-Liste ist umgesetzt (memory-Werkzeug und alle Hermes-Skills in jedem Profil,
+  keine Werkzeugbrücke für Tikki/Raumleiter, Updates auf dem Zweig festgenagelt, Postfach mit
+  TLS-Prüfung und Automaten-Schutz, Takt robust, Wachhalter schläft ohne Arbeit, Terminal-Pane,
+  Briefing nur im Tikki-Profil, Cookie-Tor, ESLint sauber, Selbsttest mit Takt-Status und
+  Anbieter-Check, Installer erhält Modelle). Offen bleibt die „später“-Liste des Berichts (Modell je
+  Raum über Raumleiter-Klone, Lock je Raum, Ereignisbudget, Vorzimmer-Breite, lokaler Modellplan).
 - Offener Draft-PR: <https://github.com/TikkiAL-boop/hermes-agent/pull/1> (konfliktfrei,
   keine CI, wartet nur auf Merge-Entscheidung von Thorsten).
 

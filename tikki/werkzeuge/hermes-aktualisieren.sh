@@ -33,6 +33,7 @@ pruefen() {
   local py="${HERMES_PYTHON:-$REPO/.venv/bin/python}"
   if [ -x "$py" ]; then
     HERMES_PYTHON="$py" scripts/run_tests.sh tests/tikki/ | grep -E "Summary|✗"
+    "$py" scripts/check_compat_pointers.py | tail -1   # Compat-Zeiger: in-tree verboten, Upstream entfernt sie
   else
     echo "  (kein Test-Python unter $py – Python-Tests übersprungen; siehe AGENTS.md, Testing)"
   fi
@@ -86,6 +87,10 @@ PY
   git commit -q -m "Tikki: Hermes-Basis auf $sha gesetzt" || true
 }
 basis_schreiben
+# Rollen wirklich neu einrichten (idempotent; eingestellte Modelle bleiben): Cron-Skripte und
+# Konfigurationen folgen sonst dem neuen Stand nicht – ein Takt-Skript mit altem Argument
+# scheiterte so 25 Läufe lang, während der Selbsttest „✓“ zeigte.
+tikki/werkzeuge/rollen-einrichten.sh | tail -2
 pruefen
 echo
 echo "Update übernommen. Zum Veröffentlichen: git push origin tikki-app"

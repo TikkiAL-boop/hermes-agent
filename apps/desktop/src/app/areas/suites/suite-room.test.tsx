@@ -136,7 +136,7 @@ describe('SuiteRoom', () => {
     expect(container.querySelector('[data-suite-freigaben]')?.textContent).toContain('Rechercheur')
   })
 
-  it('sends what the person types with the name in front, and answers an approval with groups.approve', async () => {
+  it('sends what the person types with the name in front and to the room lead, and answers an approval with groups.approve', async () => {
     const { container, getByLabelText, getByRole } = mount()
 
     await waitFor(() => expect(container.querySelector('[data-suite-freigaben]')).toBeTruthy())
@@ -149,7 +149,7 @@ describe('SuiteRoom', () => {
         'groups.send',
         expect.objectContaining({
           room_id: 'tikki-urlaub-1',
-          payload: { text: 'thorsten: 2000 Euro', thread_id: 'haupt' }
+          payload: { text: 'thorsten: @raumleiter 2000 Euro', thread_id: 'haupt' }
         })
       )
     )

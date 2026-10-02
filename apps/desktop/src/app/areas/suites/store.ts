@@ -160,11 +160,17 @@ export interface Nachricht {
   zeit: number
   /** `(pass)`: Discussion silence, never shown. */
   still: boolean
+  /** Put into the room by the backend (schedule, door, watchman, practice result), not an answer of the person. */
+  system: boolean
 }
 
 export const MENSCH = 'mensch'
 const PASS = /^\(?\s*pass\s*\)?\.?$/i
 const NAME_PRAEFIX = /^([^\s:@[\]]{1,40}):\s+([\s\S]*)$/
+
+/** The same prefixes `suite_takt.py::_SYSTEM` knows, on the raw text (name prefix and `@raumleiter` allowed). */
+const SYSTEM =
+  /^(?:[^:\n@[]{1,40}:[ \t]*)?(?:@raumleiter[ \t]*)?(?:TAKT-RUNDE|ÜBUNGSERGEBNIS|LERNEN:|WACHHALTER:|\[Tür)/
 
 /** A log event as something said, or undefined for gateway and system kinds. */
 export function nachrichtAus(event: RaumEreignis, members: readonly Mitglied[] = []): Nachricht | undefined {
@@ -179,7 +185,8 @@ export function nachrichtAus(event: RaumEreignis, members: readonly Mitglied[] =
       name: m ? m[1]! : 'Mensch',
       text: m ? m[2]! : text,
       zeit: event.created_at,
-      still: PASS.test(text.trim())
+      still: PASS.test(text.trim()),
+      system: SYSTEM.test(text.trimStart())
     }
   }
 
@@ -193,7 +200,8 @@ export function nachrichtAus(event: RaumEreignis, members: readonly Mitglied[] =
       name: mitglied?.display_name || mitglied?.handle || kennung,
       text,
       zeit: event.created_at,
-      still: !text.trim() || PASS.test(text.trim())
+      still: !text.trim() || PASS.test(text.trim()),
+      system: false
     }
   }
 
@@ -224,24 +232,32 @@ const zeile = (text: string, schluessel: string): string | undefined => {
     .trim()
 }
 
-/** What the room lead said since the person last spoke. */
+/** What the room lead said since the person last spoke; system messages are not the person. */
 const raumleiterSeitMensch = (messages: readonly Nachricht[]): Nachricht[] => {
-  const letzterMensch = messages.findLastIndex(m => m.von === MENSCH)
+  const letzterMensch = messages.findLastIndex(m => m.von === MENSCH && !m.system)
 
   return messages.slice(letzterMensch + 1).filter(m => m.von === RAUMLEITER && !m.still)
 }
 
-/** The room lead's open `BRAUCHE:`; a later message from the person clears it. */
+/**
+ * The room lead's open `BRAUCHE:`. The last room-lead message counts: it stays open until the
+ * room lead writes `STAND:`/`FERTIG:` without `BRAUCHE:` again or the person answers
+ * (mirrors `suite_takt.py::raum_stand`).
+ */
 export function brauchtAus(messages: readonly Nachricht[]): string | undefined {
-  for (const m of raumleiterSeitMensch(messages).reverse()) {
+  let offen: string | undefined
+
+  for (const m of raumleiterSeitMensch(messages)) {
     const wert = zeile(m.text, 'BRAUCHE')
 
     if (wert !== undefined) {
-      return wert || 'Braucht dich'
+      offen = wert || 'Braucht dich'
+    } else if (zeile(m.text, 'STAND') !== undefined || zeile(m.text, 'FERTIG') !== undefined) {
+      offen = undefined
     }
   }
 
-  return undefined
+  return offen
 }
 
 /** The room lead reported `FERTIG:` and the person has not answered since. */
@@ -530,9 +546,28 @@ async function senden(roomId: string, text: string): Promise<RaumEreignis> {
   return result.event
 }
 
-/** The person speaks: the name goes in front so several people stay apart in one room. */
-export const auftragGeben = (suite: Pick<Suite, 'id'>, text: string): Promise<RaumEreignis> =>
-  senden(suite.id, `${$mensch.get()}: ${text.trim()}`)
+/** Mentions as the core reads them (`hosted_room_discussion._MENTION_RE`). */
+const ERWAEHNUNG = /@([A-Za-z0-9][A-Za-z0-9._:-]*)/g
+
+/** Whether the text addresses a member of the room (or everyone); the core asks every member in turn otherwise. */
+export const sprichtJemandenAn = (text: string, mitglieder: readonly Pick<Mitglied, 'handle'>[]): boolean => {
+  const handles = new Set(['all', 'everyone', ...mitglieder.map(m => m.handle.toLowerCase())])
+
+  return [...text.matchAll(ERWAEHNUNG)].some(m => handles.has(m[1]!.toLowerCase()))
+}
+
+/**
+ * The person speaks: the name goes in front so several people stay apart in one room, and a
+ * text that addresses nobody goes to the room lead — not to every member, one serial turn each.
+ */
+export const auftragGeben = (suite: Pick<Suite, 'id' | 'mitglieder'>, text: string): Promise<RaumEreignis> => {
+  const wert = text.trim()
+
+  return senden(
+    suite.id,
+    `${$mensch.get()}: ${sprichtJemandenAn(wert, suite.mitglieder) ? '' : `@${RAUMLEITER} `}${wert}`
+  )
+}
 
 /** A door: this room speaks into another, addressed to its room lead. */
 export const tuerSenden = (von: Pick<Suite, 'titel'>, nach: Pick<Suite, 'id'>, text: string): Promise<RaumEreignis> =>

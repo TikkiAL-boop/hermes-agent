@@ -22,6 +22,22 @@ from tikki.werkzeuge import suite_takt as st
 GATEWAY = "install:test-gateway"
 T0 = 1_790_000_000.0
 
+# Dieselben drei Beispieltexte liest die App in apps/desktop/src/app/areas/suites/store.test.ts.
+BRAUCHE_TEXT = "STAND: Ort gesucht.\nBRAUCHE: Budget? Vorschlag 150 €"
+SYSTEM_NACHRICHTEN = [
+    "thorsten: @raumleiter TAKT-RUNDE 2 · 01.10.2026 12:00: Neue Runde nach Takt (stündlich).",
+    "@raumleiter WACHHALTER: bitte weiterarbeiten",
+    "[Tür aus „Recherche“] @raumleiter Die Quellen liegen vor.",
+    "@raumleiter ÜBUNGSERGEBNIS 2: Übungsraum „App-thorsten-2@tikki.team“ ist zuerst fertig.",
+    "@raumleiter LERNEN: Alle Übungsläufe zu „App“ sind durch.",
+]
+ZWISCHENRUF = "@rechercheur such inzwischen drei Orte heraus."
+STAND_OHNE_BRAUCHE = "STAND: Ort gebucht, Budget nicht mehr nötig."
+AUFGABEN_TEXT = (
+    "STAND: zweite Runde\n**AUFGABEN:** (Stand 12:00)\n* [x] Häuser an der Ostsee sammeln\n"
+    "- [ ] Preise vergleichen\n\nTÜR: Recherche | bitte Preise"
+)
+
 
 @pytest.fixture
 def db(tmp_path: Path, monkeypatch) -> Path:
@@ -100,6 +116,85 @@ def test_brauche_nach_der_letzten_menschnachricht_wartet_und_der_mensch_loest_si
 
     raeume.senden(raum, "ja, 150 € passen", von="Thorsten", db=db, jetzt=T0 + 4)
     assert st.bericht(db=db)[0]["brauche"] is None
+
+
+def test_systemnachrichten_lassen_brauche_offen_und_die_letzte_raumleiter_nachricht_gilt(db: Path):
+    raum = _raum(db, "Kindergeburtstag")
+    raeume.senden(raum, "@raumleiter Plane die Feier.", von="Thorsten", db=db, jetzt=T0 + 1)
+    _raumleiter_sagt(db, raum, BRAUCHE_TEXT, jetzt=T0 + 2)
+    for i, text in enumerate(SYSTEM_NACHRICHTEN):
+        raeume.senden(raum, text, db=db, jetzt=T0 + 3 + i)
+        assert st.bericht(db=db)[0]["brauche"] == "Budget? Vorschlag 150 €", text
+
+    _raumleiter_sagt(db, raum, ZWISCHENRUF, jetzt=T0 + 20)  # kein STAND/FERTIG: die Frage steht weiter
+    assert st.bericht(db=db)[0]["brauche"] == "Budget? Vorschlag 150 €"
+    _raumleiter_sagt(db, raum, STAND_OHNE_BRAUCHE, jetzt=T0 + 21)
+    assert st.bericht(db=db)[0]["brauche"] is None
+
+    _raumleiter_sagt(db, raum, BRAUCHE_TEXT, jetzt=T0 + 22)
+    raeume.senden(raum, "ja, 150 € passen", von="Thorsten", db=db, jetzt=T0 + 23)
+    assert st.bericht(db=db)[0]["brauche"] is None
+
+
+def test_aufgaben_block_wird_fett_mit_zusatz_und_sternchen_gelesen_wie_in_der_app(db: Path):
+    raum = _raum(db, "Urlaub")
+    _raumleiter_sagt(db, raum, AUFGABEN_TEXT, jetzt=T0 + 2)
+
+    [z] = st.bericht(db=db)
+    assert z["aufgaben_offen"] == ["Preise vergleichen"] and z["aufgaben_erledigt"] == 1
+
+
+def test_ein_raum_der_die_nachricht_ablehnt_kostet_den_anderen_nicht_ihre_runde(db: Path, monkeypatch, capsys):
+    jetzt = datetime.now(timezone.utc)
+    raeume_ids = {}
+    for i, name in enumerate(["A", "B", "C"]):
+        raeume_ids[name] = _raum(db, name, T0 + i)
+        raeume.senden(raeume_ids[name], "@raumleiter Dranbleiben.\nTAKT: alle 30 Minuten", von="Thorsten", db=db, jetzt=T0 + 10 + i)
+    assert st.takt(db=db, jetzt=jetzt - timedelta(minutes=31)) == []
+
+    echt = raeume.senden
+
+    def senden(room_id, text, **kw):
+        if room_id == raeume_ids["B"]:
+            raise hosted_rooms.HostedRoomError("This Group Chat reached its history limit.")
+        return echt(room_id, text, **kw)
+
+    monkeypatch.setattr(raeume, "senden", senden)
+    rc = st.main(["takt", "--db", str(db)])
+    ausgabe = capsys.readouterr().out
+
+    assert rc != 0
+    assert [z for z in ausgabe.splitlines() if z.startswith(st.FEHLER)] == [f"{st.FEHLER}B: This Group Chat reached its history limit."]
+    runden = {n: [t for t in _texte(db, r) if "TAKT-RUNDE" in t] for n, r in raeume_ids.items()}
+    assert len(runden["A"]) == 1 and len(runden["C"]) == 1 and runden["B"] == []
+
+    assert all(z.startswith(st.FEHLER) for z in st.takt(db=db, jetzt=jetzt + timedelta(minutes=1)))  # B bleibt fällig
+    assert {n: len([t for t in _texte(db, r) if "TAKT-RUNDE" in t]) for n, r in raeume_ids.items()} == {"A": 1, "B": 0, "C": 1}
+    bericht_b = next(z for z in st.bericht(db=db) if z["id"] == raeume_ids["B"])
+    assert "history limit" in bericht_b["fehler"] and st.weckbedarf([bericht_b])
+
+
+def test_bericht_schliesst_mit_wake_gate_nur_wenn_kein_raum_den_wachhalter_braucht(db: Path, capsys):
+    def letzte_zeile() -> str:
+        assert st.main(["bericht", "--db", str(db)]) == 0
+        return capsys.readouterr().out.strip().splitlines()[-1]
+
+    assert letzte_zeile() == '{"wakeAgent": false}'
+
+    takt_raum = _raum(db, "Nachrichtenlage")
+    raeume.senden(takt_raum, "@raumleiter Halte die Lage aktuell.\nTAKT: stündlich", von="Thorsten", db=db, jetzt=T0 + 1)
+    _raumleiter_sagt(db, takt_raum, "STAND: läuft.\nAUFGABEN:\n- [ ] Quellen sichten (@rechercheur)", jetzt=T0 + 2)
+    assert letzte_zeile() == '{"wakeAgent": false}'  # Räume mit Takt gehören dem Takt
+
+    stiller = _raum(db, "Kindergeburtstag", T0 + 3)
+    raeume.senden(stiller, "@raumleiter Plane die Feier.", von="Thorsten", db=db, jetzt=T0 + 4)
+    _raumleiter_sagt(db, stiller, "STAND: Ort gesucht.\nAUFGABEN:\n- [ ] Ort buchen (@organisator)", jetzt=T0 + 5)
+    assert not st.weckbedarf(st.bericht(db=db, jetzt=T0 + 5 + 29 * 60))
+    assert st.weckbedarf(st.bericht(db=db, jetzt=T0 + 5 + 31 * 60))
+    assert letzte_zeile() != '{"wakeAgent": false}'
+
+    _raumleiter_sagt(db, stiller, "STAND: Ort gebucht.\nAUFGABEN:\n- [x] Ort buchen\nBRAUCHE: Budget?", jetzt=T0 + 6)
+    assert st.weckbedarf(st.bericht(db=db, jetzt=T0 + 7))
 
 
 def test_tuer_zeile_des_raumleiters_erreicht_den_zielraum_einmal_und_unbekannte_stehen_im_bericht(db: Path):

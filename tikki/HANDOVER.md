@@ -484,7 +484,7 @@ pollt den Raumlog alle 2 s – es gibt keinen Push. Dieselben Räume sieht und b
 
 | Datei | Zweck |
 |---|---|
-| `store.ts` | Eine `Suite` = Zeile aus `groups.list` (`id`, `titel`, `mitglieder`, `geaendert`, `letzteSeq`, dazu aus dem Log abgeleitet `brauche`, `fertig`, `arbeitet`). `ladeSuites()` liest die Liste und je Raum den Log-Schwanz (`groups.log`). `neueSuite(name, ziel, {rollen, takt})`: `raumId()` = `tikki-<slug>-<base36 ms>`, Besatzung = Katalogrollen mit `im_raum_ab_start` (tikki, raumleiter, deine-ki) + gewählte Rollen (`raumMitglieder`), `groups.create`, dann die Eröffnung als erste Nachricht (`eroeffnungsText`: `@raumleiter RAUM:` / `ZIEL:` / `ANNAHMEN:` / `TAKT:`), danach Übungsläufe als eigene Räume (`uebung.ts`). `auftragGeben` = `groups.send` in den Faden `haupt`; der Mensch ist im Raum anonym, der Text trägt deshalb `"<Name>: "` vorn (`$mensch`). `tuerSenden(von, nach, text)` schreibt `[Tür aus „A“] @raumleiter …` in den anderen Raum. `verschmelzen(a, b)` baut einen neuen Raum mit der Vereinigung der Mitglieder (`vereinteMitglieder`, nach Profil), zitiert die letzten 12 Nachrichten beider (`zusammenfassung`), löst beide auf. `freigeben` beantwortet Werkzeug-Freigaben (`groups.approve`), `aufloesen`, `umbenennen`. Reine Helfer mit Tests: `raumSlug`, `nachrichtAus` (Log-Ereignis → Nachricht; `(pass)` bleibt still), `werArbeitet` (`room.activity`/`turn.*`), `brauchtAus`, `fertigAus`, `standAus`, `aufgabenAus`/`aufgabenWand` (`AUFGABEN:` mit `- [ ]`/`- [x]`), `suiteStand`, `raumdienstFehlt` (Fehlerbild, wenn kein Gateway die Räume fährt). |
+| `store.ts` | Eine `Suite` = Zeile aus `groups.list` (`id`, `titel`, `mitglieder`, `geaendert`, `letzteSeq`, dazu aus dem Log abgeleitet `brauche`, `fertig`, `arbeitet`). `ladeSuites()` liest die Liste und je Raum den Log-Schwanz (`groups.log`). `neueSuite(name, ziel, {rollen, takt})`: `raumId()` = `tikki-<slug>-<base36 ms>`, Besatzung = Katalogrollen mit `im_raum_ab_start` (tikki, raumleiter, deine-ki) + gewählte Rollen (`raumMitglieder`), `groups.create`, dann die Eröffnung als erste Nachricht (`eroeffnungsText`: `@raumleiter RAUM:` / `ZIEL:` / `ANNAHMEN:` / `TAKT:`), danach Übungsläufe als eigene Räume (`uebung.ts`). `auftragGeben` = `groups.send` in den Faden `haupt`; der Mensch ist im Raum anonym, der Text trägt deshalb `"<Name>: "` vorn (`$mensch`), und nennt er kein Mitglied (`sprichtJemandenAn`, Handles des Raums und `@all`), stellt die App `@raumleiter ` davor. `tuerSenden(von, nach, text)` schreibt `[Tür aus „A“] @raumleiter …` in den anderen Raum. `verschmelzen(a, b)` baut einen neuen Raum mit der Vereinigung der Mitglieder (`vereinteMitglieder`, nach Profil), zitiert die letzten 12 Nachrichten beider (`zusammenfassung`), löst beide auf. `freigeben` beantwortet Werkzeug-Freigaben (`groups.approve`), `aufloesen`, `umbenennen`. Reine Helfer mit Tests: `raumSlug`, `nachrichtAus` (Log-Ereignis → Nachricht; `(pass)` bleibt still), `werArbeitet` (`room.activity`/`turn.*`), `brauchtAus`, `fertigAus`, `standAus`, `aufgabenAus`/`aufgabenWand` (`AUFGABEN:` mit `- [ ]`/`- [x]`), `suiteStand`, `raumdienstFehlt` (Fehlerbild, wenn kein Gateway die Räume fährt). |
 | `suites-area.tsx` | Lobby: Verlauf links (Räume, die auf den Menschen warten, zuerst; Übungsläufe eingeklappt unter ihrem Hauptraum), Formular „Suite erstellen“ (Name, Ziel, Takt, Rollen-Chips – Tikki, Raumleiter und Deine KI sitzen immer dort), „Suite verbinden“ (nach Namen), Karte „Immer am Tisch“ (Raumleiter mit Haupt- und Ausweichmodell). Rechts die Aufmerksamkeits-Leiste (`$suitesBrauchen`). Steht ein Raum in `$aktiveSuite`, zeigt der Bereich den Raum. |
 | `suite-room.tsx` | Der Raum: Kopf (Zur Lobby, Titel, Marken `STAND:`/`BRAUCHE:`, **Türen**-Popover mit allen anderen Räumen und Textfeld, **Verschmelzen**-Popover mit Partnerwahl, Raumleiter „arbeitet“), links **To-do-Wand** (`aufgabenWand`) und **Am Tisch** (alle Mitglieder mit Modell, wer gerade spricht), Mitte **das Raumlog** (`useRaumLog`: `groups.log` ab `letzteSeq`, Freigabe-Leiste aus `groups.state`, Eingabe `Sprechen` → `auftragGeben`, Enter sendet), rechts **Daten-Screen** und **Output-Screen** (`suite-daten.ts` aus den Nachrichten). Unten die Grundbesatzung als Podest. |
 | `suite-daten.ts` | Reine Funktionen: `eingabenAusNachrichten`, `ausgabenAusNachrichten`, `taktAusNachrichten`. |
@@ -533,8 +533,12 @@ sprechen nur mit etwas Neuem, sonst genau `(pass)`. Der Raumleiter schreibt je Z
 `BRAUCHE: …`, `FERTIG: …`, `AUFGABEN:` mit `- [ ] …`/`- [x] …`, `TÜR: <Raum> | <Text>`; `TAKT: …`
 steht in der Eröffnung des Menschen (oder der Raumleiter bestätigt sie; die letzte Zeile gilt,
 `TAKT: aus` beendet). Nur Zeilen des Raumleiters zählen – das `STAND: <Datum>` des Rechercheurs ist
-keine Raumaussage. `BRAUCHE:` gilt nur, wenn danach keine Nachricht des Menschen kam
-(Systemnachrichten `TAKT-RUNDE`, `WACHHALTER:`, `ÜBUNGSERGEBNIS`, `LERNEN:`, `[Tür …]` zählen nicht).
+keine Raumaussage. Die letzte Raumleiter-Nachricht gilt; `BRAUCHE:` bleibt offen, bis der
+Raumleiter wieder `STAND:`/`FERTIG:` ohne `BRAUCHE:` schreibt oder der Mensch antwortet
+(Systemnachrichten `TAKT-RUNDE`, `WACHHALTER:`, `ÜBUNGSERGEBNIS`, `LERNEN:`, `[Tür …]` zählen nicht;
+App und Takt lesen das mit derselben `_SYSTEM`-Regex, Spiegeltests mit denselben drei Texten in
+`store.test.ts` und `test_suite_takt.py`). Eine Nachricht des Menschen ohne `@` eines Mitglieds
+stellt die App als `@raumleiter …` ein, sonst fragt der Kern jedes Mitglied der Reihe nach.
 
 **Taktgeber ohne Modell.** Cronjob `tikki-takt` im Profil `raumleiter` (alle 5 Minuten,
 `--no-agent`, Skript `scripts/tikki-takt.sh`) ruft `suite_takt takt`. Der liest alle Räume über
@@ -560,8 +564,13 @@ ein, alle über `raeume.senden`/`raeume.tuer`:
 
 **Bericht.** `suite_takt bericht [--json]` je Raum: Kennung, Titel, Mitglieder, still seit,
 Takt, letzte Takt-Runde, `STAND:`, `BRAUCHE:`, fertig, offene/erledigte Aufgaben, wer gerade
-arbeitet (`turn.started` ohne Ende), unzustellbare Türen. Das Briefing der PA (`plugins/pa/
-briefing.py`) nimmt daraus die Räume mit `BRAUCHE:`.
+arbeitet (`turn.started` ohne Ende), unzustellbare Türen, letzter Fehler beim Einstellen. Das
+Briefing der PA (`plugins/pa/briefing.py`) nimmt daraus die Räume mit `BRAUCHE:`. Im Textmodus
+endet der Bericht mit `{"wakeAgent": false}`, wenn `weckbedarf()` nichts findet (kein `BRAUCHE:`,
+kein Raum ohne Takt mit offenen Aufgaben > 30 min still, kein Fehler) – Hermes' Cron lässt den
+Wachhalter-Lauf dann ohne Modell enden (`cron/scheduler_prompt.py::_parse_wake_gate`). Ein Raum,
+der eine Nachricht ablehnt (aufgelöst, Budget voll), kostet im Tick nur sich selbst: `takt` fängt
+`HostedRoomError` je Raum, schreibt `takt.json` immer (`try/finally`) und endet mit Exit 1.
 
 **Wachhalter** (Rolle `wachhalter`, Port 8662, kein Raummitglied): Cronjob `tikki-rundgang` alle
 15 Minuten, Vorlauf-Skript `tikki-raumbericht.sh` (= `suite_takt bericht`). Er weckt stille Räume

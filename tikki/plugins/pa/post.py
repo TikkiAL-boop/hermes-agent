@@ -13,13 +13,25 @@ from __future__ import annotations
 import email
 import imaplib
 import os
+import re
 import smtplib
+import ssl
 from dataclasses import asdict, dataclass
 from email.header import decode_header, make_header
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr, parsedate_to_datetime
 
 TIKKI_MAIL_DOMAIN = "tikki.team"
+
+# Automaten (Newsletter, Autoresponder, Bounces) werden nie beantwortet – sonst Antwortschleifen.
+# Dieselben Regeln wie Hermes' E-Mail-Adapter (plugins/platforms/email/adapter.py).
+_AUTOMATEN_ABSENDER = ("noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "mailer-daemon", "postmaster",
+                       "bounce", "notifications@", "automated@", "auto-confirm", "auto-reply", "automailer")
+_AUTOMATEN_KOPF = {"Auto-Submitted": lambda v: v.lower() != "no",
+                   "Precedence": lambda v: v.lower() in {"bulk", "list", "junk"},
+                   "X-Auto-Response-Suppress": lambda v: bool(v), "List-Unsubscribe": lambda v: bool(v),
+                   "List-Id": lambda v: bool(v)}
+_FLAGS = re.compile(rb"FLAGS \(([^)]*)\)")
 
 
 @dataclass
@@ -48,6 +60,9 @@ class Nachricht:
     text: str = ""
     message_id: str = ""
     references: str = ""
+    antwort_an: str = ""
+    automatisch: bool = False
+    beantwortet: bool = False
 
 
 def server_fuer(adresse: str, env: dict | None = None) -> tuple[Server, Server]:
@@ -111,8 +126,14 @@ def _text_aus(msg: email.message.Message) -> str:
     return ""
 
 
-def nachricht_aus_bytes(uid: str, roh: bytes, *, mit_text: bool = False) -> Nachricht:
-    """Kopfzeilen (und auf Wunsch der Text) einer rohen Mail."""
+def _automatisch(msg: email.message.Message, von: str) -> bool:
+    adresse = (parseaddr(von)[1] or von).lower()
+    return any(muster in adresse for muster in _AUTOMATEN_ABSENDER) or any(
+        (wert := str(msg.get(kopf) or "").strip()) and pruefen(wert) for kopf, pruefen in _AUTOMATEN_KOPF.items())
+
+
+def nachricht_aus_bytes(uid: str, roh: bytes, *, mit_text: bool = False, flags: str = "") -> Nachricht:
+    """Kopfzeilen (und auf Wunsch der Text) einer rohen Mail; ``flags`` sind die IMAP-Flags."""
     msg = email.message_from_bytes(roh)
     datum = None
     try:
@@ -120,23 +141,28 @@ def nachricht_aus_bytes(uid: str, roh: bytes, *, mit_text: bool = False) -> Nach
     except Exception:
         datum = None
     text = _text_aus(msg)
+    von = _kopf(msg.get("From"))
     return Nachricht(
-        uid=uid, von=_kopf(msg.get("From")), an=_kopf(msg.get("To")), betreff=_kopf(msg.get("Subject")),
+        uid=uid, von=von, an=_kopf(msg.get("To")), betreff=_kopf(msg.get("Subject")),
         datum=datum, kurz=" ".join(text.split())[:240], text=text if mit_text else "",
         message_id=(msg.get("Message-ID") or "").strip(), references=(msg.get("References") or "").strip(),
+        antwort_an=_kopf(msg.get("Reply-To")), automatisch=_automatisch(msg, von),
+        beantwortet="\\answered" in flags.lower(),
     )
 
 
 def antwort_bauen(original: Nachricht, text: str, absender: str) -> EmailMessage:
-    """Eine Antwort mit korrektem Faden (In-Reply-To, References) an den Absender."""
+    """Eine Antwort mit korrektem Faden (In-Reply-To, References) an Reply-To, sonst den Absender."""
     msg = EmailMessage()
-    _, an = parseaddr(original.von)
+    ziel = original.antwort_an or original.von
+    _, an = parseaddr(ziel)
     msg["From"] = absender
-    msg["To"] = an or original.von
+    msg["To"] = an or ziel
     betreff = original.betreff or ""
     msg["Subject"] = betreff if betreff.lower().startswith("re:") else f"Re: {betreff}"
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid(domain=absender.split("@", 1)[-1] or None)
+    msg["Auto-Submitted"] = "auto-replied"
     if original.message_id:
         msg["In-Reply-To"] = original.message_id
         msg["References"] = f"{original.references} {original.message_id}".strip()
@@ -161,16 +187,27 @@ class Postfach:
     def __init__(self, zugang: Zugang, timeout: float = 30.0):
         self.zugang = zugang
         self.timeout = timeout
+        self.tls = ssl.create_default_context()
 
     def _imap(self) -> imaplib.IMAP4:
         s = self.zugang.imap
         if s.secure:
-            conn: imaplib.IMAP4 = imaplib.IMAP4_SSL(s.host, s.port, timeout=self.timeout)
+            conn: imaplib.IMAP4 = imaplib.IMAP4_SSL(s.host, s.port, timeout=self.timeout, ssl_context=self.tls)
         else:
             conn = imaplib.IMAP4(s.host, s.port, timeout=self.timeout)
-            conn.starttls()
+            conn.starttls(self.tls)
         conn.login(self.zugang.adresse, self.zugang.passwort)
         return conn
+
+    @staticmethod
+    def _holen(conn: imaplib.IMAP4, uid: bytes | str) -> tuple[bytes, str]:
+        """Rohbytes und IMAP-Flags einer Mail, ohne sie als gelesen zu markieren."""
+        _, teile = conn.uid("fetch", uid, "(FLAGS BODY.PEEK[])")
+        roh = next((t[1] for t in teile if isinstance(t, tuple)), b"")
+        # Die FLAGS stehen je nach Server vor dem Literal (im Tupelkopf) oder dahinter (als nackte Bytes).
+        huelle = b" ".join(t[0] if isinstance(t, tuple) else t for t in teile if t)
+        treffer = _FLAGS.search(huelle)
+        return roh, treffer.group(1).decode(errors="replace") if treffer else ""
 
     def ungelesen(self, anzahl: int = 12, ordner: str = "INBOX") -> list[Nachricht]:
         conn = self._imap()
@@ -180,9 +217,8 @@ class Postfach:
             uids = (daten[0] or b"").split()
             treffer: list[Nachricht] = []
             for uid in reversed(uids[-max(1, anzahl):]):
-                _, teile = conn.uid("fetch", uid, "(BODY.PEEK[])")
-                roh = next((t[1] for t in teile if isinstance(t, tuple)), b"")
-                treffer.append(nachricht_aus_bytes(uid.decode(), roh))
+                roh, flags = self._holen(conn, uid)
+                treffer.append(nachricht_aus_bytes(uid.decode(), roh, flags=flags))
             return treffer
         finally:
             conn.logout()
@@ -191,29 +227,28 @@ class Postfach:
         conn = self._imap()
         try:
             conn.select(ordner, readonly=True)
-            _, teile = conn.uid("fetch", uid, "(BODY.PEEK[])")
-            roh = next((t[1] for t in teile if isinstance(t, tuple)), b"")
-            return nachricht_aus_bytes(uid, roh, mit_text=True) if roh else None
+            roh, flags = self._holen(conn, uid)
+            return nachricht_aus_bytes(uid, roh, mit_text=True, flags=flags) if roh else None
         finally:
             conn.logout()
 
-    def erledigt(self, uid: str, ordner: str = "INBOX") -> None:
+    def erledigt(self, uid: str, ordner: str = "INBOX", *, beantwortet: bool = False) -> None:
         conn = self._imap()
         try:
             conn.select(ordner)
-            conn.uid("store", uid, "+FLAGS", "(\\Seen)")
+            conn.uid("store", uid, "+FLAGS", "(\\Seen \\Answered)" if beantwortet else "(\\Seen)")
         finally:
             conn.logout()
 
     def senden(self, msg: EmailMessage) -> str:
         s = self.zugang.smtp
         if s.secure:
-            with smtplib.SMTP_SSL(s.host, s.port, timeout=self.timeout) as smtp:
+            with smtplib.SMTP_SSL(s.host, s.port, timeout=self.timeout, context=self.tls) as smtp:
                 smtp.login(self.zugang.adresse, self.zugang.passwort)
                 smtp.send_message(msg)
         else:
             with smtplib.SMTP(s.host, s.port, timeout=self.timeout) as smtp:
-                smtp.starttls()
+                smtp.starttls(context=self.tls)
                 smtp.login(self.zugang.adresse, self.zugang.passwort)
                 smtp.send_message(msg)
         return msg["Message-ID"]
@@ -222,9 +257,20 @@ class Postfach:
         original = self.lesen(uid)
         if original is None:
             return {"fehler": f"Mail {uid} nicht gefunden"}
+        if original.automatisch:
+            return {"gesendet": False, "fehler": f"Mail {uid} von {original.von!r} kommt von einem Automaten "
+                    "(Newsletter, Autoresponder oder Bounce) und wird nicht beantwortet."}
+        if original.beantwortet:
+            return {"gesendet": False, "fehler": f"Mail {uid} ist schon als beantwortet markiert; keine zweite Antwort."}
         msg = antwort_bauen(original, text, self.zugang.adresse)
-        kennung = self.senden(msg)
-        self.erledigt(uid)
+        # Erst markieren, dann senden: scheitert das Senden, bleibt die Mail markiert –
+        # lieber eine Antwort zu wenig als eine doppelte beim nächsten Lauf.
+        self.erledigt(uid, beantwortet=True)
+        try:
+            kennung = self.senden(msg)
+        except Exception as exc:
+            return {"gesendet": False, "fehler": f"Senden fehlgeschlagen ({type(exc).__name__}: {exc}). Mail {uid} ist "
+                    "bereits als beantwortet markiert und wird nicht automatisch erneut beantwortet."}
         return {"gesendet": True, "an": msg["To"], "betreff": msg["Subject"], "message_id": kennung}
 
 

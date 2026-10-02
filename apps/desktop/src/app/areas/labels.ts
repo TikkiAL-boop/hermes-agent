@@ -77,6 +77,14 @@ interface AreaLabels {
     auftraegeHinweis: string
     keineAuftraege: string
     auftraegeFehler: string
+    modelle: string
+    modelleSuche: string
+    modelleFehler: string
+    keineModelle: string
+    modelleServer: (art: string) => string
+    modelleWeitere: (n: number) => string
+    modelleVorschlag: (raeume: string, sprache: string) => string
+    modelleHinweis: string
     naechster: (wann: string) => string
     pausiert: string
     geradeImChat: string
@@ -320,6 +328,18 @@ const de: AreaLabels = {
     auftraegeHinweis: 'Sag ihr im Chat, was sie regelmäßig tun soll – „guck alle 4 Minuten nach Mails“.',
     keineAuftraege: 'Noch keine. Tikki legt sie an, sobald du ihr einen Auftrag gibst.',
     auftraegeFehler: 'Aufträge gerade nicht lesbar.',
+    modelle: 'Modelle im Haus',
+    modelleSuche: 'Suche auf der Platte und nach laufenden Servern …',
+    modelleFehler: 'Modellsuche gerade nicht möglich (Backend ohne Plugin pa?).',
+    keineModelle: 'Kein lokales Modell gefunden. Räume laufen über API und Abos.',
+    modelleServer: (art: string) => `Server läuft (${art}):`,
+    modelleWeitere: (n: number) => `+ ${n} weitere`,
+    modelleVorschlag: (raeume: string, sprache: string) =>
+      raeume === sprache
+        ? `Vorschlag: ${raeume} für Räume und Sprache.`
+        : `Vorschlag: ${raeume} für Räume, ${sprache} für Sprache.`,
+    modelleHinweis:
+      'Beim Start gesucht. Zum Einsatz: Server mit 64k Kontext starten, Rolle auf lokal/<Modell> stellen.',
     naechster: (wann: string) => `nächster Lauf ${wann}`,
     pausiert: 'pausiert',
     geradeImChat: 'Gerade im Chat',
@@ -570,6 +590,17 @@ const en: AreaLabels = {
     auftraegeHinweis: 'Tell her in the chat what to do regularly – “check the mail every 4 minutes”.',
     keineAuftraege: 'None yet. Tikki creates them as soon as you give her an order.',
     auftraegeFehler: 'Orders cannot be read right now.',
+    modelle: 'Models in the house',
+    modelleSuche: 'Searching the disk and for running servers …',
+    modelleFehler: 'Model search not possible right now (backend without the pa plugin?).',
+    keineModelle: 'No local model found. Rooms run on APIs and subscriptions.',
+    modelleServer: (art: string) => `Server running (${art}):`,
+    modelleWeitere: (n: number) => `+ ${n} more`,
+    modelleVorschlag: (raeume: string, sprache: string) =>
+      raeume === sprache
+        ? `Suggestion: ${raeume} for rooms and speech.`
+        : `Suggestion: ${raeume} for rooms, ${sprache} for speech.`,
+    modelleHinweis: 'Searched at start. To use one: start its server with 64k context and set a role to lokal/<model>.',
     naechster: (wann: string) => `next run ${wann}`,
     pausiert: 'paused',
     geradeImChat: 'In this chat',

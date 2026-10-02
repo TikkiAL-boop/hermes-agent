@@ -312,10 +312,19 @@ browser, file, terminal, skills, cronjob, todo). Plugin **`tikki/plugins/pa/`**:
 - `briefing_sammeln` – Ausgaben der Daueraufträge seit dem letzten Briefing
   (`<profil>/cron/output/<job>/*.md`, Stempel `~/.tikki/briefing.json`), ungelesene Post, Räume
   mit `BRAUCHE`, WhatsApp über die WA-Bridge (`WA_BRIDGE_TOKEN`).
-- `hermes -p tikki pa status|briefing|post` zum Prüfen.
+- `hermes -p tikki pa status|briefing|post|modelle` zum Prüfen.
 - Daueraufträge legt Tikki mit dem Hermes-Werkzeug `cronjob` in ihrem Profil an; sie laufen nur,
   solange `hermes -p tikki gateway` läuft (→ `gateway install`, siehe Stolpersteine). Die Karte in
   der Übersicht zeigt sie (Name, Plan, nächster Lauf, pausiert).
+- `lokale_modelle` (02.10.) – welche Modelle auf dem Backend-Rechner liegen (LM Studio `~/.lmstudio/models`,
+  Ollama-Manifeste, Hugging-Face-Cache inkl. MLX, `~/Models`, `~/Downloads` flach) und welcher
+  Modellserver gerade antwortet (Ports 1234/11434/8080/8000/8081/5000 plus `providers.lokal.base_url`),
+  je Modell Größe, Parameter (auch MoE „235B, 22B aktiv“), Quantisierung und Startbefehl mit 64k Kontext;
+  Ergebnis in `~/.tikki/modelle.json`. CLI `hermes pa modelle [--json] [--ordner …]`. **Die App sucht beim
+  Start**: `areas/tikki/modelle.ts` ruft `cli.exec ['pa','modelle','--json']` im Profil `tikki` auf (läuft
+  also auf dem Backend-Rechner, auch remote) und zeigt die Karte „Modelle im Haus“ in der Übersicht
+  (Server zuerst, dann bis zu sechs Modelle, Vorschlag Räume/Sprache). Tests `tests/tikki/test_modelle.py`
+  (GGUF-Shards, MLX im HF-Cache, Ollama-Manifest, echter HTTP-Server), `areas/tikki/modelle.test.ts`.
 
 `rollen-einrichten.sh` verlinkt jetzt **alle** `tikki/plugins/*`; der Selbsttest prüft jedes.
 Verträge: `tests/tikki/test_pa.py`, `tikki/briefing.test.ts`, `tikki/auftraege.test.ts`.

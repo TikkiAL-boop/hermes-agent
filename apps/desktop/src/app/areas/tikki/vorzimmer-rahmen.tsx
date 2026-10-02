@@ -6,6 +6,7 @@ import {
   Bell,
   Brain,
   Clock,
+  Cpu,
   Download,
   Globe,
   Loader2,
@@ -40,6 +41,7 @@ import {
   vorlesenAktiv,
   vorlesenStopp
 } from './briefing'
+import { $modellsuche, $modellsucheStatus, ladeModellsuche, modellZeile } from './modelle'
 import { $updateStand, startUpdateWaechter } from './update-waechter'
 
 const tikki = rolle('tikki')
@@ -54,6 +56,72 @@ function Karte({ children, icon: Icon, titel }: { children: ReactNode; icon: typ
       </h2>
       {children}
     </section>
+  )
+}
+
+function ModelleInhalt({
+  locale,
+  status,
+  suche
+}: {
+  locale: Locale
+  status: 'leer' | 'laedt' | 'bereit' | 'fehler'
+  suche: ReturnType<typeof $modellsuche.get>
+}) {
+  const v = areaLabels(locale).vorzimmer
+  const modelle = suche?.modelle ?? []
+  const server = suche?.server ?? []
+
+  if (status === 'laedt' || status === 'leer') {
+    return (
+      <p className="flex items-center gap-2 text-[12px] text-(--tikki-tinte-weich)" data-vorzimmer-modelle="sucht">
+        <Loader2 aria-hidden className="size-3.5 animate-spin" />
+        {v.modelleSuche}
+      </p>
+    )
+  }
+
+  if (status === 'fehler') {
+    return (
+      <p className="text-[12px] text-(--tikki-tinte-weich)" data-vorzimmer-modelle="fehler">
+        {v.modelleFehler}
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5" data-vorzimmer-modelle={modelle.length}>
+      {server.map(s => (
+        <p className="text-[12px] text-(--tikki-tinte)" data-vorzimmer-modellserver={s.adresse} key={s.adresse}>
+          <span className="font-semibold">{v.modelleServer(s.art)}</span>{' '}
+          <span className="text-(--tikki-tinte-weich)">{s.modelle.length ? s.modelle.join(', ') : s.adresse}</span>
+        </p>
+      ))}
+      {modelle.length === 0 && server.length === 0 && (
+        <p className="text-[12px] text-(--tikki-tinte-weich)">{v.keineModelle}</p>
+      )}
+      {modelle.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {modelle.slice(0, 6).map(m => (
+            <li className="flex flex-col" key={m.pfad}>
+              <span className="truncate text-[12px] text-(--tikki-tinte)">{m.name}</span>
+              <span className="text-[11px] text-(--tikki-tinte-weich)">
+                {modellZeile(m)} · {m.quelle}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {modelle.length > 6 && (
+        <p className="text-[11px] text-(--tikki-tinte-weich)">{v.modelleWeitere(modelle.length - 6)}</p>
+      )}
+      {suche?.empfehlung.raeume && (
+        <p className="text-[11px] text-(--tikki-tinte-weich)">
+          {v.modelleVorschlag(suche.empfehlung.raeume, suche.empfehlung.sprache ?? suche.empfehlung.raeume)}
+        </p>
+      )}
+      <p className="text-[11px] text-(--tikki-tinte-weich)">{v.modelleHinweis}</p>
+    </div>
   )
 }
 
@@ -208,6 +276,8 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   const update = useStore($updateStand)
   const auftraege = useStore($auftraege)
   const auftraegeStatus = useStore($auftraegeStatus)
+  const modellsuche = useStore($modellsuche)
+  const modellsucheStatus = useStore($modellsucheStatus)
   const [vorlesen, setVorlesen] = useState(vorlesenAktiv)
   const [sammle, setSammle] = useState(false)
 
@@ -218,6 +288,11 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
         if (state === 'open') {
           void ladeSuites()
           void ladeAuftraege()
+
+          // Once per start: which models lie on the backend machine and which server answers.
+          if ($modellsucheStatus.get() === 'leer') {
+            void ladeModellsuche()
+          }
         }
       }),
     []
@@ -349,6 +424,9 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
               </ul>
             )}
             <p className="text-[11px] text-(--tikki-tinte-weich)">{v.auftraegeHinweis}</p>
+          </Karte>
+          <Karte icon={Cpu} titel={v.modelle}>
+            <ModelleInhalt locale={locale} status={modellsucheStatus} suche={modellsuche} />
           </Karte>
           <Karte icon={Bell} titel={v.brauchtDich}>
             {braucht.length === 0 ? (

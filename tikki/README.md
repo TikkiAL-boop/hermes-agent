@@ -76,7 +76,7 @@ den Lauf auf eine Rolle.
 | `dienste/honcho/honcho.sh` | Honcho als eigener Dienst (Docker) |
 | `dienste/tencentdb/tencentdb.sh` | TencentDB Agent Memory je Mensch und fürs System (Docker) |
 | `plugins/gedaechtnis/` | Spiegelt jede Runde in TencentDB und die RAG-Sammlung; Werkzeug `nachschlagen` |
-| `plugins/pa/` | Persönliche Assistenz: Postfach (`post`) und Briefing (`briefing_sammeln`) aus dem Backend; `hermes pa …` |
+| `plugins/pa/` | Persönliche Assistenz: Postfach (`post`), Briefing (`briefing_sammeln`), lokale Modelle (`lokale_modelle`) aus dem Backend; `hermes pa status\|briefing\|post\|modelle` |
 | `skills/` | Tikki-Skills: `gemini-cli`, `notebooklm`, `openclaw-skills` |
 
 Reihenfolge und Einzelheiten: `HANDOVER.md`, Abschnitte 3 und 4.8–4.12.

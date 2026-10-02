@@ -5,7 +5,9 @@
   Daueraufträgen ohne geöffnete App.
 - Werkzeug ``briefing_sammeln``: was seit dem letzten Briefing erledigt wurde (Ausgaben der
   Daueraufträge), ungelesene Post, Räume, die warten, neue WhatsApps. Tikki trägt es vor.
-- ``hermes pa status|briefing|post`` zum Prüfen von Hand.
+- Werkzeug ``lokale_modelle``: welche Modelle auf der Platte liegen (LM Studio, Ollama, Hugging-Face-
+  Cache, ~/Models, ~/Downloads) und welcher Modellserver gerade läuft – die App fragt das beim Start.
+- ``hermes pa status|briefing|post|modelle`` zum Prüfen von Hand.
 
 Daueraufträge selbst legt Tikki mit dem Hermes-Werkzeug ``cronjob`` an („alle 4 Minuten das
 Postfach prüfen und beantworten, was zu beantworten ist“).
@@ -17,7 +19,7 @@ import json
 import logging
 from pathlib import Path
 
-from . import briefing, post
+from . import briefing, modelle, post
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,22 @@ def briefing_werkzeug(args: dict, **_kw) -> str:
     return _antwort(briefing.sammeln(_home(), stempeln=not bool(args.get("nur_lesen"))))
 
 
+_MODELLE_SCHEMA = {
+    "name": "lokale_modelle",
+    "description": (
+        "Welche KI-Modelle liegen auf diesem Rechner (LM Studio, Ollama, Hugging-Face-Cache, ~/Models, "
+        "~/Downloads) und welcher Modellserver läuft gerade mit welchen Modell-Kennungen. Liefert Größe, "
+        "Parameter, Quantisierung, Startbefehl und einen Vorschlag, was für Räume und was für Sprache taugt."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "ordner": {"type": "array", "items": {"type": "string"}, "description": "Zusätzliche Ordner, die durchsucht werden sollen."},
+        },
+    },
+}
+
+
 def _cli_setup(parser) -> None:
     sub = parser.add_subparsers(dest="pa_befehl")
     sub.add_parser("status", help="Postfach-Zugang und letztes Briefing")
@@ -118,10 +136,16 @@ def _cli_setup(parser) -> None:
     p = sub.add_parser("post", help="Postfach von Hand")
     p.add_argument("aktion", choices=["ungelesen", "lesen", "erledigt"])
     p.add_argument("uid", nargs="?")
+    m = sub.add_parser("modelle", help="Lokale Modelle und laufende Modellserver finden")
+    m.add_argument("--json", action="store_true", help="Maschinenlesbar (eine Zeile, Präfix TIKKI-MODELLE)")
+    m.add_argument("--ordner", action="append", default=[], help="Zusätzlicher Ordner, mehrfach möglich")
+    m.add_argument("--timeout", type=float, default=0.7, help="Sekunden je Server-Anfrage")
 
 
 def _cli(args) -> int:
     befehl = getattr(args, "pa_befehl", None) or "status"
+    if befehl == "modelle":
+        return modelle.cli(args)
     if befehl == "briefing":
         print(_antwort(briefing.sammeln(_home(), stempeln=not args.nur_lesen)))
         return 0
@@ -144,7 +168,11 @@ def register(ctx) -> None:
         name="briefing_sammeln", toolset="pa", schema=_BRIEFING_SCHEMA, handler=briefing_werkzeug,
         description=_BRIEFING_SCHEMA["description"], emoji="📋",
     )
+    ctx.register_tool(
+        name="lokale_modelle", toolset="pa", schema=_MODELLE_SCHEMA, handler=modelle.werkzeug,
+        description=_MODELLE_SCHEMA["description"], emoji="🧠",
+    )
     ctx.register_cli_command(
-        name="pa", help="Tikkis persönliche Assistenz: Postfach und Briefing prüfen",
+        name="pa", help="Tikkis persönliche Assistenz: Postfach, Briefing, lokale Modelle",
         setup_fn=_cli_setup, handler_fn=_cli,
     )

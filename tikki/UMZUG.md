@@ -21,6 +21,16 @@ Schlüssel, App, Dienste, Prüfung. Die Tiefe steht in `HANDOVER.md`; die Prüfu
 Nicht im Repo, nicht im Archiv: Python-Umgebung, `node_modules`, gebaute App, Logs, Caches –
 alles baut der Installer in 10–20 Minuten neu.
 
+## 1a. Die Mappe als Ordner auf dem Schreibtisch
+
+```bash
+~/.hermes/hermes-agent/tikki/werkzeuge/handover-mappe.sh     # → ~/Desktop/Tikki-Handover
+```
+
+Darin: `LIES-MICH.txt`, `handover/` (dieses Blatt, HANDOVER, Prüfbericht, README, PDFs), `code/`
+(Git-Bundle mit voller Historie, Quell-Schnappschuss, Stand) und `umzug.sh`. Ohne Schlüssel und ohne
+persönlichen Zustand; den packt `umzug.sh packen` (Abschnitt 3).
+
 ## 2. Weg A – neuer Rechner frisch (online, 3 Befehle)
 
 Reicht, wenn kein persönlicher Zustand mitkommen soll (neuer Mensch, Testrechner):

@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 import { areaLabels } from '../labels'
 
-import { KATALOG } from './katalog'
+import { ROLLEN } from './katalog'
 
 /**
  * Rules & prompts: every role's SOUL, read from and written to the backend
@@ -18,7 +18,7 @@ import { KATALOG } from './katalog'
 export function RegelnSection() {
   const { locale } = useI18n()
   const r = areaLabels(locale).admin.roles
-  const [slug, setSlug] = useState(KATALOG[0]?.slug ?? '')
+  const [slug, setSlug] = useState(ROLLEN[0]?.slug ?? '')
   const [existing, setExisting] = useState<Set<string>>(new Set())
   const [text, setText] = useState('')
   const [state, setState] = useState<'idle' | 'loading' | 'saving' | 'saved' | 'missing'>('idle')
@@ -76,7 +76,7 @@ export function RegelnSection() {
     <div className="flex min-h-0 flex-1 gap-4">
       <div className="flex w-56 shrink-0 flex-col gap-0.5">
         <div className="px-2 pb-1 text-xs text-(--ui-text-secondary)">{r.pick}</div>
-        {KATALOG.map(role => (
+        {ROLLEN.map(role => (
           <button
             className={cn(
               'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',

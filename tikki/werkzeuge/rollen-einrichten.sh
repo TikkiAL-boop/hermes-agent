@@ -99,7 +99,7 @@ skript_und_job() {
 }
 tun()   { if [ "$DRY_RUN" = 1 ]; then echo "  [dry-run] $*"; else "$@"; fi; }
 
-# Katalog als Zeilen: slug<TAB>name<TAB>port
+# Katalog als Zeilen: slug<TAB>name<TAB>port<TAB>soul-rolle (Klone: das Original)
 ZEILEN="$(konfig zeilen "$KATALOG")"
 
 echo "Tikki – Rollen einrichten"
@@ -113,11 +113,11 @@ echo
 ANGELEGT=0; AKTUALISIERT=0; FEHLER=0
 ZUSAMMENFASSUNG=""
 
-while IFS=$'\t' read -r SLUG NAME PORT; do
+while IFS=$'\t' read -r SLUG NAME PORT SOUL_SLUG; do
   [ -n "$SLUG" ] || continue
   if [ -n "$NUR" ] && [ "$NUR" != "$SLUG" ]; then continue; fi
   echo "== $SLUG ($NAME, Port $PORT)"
-  SOUL_QUELLE="$TIKKI/rollen/$SLUG/SOUL.md"
+  SOUL_QUELLE="$TIKKI/rollen/${SOUL_SLUG:-$SLUG}/SOUL.md"
   ZIEL="$PROFILE_DIR/$SLUG"
   if [ ! -f "$SOUL_QUELLE" ]; then
     echo "  FEHLER: $SOUL_QUELLE fehlt – übersprungen." >&2
@@ -156,7 +156,13 @@ while IFS=$'\t' read -r SLUG NAME PORT; do
   if [ "$DRY_RUN" = 1 ]; then
     konfig vorschau "$KATALOG" "$VORLAGE" "$SLUG"
   else
-    konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml" ${MODELLE[@]+"${MODELLE[@]}"}
+    # Ein frisch angelegtes Profil bekommt von `hermes profile create` schon eine config.yaml
+    # (Kopie des aktiven Profils) – deren Modell darf nicht als „Nutzerwahl“ überleben.
+    if [ "$STATUS" = angelegt ]; then
+      konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml" --modelle-zuruecksetzen
+    else
+      konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml" ${MODELLE[@]+"${MODELLE[@]}"}
+    fi
   fi
 
   # 3b) honcho.json: Workspace tikki, AI-Peer = Rolle, eine Honcho-Sitzung je Suite

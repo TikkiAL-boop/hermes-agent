@@ -66,6 +66,22 @@ def test_verschmelzen_vereint_mitglieder_zitiert_beide_und_loest_die_alten_auf(z
     assert {r["room_id"] for r in raeume.liste(db=db)} == {c["room_id"]}
 
 
+def test_raumleiter_klon_sitzt_als_raumleiter_mit_eigenem_profil(zuhause: Path) -> None:
+    db = zuhause / "shared-state.db"
+    klone = [k["slug"] for k in raeume.raumleiter_klone()]
+    assert klone and all(k.startswith("raumleiter-") for k in klone)
+    klon = raeume.rolle(klone[0])
+    original = raeume.rolle("raumleiter")
+    assert klon["werkzeuge"] == original["werkzeuge"] and klon["modell"] != original["modell"]  # geerbt bzw. eigen
+
+    raum = raeume.anlegen("Übung", ["rechercheur"], db=db, jetzt=1_790_000_000.0, gateway_id=GATEWAY, raumleiter=klone[0])
+
+    leiter = next(m for m in raum["members"] if m["member_id"] == "raumleiter")
+    assert (leiter["handle"], leiter["profile"]) == ("raumleiter", klon["hermes_profil"])
+    with pytest.raises(ValueError):
+        raeume.besetzung([], raumleiter="rechercheur")
+
+
 def test_tuer_spricht_den_raumleiter_des_anderen_raums_an(zuhause: Path) -> None:
     db = zuhause / "shared-state.db"
     a = raeume.anlegen("Recherche", [], db=db, jetzt=1_790_000_000.0, gateway_id=GATEWAY)

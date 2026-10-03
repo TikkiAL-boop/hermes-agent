@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { KATALOG } from '../admin/katalog'
+import { KATALOG, ROLLEN } from '../admin/katalog'
 
 import { auftragAusText, botErgebnisse, rolleAusName } from './rollen'
 
@@ -9,7 +9,7 @@ const auftrag = (rolle: string, aufgabe: string) =>
 
 describe('rolleAusName', () => {
   it('resolves every catalogue role by slug, by display name, and forgiving about case and umlauts', () => {
-    for (const rolle of KATALOG) {
+    for (const rolle of ROLLEN) {
       expect(rolleAusName(rolle.slug)?.slug).toBe(rolle.slug)
       expect(rolleAusName(rolle.name)?.slug).toBe(rolle.slug)
       expect(rolleAusName(rolle.name.toUpperCase())?.slug).toBe(rolle.slug)

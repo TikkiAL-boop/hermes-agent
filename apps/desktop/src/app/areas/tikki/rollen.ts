@@ -14,7 +14,7 @@
 // text in, catalogue role out; the renderer decides what to do with a task
 // that names no role.
 
-import { KATALOG, type KatalogRolle } from '../admin/katalog'
+import { type KatalogRolle, ROLLEN } from '../admin/katalog'
 
 export interface Auftrag {
   /** The role the task is addressed to, when the `AN:` line names one we know. */
@@ -45,7 +45,7 @@ export function rollenSchluessel(text: string): string {
 
 const byKey = new Map<string, KatalogRolle>()
 
-for (const rolle of KATALOG) {
+for (const rolle of ROLLEN) {
   for (const key of [rolle.slug, rolle.name, rolle.hermes_profil]) {
     byKey.set(rollenSchluessel(key), rolle)
   }

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 
 import { areaLabels } from '../labels'
 
-import { KATALOG } from './katalog'
+import { ROLLEN } from './katalog'
 
 type Health = 'online' | 'offline' | 'unknown'
 
@@ -22,7 +22,7 @@ export function BotsSection() {
       const next: Record<string, Health> = {}
 
       await Promise.all(
-        KATALOG.map(async r => {
+        ROLLEN.map(async r => {
           try {
             const res = await fetch(`http://127.0.0.1:${r.port}/health`, { signal: AbortSignal.timeout(2500) })
 
@@ -51,7 +51,7 @@ export function BotsSection() {
     <div className="flex max-w-5xl flex-col gap-4">
       <p className="text-xs text-(--ui-text-secondary)">{b.setup}</p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {KATALOG.map(r => {
+        {ROLLEN.map(r => {
           const state = health[r.slug] ?? 'unknown'
 
           return (

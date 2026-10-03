@@ -4,9 +4,8 @@
 // what it learned. Both steps run on the backend (tikki/werkzeuge/suite_takt.py).
 
 export interface Ansatz {
-  /** Hermes provider id; empty keeps the room lead's own model. */
-  provider?: string
-  model?: string
+  /** Room-lead clone (catalogue `klon_von: raumleiter`) that leads this practice room; empty keeps the room lead. */
+  klon?: string
   /** Short label for the lobby and the room header. */
   kurz: string
   /** The approach the practice room must follow, in the room lead's words. */
@@ -16,38 +15,32 @@ export interface Ansatz {
 /** Practice runs cycle through these: different APIs, different ways of working. */
 export const ANSAETZE: readonly Ansatz[] = [
   {
-    provider: 'xai',
-    model: 'grok-4.7',
+    klon: 'raumleiter-xai',
     kurz: 'schnell',
     text: 'Schnell und pragmatisch: kleinstes Team, kürzester Weg zu einem brauchbaren Ergebnis.'
   },
   {
-    provider: 'anthropic',
-    model: 'claude-opus-5-5',
+    klon: 'raumleiter-anthropic',
     kurz: 'gründlich',
     text: 'Gründlich: erst recherchieren und planen, nach jeder Runde den Prüfer einsetzen.'
   },
   {
-    provider: 'openai-codex',
-    model: 'gpt-6-sol',
+    klon: 'raumleiter-codex',
     kurz: 'breit',
     text: 'Maximal parallel: die Aufgabe fein zerlegen und viele Bots gleichzeitig arbeiten lassen.'
   },
   {
-    provider: 'lokal',
-    model: 'tikki-gross',
+    klon: 'raumleiter-lokal',
     kurz: 'lokal',
     text: 'Nur Hausmittel: alles mit den lokalen Modellen im Haus, ohne Cloud-Dienste.'
   },
   {
-    provider: 'xai',
-    model: 'grok-4.7',
+    klon: 'raumleiter-xai',
     kurz: 'andersrum',
     text: 'Vom Ergebnis her: erst das fertige Ergebnis skizzieren, dann rückwärts die Schritte ableiten.'
   },
   {
-    provider: 'anthropic',
-    model: 'claude-opus-5-5',
+    klon: 'raumleiter-anthropic',
     kurz: 'kritisch',
     text: 'Kritisch: zuerst die größten Risiken und Fehlerquellen suchen, dann bauen.'
   }

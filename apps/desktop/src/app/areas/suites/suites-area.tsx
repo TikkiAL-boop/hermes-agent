@@ -6,7 +6,7 @@ import { Armchair, Bell, CheckCircle2, Loader2, Plus, Search } from '@/lib/icons
 import { cn } from '@/lib/utils'
 
 import { $uebungslaeufe } from '../admin/betrieb-store'
-import { KATALOG, rolle } from '../admin/katalog'
+import { rolle, ROLLEN } from '../admin/katalog'
 import { areaLabels } from '../labels'
 
 import {
@@ -62,7 +62,7 @@ const EIGENER = '__eigener__'
 
 const raumleiter = rolle(RAUMLEITER)
 /** Roles the person may seat at the table from the start; the base crew is there anyway. */
-const WAEHLBARE_ROLLEN = KATALOG.filter(r => !r.im_raum_ab_start && r.slug !== 'tikki' && r.slug !== 'wachhalter')
+const WAEHLBARE_ROLLEN = ROLLEN.filter(r => !r.im_raum_ab_start && r.slug !== 'tikki' && r.slug !== 'wachhalter')
 
 function RaumleiterKarte() {
   const { locale } = useI18n()

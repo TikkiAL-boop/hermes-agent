@@ -44,6 +44,7 @@ KATALOG = TIKKI / "rollen" / "KATALOG.json"
 PRAEFIX = "tikki-"
 #: Ein Raum ist ein Gespräch: ein Faden für Mensch, Takt und Türen.
 HAUPTFADEN = "haupt"
+RAUMLEITER = "raumleiter"
 #: Wie viele der letzten Nachrichten ein verschmolzener Raum aus jedem Vorgänger mitbekommt.
 VERSCHMELZEN_NACHRICHTEN = 12
 
@@ -51,7 +52,15 @@ VERSCHMELZEN_NACHRICHTEN = 12
 # ── Katalog und Mitglieder ───────────────────────────────────────────────────
 
 def katalog() -> list[dict]:
-    return json.loads(KATALOG.read_text(encoding="utf-8"))
+    eintraege = json.loads(KATALOG.read_text(encoding="utf-8"))
+    nach_slug = {e["slug"]: e for e in eintraege}
+    # Klone (``klon_von``) erben alles vom Original außer dem, was sie selbst nennen.
+    return [({**nach_slug[e["klon_von"]], **e} if e.get("klon_von") in nach_slug else e) for e in eintraege]
+
+
+def raumleiter_klone() -> list[dict]:
+    """Die Raumleiter mit anderem Modell: eigene Profile, also eigener Turn – Räume laufen parallel."""
+    return [e for e in katalog() if e.get("klon_von") == RAUMLEITER]
 
 
 def rolle(slug: str) -> dict | None:
@@ -71,13 +80,25 @@ def mitglied(slug: str) -> dict:
     return {"member_id": slug, "profile": e["hermes_profil"], "handle": slug, "display_name": e["name"]}
 
 
-def besetzung(rollen: list[str] | None = None) -> list[dict]:
-    """Grundbesatzung plus gewünschte Rollen, jede nur einmal, Reihenfolge erhalten."""
+def besetzung(rollen: list[str] | None = None, *, raumleiter: str | None = None) -> list[dict]:
+    """Grundbesatzung plus gewünschte Rollen, jede nur einmal, Reihenfolge erhalten.
+
+    ``raumleiter`` nennt einen Klon (``raumleiter-xai`` …): der Raumleiter bleibt ``@raumleiter``,
+    nur sein Profil – und damit Modell und Turn-Schlange – ist ein anderes.
+    """
     gesehen: list[str] = []
-    for slug in [*grundbesatzung(), *(rollen or [])]:
+    for slug in [*grundbesatzung(), *(rollen or []) ]:
         if slug not in gesehen:
             gesehen.append(slug)
-    return [mitglied(s) for s in gesehen]
+    leute = [mitglied(s) for s in gesehen]
+    if raumleiter and raumleiter != RAUMLEITER:
+        klon = rolle(raumleiter)
+        if klon is None or klon.get("klon_von") != RAUMLEITER:
+            raise ValueError(f"{raumleiter!r} ist kein Raumleiter-Klon")
+        for m in leute:
+            if m["member_id"] == RAUMLEITER:
+                m["profile"] = klon["hermes_profil"]
+    return leute
 
 
 # ── Speicherort und Kennungen ────────────────────────────────────────────────
@@ -179,10 +200,10 @@ def wer_arbeitet(ereignisse: list[dict]) -> str | None:
 # ── Schreiben ────────────────────────────────────────────────────────────────
 
 def anlegen(name: str, rollen: list[str] | None = None, *, db: Path | None = None, jetzt: float | None = None,
-            gateway_id: str | None = None) -> dict:
-    """Einen Raum mit Grundbesatzung und den gewünschten Rollen anlegen."""
+            gateway_id: str | None = None, raumleiter: str | None = None) -> dict:
+    """Einen Raum mit Grundbesatzung und den gewünschten Rollen anlegen (``raumleiter`` = Klon-Slug)."""
     db = db or db_pfad()
-    mitglieder = besetzung(rollen)
+    mitglieder = besetzung(rollen, raumleiter=raumleiter)
     discussion.validate_roster(mitglieder, local_profiles=lokale_profile(db.parent))
     return hosted_rooms.create_room(
         db, room_id=raum_id(name, jetzt), name=name, members=mitglieder,
@@ -274,6 +295,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="raeume", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="befehl", required=True)
     p = sub.add_parser("anlegen"); p.add_argument("name"); p.add_argument("--rollen", nargs="*", default=[])
+    p.add_argument("--raumleiter", help="Raumleiter-Klon mit anderem Modell, z. B. raumleiter-xai")
     p = sub.add_parser("senden"); p.add_argument("raum"); p.add_argument("text"); p.add_argument("--von")
     p = sub.add_parser("verlauf"); p.add_argument("raum"); p.add_argument("--seit", type=int, default=0)
     p = sub.add_parser("stand"); p.add_argument("raum")
@@ -285,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
     a = parser.parse_args(argv)
 
     if a.befehl == "anlegen":
-        r = anlegen(a.name, a.rollen)
+        r = anlegen(a.name, a.rollen, raumleiter=a.raumleiter)
         print(f"{r['room_id']}  {r['name']}  Mitglieder: {', '.join(m['handle'] for m in r['members'])}")
     elif a.befehl == "senden":
         print(senden(a.raum, a.text, von=a.von)["seq"])

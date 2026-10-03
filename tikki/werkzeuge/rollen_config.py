@@ -27,9 +27,20 @@ import sys
 from pathlib import Path
 
 
+def _vererben(eintraege: list[dict]) -> list[dict]:
+    """Ein Klon (``klon_von``) erbt alles vom Original und überschreibt nur, was er selbst nennt
+    (Modellkette, Port, Name) – so bleibt ein Raumleiter-Klon derselbe Raumleiter mit anderem Modell."""
+    nach_slug = {e["slug"]: e for e in eintraege}
+    aus = []
+    for e in eintraege:
+        quelle = nach_slug.get(e.get("klon_von") or "")
+        aus.append({**quelle, **e} if quelle else e)
+    return aus
+
+
 def _katalog(pfad: str) -> list[dict]:
     with open(pfad, encoding="utf-8") as f:
-        return json.load(f)
+        return _vererben(json.load(f))
 
 
 def _rolle(katalog: str, slug: str) -> dict:
@@ -215,7 +226,8 @@ def main(argv: list[str]) -> int:
     if befehl == "zeilen":
         (katalog,) = rest
         for eintrag in _katalog(katalog):
-            print(f"{eintrag['slug']}\t{eintrag['name']}\t{eintrag['port']}")
+            # slug, Name, Port, Rolle, deren SOUL gilt (Klone nehmen die des Originals)
+            print(f"{eintrag['slug']}\t{eintrag['name']}\t{eintrag['port']}\t{eintrag.get('klon_von') or eintrag['slug']}")
         return 0
     if befehl == "vorschau":
         katalog, vorlage, slug = rest

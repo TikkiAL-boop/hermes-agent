@@ -183,6 +183,36 @@ describe('raumMitglieder', () => {
       { member_id: 'rechercheur', profile: 'rechercheur', handle: 'rechercheur', display_name: 'Rechercheur' }
     ])
   })
+
+  it('lets a room-lead clone lead: same handle, other profile; a non-clone is ignored', () => {
+    const katalog = [
+      { slug: 'raumleiter', name: 'Raumleiter', hermes_profil: 'raumleiter', im_raum_ab_start: true },
+      { slug: 'raumleiter-xai', name: 'Raumleiter (xAI)', hermes_profil: 'raumleiter-xai', klon_von: 'raumleiter' },
+      { slug: 'rechercheur', name: 'Rechercheur', hermes_profil: 'rechercheur', im_raum_ab_start: false }
+    ] as unknown as Parameters<typeof raumMitglieder>[1]
+
+    expect(raumMitglieder([], katalog, 'raumleiter-xai')[0]).toEqual({
+      member_id: 'raumleiter',
+      profile: 'raumleiter-xai',
+      handle: 'raumleiter',
+      display_name: 'Raumleiter'
+    })
+    expect(raumMitglieder([], katalog, 'rechercheur')[0]?.profile).toBe('raumleiter')
+    expect(raumMitglieder([], katalog, 'raumleiter-xai')).toHaveLength(1)
+  })
+
+  it('reads the real catalogue with clones completed from the room lead', () => {
+    const klone = KATALOG.filter(r => r.klon_von === 'raumleiter')
+    const original = KATALOG.find(r => r.slug === 'raumleiter')!
+
+    expect(klone.length).toBeGreaterThan(0)
+
+    for (const k of klone) {
+      expect(k.werkzeuge).toEqual(original.werkzeuge)
+      expect(k.modell.primary).not.toBe(original.modell.primary)
+      expect(k.im_raum_ab_start).toBe(false)
+    }
+  })
 })
 
 describe('nachrichtAus', () => {

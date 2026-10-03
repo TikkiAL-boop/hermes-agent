@@ -83,6 +83,80 @@
     }
   },
   {
+    "slug": "raumleiter-xai",
+    "name": "Raumleiter (xAI)",
+    "icon": "🧭",
+    "kurz": "Klon des Raumleiters mit xAI direkt: eigener Turn, läuft parallel zum Hauptraum.",
+    "kategorie": "leitung",
+    "klon_von": "raumleiter",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/grok-4.7",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "port": 8671,
+    "hermes_profil": "raumleiter-xai",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "raumleiter-anthropic",
+    "name": "Raumleiter (Claude)",
+    "icon": "🧭",
+    "kurz": "Klon des Raumleiters mit Claude Opus über das Claude-Abo: gründliche Übungsläufe.",
+    "kategorie": "leitung",
+    "klon_von": "raumleiter",
+    "modell": {
+      "primary": "anthropic/claude-opus-5-5",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai/grok-4.7",
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "port": 8672,
+    "hermes_profil": "raumleiter-anthropic",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "raumleiter-codex",
+    "name": "Raumleiter (Codex)",
+    "icon": "🧭",
+    "kurz": "Klon des Raumleiters mit GPT über das Codex-Abo: breite, parallele Übungsläufe.",
+    "kategorie": "leitung",
+    "klon_von": "raumleiter",
+    "modell": {
+      "primary": "openai-codex/gpt-6-sol",
+      "fallback": "cursor/grok-4.7",
+      "weitere": [
+        "xai/grok-4.7",
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "port": 8673,
+    "hermes_profil": "raumleiter-codex",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "raumleiter-lokal",
+    "name": "Raumleiter (lokal)",
+    "icon": "🧭",
+    "kurz": "Klon des Raumleiters mit dem lokalen Modell im Haus: ohne Cloud, nur Strom.",
+    "kategorie": "leitung",
+    "klon_von": "raumleiter",
+    "modell": {
+      "primary": "lokal/tikki-gross",
+      "fallback": "xai/grok-4.7",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "port": 8674,
+    "hermes_profil": "raumleiter-lokal",
+    "im_raum_ab_start": false
+  },
+  {
     "slug": "deine-ki",
     "name": "Deine KI",
     "icon": "🌟",

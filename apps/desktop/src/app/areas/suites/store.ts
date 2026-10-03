@@ -133,18 +133,27 @@ const alsMitglied = (r: KatalogRolle): Mitglied => ({
   display_name: r.name
 })
 
-/** Base crew (catalogue `im_raum_ab_start`) plus the chosen roles, each once, order kept; unknown slugs are skipped. */
-export function raumMitglieder(rollen: readonly string[] = [], katalog: readonly KatalogRolle[] = KATALOG): Mitglied[] {
+/**
+ * Base crew (catalogue `im_raum_ab_start`) plus the chosen roles, each once, order kept; unknown
+ * slugs are skipped. `raumleiter` names a clone (`klon_von: raumleiter`): the lead stays
+ * `@raumleiter`, only its profile – model chain and turn queue – is another one.
+ */
+export function raumMitglieder(
+  rollen: readonly string[] = [],
+  katalog: readonly KatalogRolle[] = KATALOG,
+  raumleiter?: string
+): Mitglied[] {
   const slugs = [...katalog.filter(r => r.im_raum_ab_start).map(r => r.slug), ...rollen]
   const gesehen = new Set<string>()
   const aus: Mitglied[] = []
+  const klon = raumleiter ? katalog.find(x => x.slug === raumleiter && x.klon_von === RAUMLEITER) : undefined
 
   for (const slug of slugs) {
     const r = katalog.find(x => x.slug === slug)
 
     if (r && !gesehen.has(slug)) {
       gesehen.add(slug)
-      aus.push(alsMitglied(r))
+      aus.push(slug === RAUMLEITER && klon ? { ...alsMitglied(r), profile: klon.hermes_profil } : alsMitglied(r))
     }
   }
 
@@ -597,7 +606,11 @@ export const umbenennen = async (suite: Pick<Suite, 'id'>, name: string): Promis
  * (a repeated handoff is a no-op), else it is created with the base crew and
  * the chosen roles. `neu` says whether the room still needs its brief.
  */
-async function raumAnlegen(titel: string, rollen: readonly string[] = []): Promise<{ neu: boolean; suite: Suite }> {
+async function raumAnlegen(
+  titel: string,
+  rollen: readonly string[] = [],
+  raumleiter?: string
+): Promise<{ neu: boolean; suite: Suite }> {
   if ($suitesStatus.get() !== 'bereit') {
     await ladeSuites()
   }
@@ -608,11 +621,15 @@ async function raumAnlegen(titel: string, rollen: readonly string[] = []): Promi
     return { neu: false, suite: vorhanden }
   }
 
-  const created = await anfrage<{ room: RaumZeile }>('groups.create', {
-    room_id: raumId(titel),
-    name: titel,
-    members: raumMitglieder(rollen)
-  })
+  const erzeugen = (leiter?: string) =>
+    anfrage<{ room: RaumZeile }>('groups.create', {
+      room_id: raumId(titel),
+      name: titel,
+      members: raumMitglieder(rollen, KATALOG, leiter)
+    })
+
+  // A backend set up before the clones existed rejects the unknown profile: the room lead itself leads then.
+  const created = await (raumleiter ? erzeugen(raumleiter).catch(() => erzeugen()) : erzeugen())
 
   if (!created?.room?.room_id) {
     throw new Error('groups.create returned no room')
@@ -639,11 +656,12 @@ async function uebungenStarten(name: string, ziel: string, rollen: readonly stri
 
   for (let nr = 2; nr < 2 + frei; nr += 1) {
     try {
-      const raum = await raumAnlegen(uebungsTitel(name, $mensch.get(), nr), rollen)
+      const ansatz = ansatzFuer(nr)
+      const raum = await raumAnlegen(uebungsTitel(name, $mensch.get(), nr), rollen, ansatz.klon)
 
       if (raum.neu) {
         $suites.set([raum.suite, ...$suites.get()])
-        eroeffnen(raum.suite, uebungsEroeffnung(nr, gewuenscht, ansatzFuer(nr), name, ziel))
+        eroeffnen(raum.suite, uebungsEroeffnung(nr, gewuenscht, ansatz, name, ziel))
         gestartet += 1
       }
     } catch {

@@ -19,7 +19,8 @@ VORLAGE_HONCHO = TIKKI / "hermes" / "vorlage-honcho.json"
 
 
 def _rollen():
-    return json.loads(KATALOG.read_text(encoding="utf-8"))
+    # Mit Vererbung: Klone (``klon_von``) tragen Werkzeuge und Freigabe des Originals.
+    return rollen_config._katalog(str(KATALOG))
 
 
 @pytest.mark.parametrize("rolle", _rollen(), ids=lambda r: r["slug"])
@@ -64,7 +65,7 @@ def test_room_lead_carries_every_bot_toolset_and_its_soul_names_them():
     raumleiter = set(rollen["raumleiter"]["werkzeuge"])
 
     for slug, rolle in rollen.items():
-        if slug in {"tikki", "raumleiter", "wachhalter"}:
+        if slug in {"tikki", "raumleiter", "wachhalter"} or rolle.get("klon_von"):
             continue
         assert set(rolle["werkzeuge"]) <= raumleiter, slug
         assert f"- `{slug}`: {', '.join(rolle['werkzeuge'])}" in soul, slug

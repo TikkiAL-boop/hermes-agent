@@ -34,7 +34,7 @@ import {
 import { cn } from '@/lib/utils'
 import { $gatewayState } from '@/store/session'
 
-import { rolle } from '../admin/katalog'
+import { KATALOG, rolle } from '../admin/katalog'
 import { areaLabels } from '../labels'
 import { setArea } from '../store'
 
@@ -219,7 +219,7 @@ function AmTisch({ arbeitet, mitglieder }: { arbeitet?: string; mitglieder: read
     <Zone count={mitglieder.length} title={s.amTisch}>
       <ul className="flex flex-col" data-suite-tisch="">
         {mitglieder.map(m => {
-          const r = rolle(m.member_id)
+          const r = KATALOG.find(x => x.hermes_profil === m.profile) ?? rolle(m.member_id)
           const live = arbeitet === m.member_id
 
           return (

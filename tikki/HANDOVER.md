@@ -541,9 +541,23 @@ Nachrichten. Im Speicher `shared-state.db` steht derselbe Raum mit denselben vie
 und das Gateway hat den Turn des Raumleiters geplant (`turn.*`-Ereignisse). Eine Antwort kam in
 der Cloud nicht, weil nur das 135M-Modell zur Verfügung stand (5.0).
 
+**Ein Modell je Raum – Raumleiter-Klone (03.10.).** Der Katalog führt neben `raumleiter` vier Klone
+(`klon_von: "raumleiter"`): `raumleiter-xai`, `raumleiter-anthropic`, `raumleiter-codex`,
+`raumleiter-lokal` (Ports 8671–8674). Ein Klon erbt SOUL, Werkzeuge, Freigabe und Einstellungen des
+Originals und nennt nur Modellkette, Port und Namen (`rollen_config._vererben`, `raeume.katalog()`,
+`admin/katalog.ts`); `rollen-einrichten.sh` legt ihn als eigenes Profil mit der Raumleiter-SOUL an.
+Im Raum bleibt er `@raumleiter` (member_id/handle), nur `profile` ist das des Klons –
+`raeume.anlegen(..., raumleiter="raumleiter-xai")` bzw. CLI `anlegen --raumleiter`, in der App
+`raumMitglieder(rollen, KATALOG, klon)`. Übungsläufe nehmen je Ansatz einen Klon (`uebung.ts`:
+`klon` statt provider/model), laufen damit wirklich mit anderen Modellen und – weil Hermes' Turn-Lock
+je Profil greift – parallel zum Hauptraum. Backend ohne Klon-Profile: `groups.create` lehnt das
+Profil ab, die App fällt auf den Raumleiter zurück. `ROLLEN` (ohne Klone) ist die Liste für
+Auswahl-Chips, Bots und Regeln; Admin → Modelle zeigt die Klone mit. Neu angelegte Profile bekommen
+immer die Katalogmodelle (`hermes profile create` kopiert sonst die config des aktiven Profils).
+
 Offen an den Räumen: Vorschau von Dateien direkt im Output-Screen, Nutzerrechte je Raum,
-Raum-Postfach, Modellwahl je Raum (Übungsläufe), Raumleiter-Klone für echte Parallelität (ein
-Profil = ein Turn zur Zeit über alle Räume, 4.8).
+Raum-Postfach, ein Klon je Raum frei wählbar in der App (heute: Hauptraum = Raumleiter,
+Übungsläufe = Klone nach Ansatz).
 
 ### 4.8 Dauerbetrieb: Takt, Türen, Wachhalter, Übungsläufe (`tikki/werkzeuge/suite_takt.py`)
 

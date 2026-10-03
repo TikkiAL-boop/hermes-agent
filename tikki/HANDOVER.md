@@ -314,6 +314,11 @@ alles Bedienbare als **Glasfläche mit Leuchtrand**, Vorzimmer mit Karten neben 
 
 ### 4.2a' Raumübersicht und persönliche Assistenz (01.10.)
 
+**Breite (03.10.):** Der Übersichts-Rahmen ist ein Container (`@container/vorzimmer`): unter 88 rem
+werden Raumwand und rechte Karten schmaler (12/14 rem), unter 72 rem klappen sie weg und der
+Hermes-Chat bekommt die volle Breite (vorher blieben ihm bei 1220 px Fenster 468 px). Geprüft unter
+Xvfb bei 1100 und 1400 px.
+
 Das Vorzimmer ist die **Übersicht** geworden (`tikki/vorzimmer-rahmen.tsx`): links die Wand mit allen
 Räumen (Suche, Räume, die den Menschen brauchen, zuerst; `SuiteTafel` aus der Lobby), in der Mitte
 Tikkis Chat (unveränderter Hermes-Baum im Glas), rechts Briefing, **Tikkis Daueraufträge**

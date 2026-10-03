@@ -10,7 +10,8 @@
       "fallback": "xai/grok-4.7",
       "weitere": [
         "cursor/claude-opus-5.5",
-        "lokal/tikki-schnell"
+        "lokal/tikki-schnell",
+        "xai-oauth/grok-4.7"
       ]
     },
     "werkzeuge": [
@@ -53,7 +54,8 @@
       "primary": "cursor/grok-4.7",
       "fallback": "xai/grok-4.7",
       "weitere": [
-        "cursor/claude-opus-5.5"
+        "cursor/claude-opus-5.5",
+        "xai-oauth/grok-4.7"
       ]
     },
     "werkzeuge": [
@@ -90,7 +92,8 @@
       "primary": "xai/grok-4.7",
       "fallback": "cursor/grok-4.7",
       "weitere": [
-        "lokal/tikki-gross"
+        "lokal/tikki-gross",
+        "xai-oauth/grok-4.7"
       ]
     },
     "werkzeuge": [
@@ -121,7 +124,10 @@
     "kategorie": "wissen",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "web",
@@ -143,7 +149,10 @@
     "kategorie": "qualitaet",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "web",
@@ -165,7 +174,10 @@
     "kategorie": "text",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "file",
@@ -186,7 +198,10 @@
     "kategorie": "entwicklung",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "terminal",
@@ -209,7 +224,10 @@
     "kategorie": "entwicklung",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "terminal",
@@ -231,7 +249,10 @@
     "kategorie": "qualitaet",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "terminal",
@@ -253,7 +274,10 @@
     "kategorie": "daten",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "terminal",
@@ -275,7 +299,10 @@
     "kategorie": "organisation",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "cronjob",
@@ -297,7 +324,10 @@
     "kategorie": "betrieb",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "terminal",
@@ -319,7 +349,10 @@
     "kategorie": "text",
     "modell": {
       "primary": "xai/grok-4.7",
-      "fallback": "cursor/claude-opus-5.5"
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
     },
     "werkzeuge": [
       "file",
@@ -341,7 +374,8 @@
       "primary": "anthropic/claude-opus-5-5",
       "fallback": "openai-codex/gpt-6-sol",
       "weitere": [
-        "lokal/tikki-gross"
+        "lokal/tikki-gross",
+        "xai-oauth/grok-4.7"
       ]
     },
     "werkzeuge": [

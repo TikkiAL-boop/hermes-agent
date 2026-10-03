@@ -213,7 +213,7 @@ function Raumwand({ suites, wartend }: { suites: Suite[]; wartend: readonly stri
   const gruppen = verlaufGruppen(gefiltert).sort((a, b) => Number(braucht(b.suite)) - Number(braucht(a.suite)))
 
   return (
-    <aside className="flex min-h-0 flex-col gap-2.5" data-vorzimmer-raeume="">
+    <aside className="flex min-h-0 flex-col gap-2.5 @max-[72rem]/vorzimmer:hidden" data-vorzimmer-raeume="">
       <label className="tikki-glas flex items-center gap-2 px-3 py-1.5">
         <Search aria-hidden className="size-4 text-(--tikki-tinte-weich)" stroke={2} />
         <input
@@ -342,7 +342,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="tikki-boden flex min-h-0 min-w-0 flex-1 flex-col" data-vorzimmer="">
+    <div className="tikki-boden @container/vorzimmer flex min-h-0 min-w-0 flex-1 flex-col" data-vorzimmer="">
       <header className="flex items-center gap-4 px-5 pt-4 pr-40 pb-3">
         <span className="tikki-wortmarke shrink-0">
           <b>tikki</b>
@@ -358,10 +358,12 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
           {v.einstellungen}
         </button>
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)_17rem] gap-4 px-5 pb-5">
+      {/* The Hermes chat keeps the width it measures itself against: narrower walls under 88rem,
+          walls folded away under 72rem (the person still has Suites and Admin in the rail). */}
+      <div className="grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)_17rem] gap-4 px-5 pb-5 @max-[88rem]/vorzimmer:grid-cols-[12rem_minmax(0,1fr)_14rem] @max-[72rem]/vorzimmer:grid-cols-[minmax(0,1fr)]">
         <Raumwand suites={suites} wartend={wartend} />
         <div className="tikki-glas tikki-hermes-glas flex min-h-0 min-w-0 flex-col overflow-hidden">{children}</div>
-        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-0.5">
+        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-0.5 @max-[72rem]/vorzimmer:hidden">
           <div className="flex gap-2">
             <button
               className="tikki-knopf flex-1 px-3 py-2 text-[13px] font-semibold disabled:opacity-70"

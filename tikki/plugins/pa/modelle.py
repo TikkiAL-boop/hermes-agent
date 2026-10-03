@@ -30,6 +30,14 @@ KONTEXT_MINDESTENS = 65536  # Hermes startet mit weniger nicht (agent/agent_init
 _SHARD = re.compile(r"-\d{5}-of-\d{5}(?=\.gguf$)")
 _PARAMETER = re.compile(r"(?<![A-Za-z0-9])(\d{1,3}(?:[.,]\d)?)\s?[bB](?![A-Za-z0-9])")
 _AKTIV = re.compile(r"(?<![A-Za-z0-9])A(\d{1,3}(?:\.\d)?)[bB](?![A-Za-z0-9])")
+_EXPERTEN = re.compile(r"(?<![A-Za-z0-9])(\d{1,2})x(\d{1,3}(?:\.\d)?)[bB](?![A-Za-z0-9])")  # Mixtral-8x22B
+# Modelle, deren Name die Größe nicht verrät (gesamt, aktiv je Token).
+_BEKANNT = {
+    "glm-4.5-air": ("106B", "12B"), "glm-4.5": ("355B", "32B"), "glm-4.6": ("355B", "32B"),
+    "gpt-oss-120b": ("117B", "5.1B"), "gpt-oss-20b": ("21B", "3.6B"),
+    "llama-4-scout": ("109B", "17B"), "llama-4-maverick": ("400B", "17B"),
+    "deepseek-v3": ("671B", "37B"), "deepseek-r1": ("671B", "37B"), "kimi-k2": ("1000B", "32B"),
+}
 _QUANT = re.compile(r"(?i)(?<![A-Za-z0-9])(IQ\d_\w+|Q\d(?:_[A-Z0-9]+)*|\d-?bit|fp16|bf16|fp8|int8|int4|nf4|mxfp4)(?![A-Za-z0-9])")
 
 
@@ -55,6 +63,13 @@ class Server:
 
 def parameter_aus_name(name: str) -> tuple[str | None, str | None]:
     """„Qwen3-235B-A22B-4bit“ → („235B“, „22B“); „Llama-3.3-70B-Instruct-Q4_K_M“ → („70B“, None)."""
+    klein = name.lower()
+    for kenn, werte in sorted(_BEKANNT.items(), key=lambda kv: -len(kv[0])):
+        if kenn in klein:
+            return werte
+    exp = _EXPERTEN.search(name)
+    if exp:
+        return f"{exp.group(1)}x{float(exp.group(2)):g}B", None
     aktiv = _AKTIV.search(name)
     treffer = [m for m in _PARAMETER.finditer(name) if not (aktiv and m.start() >= aktiv.start() and m.end() <= aktiv.end())]
     gesamt = max((float(m.group(1).replace(",", ".")) for m in treffer), default=None)
@@ -266,8 +281,15 @@ def empfehlung(modelle: list[Modell]) -> dict[str, str | None]:
     brauchbar = [m for m in modelle if m.parameter]
     if not brauchbar:
         return {"raeume": None, "sprache": None}
-    groesse = lambda m: float(m.parameter[:-1])  # noqa: E731
-    schnell = sorted((m for m in brauchbar if groesse(m) >= 7), key=lambda m: float((m.aktiv or m.parameter)[:-1]))
+    def groesse(m: Modell) -> float:
+        p = m.parameter[:-1]
+        if "x" in p:
+            n, e = p.split("x", 1)
+            return float(n) * float(e)
+        return float(p)
+    def aktiv(m: Modell) -> float:
+        return float(m.aktiv[:-1]) if m.aktiv else groesse(m)
+    schnell = sorted((m for m in brauchbar if groesse(m) >= 7), key=aktiv)
     return {"raeume": max(brauchbar, key=groesse).name, "sprache": schnell[0].name if schnell else None}
 
 

@@ -641,6 +641,12 @@ Bot-Werkzeuge, und seine SOUL listet je Rolle die `toolsets`, die er mitgibt
 
 ### 4.10 Abos statt Schlüssel (`tikki/werkzeuge/abos-einrichten.sh`, `tikki/skills/`)
 
+**SuperGrok-Abo als letztes Glied jeder Kette (03.10.):** jede Rolle trägt `xai-oauth/grok-4.7` am Ende
+von `weitere`. Hermes' Provider `xai-oauth` nutzt die Browser-Anmeldung des SuperGrok-/Premium+-Abos
+(`hermes auth add xai-oauth`, einmal je Rechner); ohne Anmeldung wird das Glied beim Ausweichen
+übersprungen. So laufen die Räume mit API-Schlüssel, fallen bei Limit oder Ausfall aber auf das Abo
+zurück („Tokens nur Strom“ gilt dann fürs Abo-Kontingent).
+
 - Als Rollen-Modell: `anthropic` (Claude-Abo; Hermes liest auch `~/.claude/.credentials.json`),
   `openai-codex` (ChatGPT/Codex-Abo), `xai-oauth` (SuperGrok), `lokal` (eigener Modellserver,
   `providers.lokal` in der Vorlage, `http://127.0.0.1:8080/v1`). Anmeldung je Profil:

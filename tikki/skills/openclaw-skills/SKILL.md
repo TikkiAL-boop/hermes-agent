@@ -25,7 +25,7 @@ läuft dabei durch Hermes' Sicherheitsprüfung; blockierte Skills werden nicht i
 
 ## Prerequisites
 
-- `terminal`. Der Katalog liegt nach `openclaw-skills.sh katalog` lokal vor
+- `terminal`. Der Katalog liegt nach `hermes --run-module tikki.werkzeuge.openclaw_skills katalog` lokal vor
   (`~/.tikki/openclaw-katalog.json`); ohne ihn wird live bei ClawHub gesucht.
 
 ## How to Run

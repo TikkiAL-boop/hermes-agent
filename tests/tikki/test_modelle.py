@@ -19,7 +19,9 @@ def _datei(pfad: Path, groesse: int = 1_000_000) -> None:
 def test_name_verraet_parameter_aktive_parameter_und_quantisierung() -> None:
     assert modelle.parameter_aus_name("Qwen3-235B-A22B-4bit") == ("235B", "22B")
     assert modelle.parameter_aus_name("Llama-3.3-70B-Instruct-Q4_K_M") == ("70B", None)
-    assert modelle.parameter_aus_name("gpt-oss-120b-MXFP4") == ("120B", None)
+    assert modelle.parameter_aus_name("gpt-oss-120b-MXFP4") == ("117B", "5.1B")  # bekannter Name schlägt die Zahl
+    assert modelle.parameter_aus_name("GLM-4.5-Air-4bit") == ("106B", "12B")
+    assert modelle.parameter_aus_name("Mixtral-8x22B-Instruct-v0.1") == ("8x22B", None)
     assert modelle.parameter_aus_name("SmolLM2-135M-Instruct") == (None, None)
     assert modelle.quant_aus_name("Llama-3.3-70B-Instruct-Q4_K_M.gguf") == "Q4_K_M"
     assert modelle.quant_aus_name("mlx-community/Qwen3-235B-A22B-4bit") == "4bit"

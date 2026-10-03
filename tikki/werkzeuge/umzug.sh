@@ -74,6 +74,9 @@ packen() {
     # („remote did not send all necessary objects“) – dann lieber keins.
     if [ "$(git -C "$REPO" rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
       warn "flacher Klon – kein Git-Bundle; auf dem neuen Rechner online klonen (git fetch --unshallow hier würde es ermöglichen)"
+    elif [ -n "$(git -C "$REPO" config --get remote.origin.partialclonefilter 2>/dev/null)" ]; then
+      # Teil-Klon (Cloud-Sitzung): pack-objects holt fehlende Objekte einzeln nach – dauert Stunden.
+      warn "Teil-Klon (partialclonefilter) – kein Git-Bundle; vorher: git config --unset remote.origin.partialclonefilter && git fetch --refetch origin"
     elif git -C "$REPO" bundle create "$paket/code/tikki-app.bundle" "$ZWEIG" >/dev/null 2>&1 \
          && git -C "$REPO" bundle verify "$paket/code/tikki-app.bundle" >/dev/null 2>&1; then
       gut "Git-Bundle mit voller Historie (code/tikki-app.bundle)"

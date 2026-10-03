@@ -168,6 +168,10 @@ nicht mehr die einzige Quelle; ab jetzt gilt: **wer zuerst pusht, hat den Stand*
 
 ## 3. Auf dem Mac einrichten und starten
 
+**Umzug auf einen anderen Rechner mit allem (Code, Zustand, Schlüssel): `tikki/UMZUG.md`** –
+`tikki/werkzeuge/umzug.sh packen` auf dem alten, `umzug.sh auspacken` auf dem neuen Rechner, dann
+`installieren.sh`.
+
 **Ein Befehl (empfohlen)** – installiert Kern, App, Rollen, Schlüssel, Dienste und prüft danach
 alles mit dem Selbsttest:
 

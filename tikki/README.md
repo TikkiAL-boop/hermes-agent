@@ -72,6 +72,7 @@ den Lauf auf eine Rolle.
 | `werkzeuge/schluessel-einlesen.sh` | Schlüssel aus einer Textdatei in alle Profile übernehmen, ohne sie anzuzeigen |
 | `werkzeuge/abos-einrichten.sh` | Claude-, Codex-, Grok-Abo als Modelle anmelden; Kommandozeilen der Abos prüfen |
 | `werkzeuge/openclaw-einrichten.sh` | ClawHub-Katalog (OpenClaw) lokal, Skills auf Abruf in die Bibliothek `openclaw` |
+| `UMZUG.md` + `werkzeuge/umzug.sh` | Komplettes Handover auf einen anderen Rechner: `umzug.sh packen` (Code-Bundle, Zustand, Schlüssel, Mappe) → `umzug.sh auspacken` |
 | `werkzeuge/tikki-update.sh` | Tikki aktualisieren (`hermes update --branch tikki-app`); nie ein nacktes `hermes update` |
 | `werkzeuge/hermes-aktualisieren.sh` | Neue Hermes-Version per Merge übernehmen, danach alle Tikki-Prüfungen |
 | `dienste/honcho/honcho.sh` | Honcho als eigener Dienst (Docker) |

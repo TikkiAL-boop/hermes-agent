@@ -1,0 +1,474 @@
+[
+  {
+    "slug": "tikki",
+    "name": "Tikki",
+    "icon": "🐾",
+    "kurz": "Persönliche Assistentin: empfängt mit dem Briefing, erledigt Daueraufträge (Post, Lernen, Nachrichtenlage) selbst, öffnet Räume für Projekte.",
+    "kategorie": "vorzimmer",
+    "modell": {
+      "primary": "cursor/claude-haiku-4-5",
+      "fallback": "xai/grok-4.7",
+      "weitere": [
+        "cursor/claude-opus-5.5",
+        "lokal/tikki-schnell",
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "gedaechtnis",
+      "pa",
+      "web",
+      "browser",
+      "file",
+      "terminal",
+      "skills",
+      "cronjob",
+      "todo",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8650,
+    "hermes_profil": "tikki",
+    "im_raum_ab_start": true,
+    "einstellungen": {
+      "agent": {
+        "reasoning_effort": "low"
+      },
+      "display": {
+        "streaming": true
+      },
+      "tools": {
+        "tool_search": {
+          "enabled": "off"
+        }
+      }
+    }
+  },
+  {
+    "slug": "raumleiter",
+    "name": "Raumleiter",
+    "icon": "🧭",
+    "kurz": "Leitet den Raum rund um die Uhr (Grok 4.7 über das Cursor-Abo): plant, holt beliebig viele Bots an den Tisch, bleibt dran bis zum Ziel.",
+    "kategorie": "leitung",
+    "modell": {
+      "primary": "cursor/grok-4.7",
+      "fallback": "xai/grok-4.7",
+      "weitere": [
+        "cursor/claude-opus-5.5",
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "delegation",
+      "todo",
+      "gedaechtnis",
+      "web",
+      "browser",
+      "file",
+      "skills",
+      "terminal",
+      "cronjob",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8651,
+    "hermes_profil": "raumleiter",
+    "im_raum_ab_start": true,
+    "einstellungen": {
+      "tools": {
+        "tool_search": {
+          "enabled": "off"
+        }
+      }
+    }
+  },
+  {
+    "slug": "raumleiter-xai",
+    "name": "Raumleiter (xAI)",
+    "icon": "🧭",
+    "kurz": "Klon des Raumleiters mit xAI direkt: eigener Turn, läuft parallel zum Hauptraum.",
+    "kategorie": "leitung",
+    "klon_von": "raumleiter",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/grok-4.7",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "port": 8671,
+    "hermes_profil": "raumleiter-xai",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "raumleiter-anthropic",
+    "name": "Raumleiter (Claude)",
+    "icon": "🧭",
+    "kurz": "Klon des Raumleiters mit Claude Opus über das Claude-Abo: gründliche Übungsläufe.",
+    "kategorie": "leitung",
+    "klon_von": "raumleiter",
+    "modell": {
+      "primary": "anthropic/claude-opus-5-5",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai/grok-4.7",
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "port": 8672,
+    "hermes_profil": "raumleiter-anthropic",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "raumleiter-codex",
+    "name": "Raumleiter (Codex)",
+    "icon": "🧭",
+    "kurz": "Klon des Raumleiters mit GPT über das Codex-Abo: breite, parallele Übungsläufe.",
+    "kategorie": "leitung",
+    "klon_von": "raumleiter",
+    "modell": {
+      "primary": "openai-codex/gpt-6-sol",
+      "fallback": "cursor/grok-4.7",
+      "weitere": [
+        "xai/grok-4.7",
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "port": 8673,
+    "hermes_profil": "raumleiter-codex",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "raumleiter-lokal",
+    "name": "Raumleiter (lokal)",
+    "icon": "🧭",
+    "kurz": "Klon des Raumleiters mit dem lokalen Modell im Haus: ohne Cloud, nur Strom.",
+    "kategorie": "leitung",
+    "klon_von": "raumleiter",
+    "modell": {
+      "primary": "lokal/tikki-gross",
+      "fallback": "xai/grok-4.7",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "port": 8674,
+    "hermes_profil": "raumleiter-lokal",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "deine-ki",
+    "name": "Deine KI",
+    "icon": "🌟",
+    "kurz": "Die KI des Menschen: kennt ihn, denkt mit, spricht mit ihm – im Raum seine Stimme, wenn er nicht da ist.",
+    "kategorie": "leitung",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/grok-4.7",
+      "weitere": [
+        "lokal/tikki-gross",
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "gedaechtnis",
+      "web",
+      "browser",
+      "file",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8663,
+    "hermes_profil": "deine-ki",
+    "im_raum_ab_start": true,
+    "einstellungen": {
+      "tools": {
+        "tool_search": {
+          "enabled": "off"
+        }
+      }
+    }
+  },
+  {
+    "slug": "rechercheur",
+    "name": "Rechercheur",
+    "icon": "🔎",
+    "kurz": "Recherchiert gründlich, belegt jede Aussage mit Quelle und Datum.",
+    "kategorie": "wissen",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "web",
+      "browser",
+      "file",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8652,
+    "hermes_profil": "rechercheur",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "pruefer",
+    "name": "Prüfer",
+    "icon": "✅",
+    "kurz": "Qualitätssicherung: prüft Fakten, Code und Texte, meldet nur echte Befunde.",
+    "kategorie": "qualitaet",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "web",
+      "file",
+      "terminal",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8653,
+    "hermes_profil": "pruefer",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "schreiber",
+    "name": "Schreiber",
+    "icon": "✍️",
+    "kurz": "Schreibt Texte, Mails, Zusammenfassungen und Dokumente in klarem Deutsch.",
+    "kategorie": "text",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "file",
+      "web",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8654,
+    "hermes_profil": "schreiber",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "frontend-entwickler",
+    "name": "Frontend-Entwickler",
+    "icon": "🎨",
+    "kurz": "Baut Oberflächen: HTML, CSS, JavaScript/TypeScript, React, Barrierefreiheit.",
+    "kategorie": "entwicklung",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "browser",
+      "web",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8655,
+    "hermes_profil": "frontend-entwickler",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "backend-entwickler",
+    "name": "Backend-Entwickler",
+    "icon": "⚙️",
+    "kurz": "Baut Server, APIs, Datenbanken und Skripte; testet, bevor er meldet.",
+    "kategorie": "entwicklung",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "web",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8656,
+    "hermes_profil": "backend-entwickler",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "sicherheitsbeauftragter",
+    "name": "Sicherheitsbeauftragter",
+    "icon": "🛡️",
+    "kurz": "Prüft Sicherheit: Geheimnisse, Rechte, Risiken; bewertet und priorisiert.",
+    "kategorie": "qualitaet",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "web",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8657,
+    "hermes_profil": "sicherheitsbeauftragter",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "datenanalyst",
+    "name": "Datenanalyst",
+    "icon": "📊",
+    "kurz": "Zahlen, Tabellen, Diagramme, Tabellenkalkulation; rechnet nach und erklärt.",
+    "kategorie": "daten",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "web",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8658,
+    "hermes_profil": "datenanalyst",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "organisator",
+    "name": "Organisator",
+    "icon": "📅",
+    "kurz": "Kalender, To-dos, Erinnerungen, Mail-Sichtung; hält den Überblick.",
+    "kategorie": "organisation",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "cronjob",
+      "todo",
+      "file",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8659,
+    "hermes_profil": "organisator",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "api-fachmann",
+    "name": "API-Fachmann",
+    "icon": "🔌",
+    "kurz": "Prüft alle 4 h Anbieter-Schlüssel und Modelle, meldet nur Änderungen.",
+    "kategorie": "betrieb",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "terminal",
+      "cronjob",
+      "file",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8660,
+    "hermes_profil": "api-fachmann",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "uebersetzer",
+    "name": "Übersetzer",
+    "icon": "🌍",
+    "kurz": "Übersetzt DE/EN und weitere Sprachen, trifft den Ton, bleibt beim Sinn.",
+    "kategorie": "text",
+    "modell": {
+      "primary": "xai/grok-4.7",
+      "fallback": "cursor/claude-opus-5.5",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "file",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8661,
+    "hermes_profil": "uebersetzer",
+    "im_raum_ab_start": false
+  },
+  {
+    "slug": "wachhalter",
+    "name": "Wachhalter",
+    "icon": "🛡️",
+    "kurz": "Geht rund um die Uhr von Raum zu Raum, weckt stille Räume und prüft Ergebnisse.",
+    "kategorie": "leitung",
+    "modell": {
+      "primary": "anthropic/claude-opus-5-5",
+      "fallback": "openai-codex/gpt-6-sol",
+      "weitere": [
+        "lokal/tikki-gross",
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "terminal",
+      "file",
+      "todo",
+      "gedaechtnis",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8662,
+    "hermes_profil": "wachhalter",
+    "im_raum_ab_start": false,
+    "einstellungen": {
+      "tools": {
+        "tool_search": {
+          "enabled": "off"
+        }
+      }
+    }
+  }
+]

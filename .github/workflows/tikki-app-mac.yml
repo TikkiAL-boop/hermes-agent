@@ -1,0 +1,96 @@
+name: Tikki App (macOS Download)
+
+# Baut die Tikki-App (apps/desktop, productName "Tikki") auf einem macOS-Runner
+# als DMG und legt sie als GitHub-Release zum Herunterladen ab. Unsigniert:
+# auf dem Ziel-Mac einmal Rechtsklick → Öffnen (oder `xattr -cr /Applications/Tikki.app`).
+# Die App installiert beim ersten Start den Hermes-Kern selbst aus dem Zweig,
+# aus dem sie gebaut wurde (Install-Stempel: GITHUB_REF_NAME), hier `tikki-app`.
+# Danach: ~/.hermes/hermes-agent/tikki/installieren.sh --ohne-kern --ohne-app
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Zweig oder Commit, aus dem gebaut wird
+        required: true
+        default: tikki-app
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tikki-app-mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dmg:
+    name: Tikki.dmg (macOS arm64, unsigniert)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      TIKKI_VERSION: 2026.${{ github.run_number }}.0
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Locked PM toolchain (Python + Node, core runtime for the icon generator)
+        uses: ./.github/actions/setup-pm
+        with:
+          toolchain: all
+          extras: '[]'
+
+      # Full npm ci (not --ignore-scripts): electron's postinstall downloads the binary.
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+
+      - name: Build the renderer and main process
+        working-directory: apps/desktop
+        run: npm run build
+
+      - name: Package Tikki.dmg (no signing identity, no publish)
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: >-
+          npm run builder -- --mac dmg --arm64 --publish never
+          -c.mac.identity=null
+          -c.extraMetadata.version=${{ env.TIKKI_VERSION }}
+
+      - name: Collect the DMG
+        id: collect
+        working-directory: apps/desktop
+        run: |
+          dmg="$(find release -maxdepth 1 -name '*.dmg' | head -1)"
+          if [ -z "$dmg" ]; then
+            echo "::error::no DMG under apps/desktop/release"
+            find release -maxdepth 2 | head -40
+            exit 1
+          fi
+          out="$RUNNER_TEMP/Tikki-${TIKKI_VERSION}-mac-arm64.dmg"
+          cp "$dmg" "$out"
+          shasum -a 256 "$out" | tee "$out.sha256"
+          echo "dmg=$out" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Tikki-mac-arm64
+          path: |
+            ${{ steps.collect.outputs.dmg }}
+            ${{ steps.collect.outputs.dmg }}.sha256
+          if-no-files-found: error
+
+      - name: Publish as GitHub release (prerelease)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: tikki-app-${{ github.run_number }}
+        run: |
+          gh release create "$TAG" \
+            --target "${{ github.sha }}" \
+            --prerelease \
+            --title "Tikki App ${TIKKI_VERSION} (macOS, Apple Silicon)" \
+            --notes "$(printf 'Gebaut aus `%s` @ %s.\n\nInstallation: DMG öffnen, Tikki in Programme ziehen, beim ersten Start Rechtsklick → Öffnen (unsigniert). Die App holt den Tikki-Kern selbst; danach im Terminal:\n\n    ~/.hermes/hermes-agent/tikki/installieren.sh --ohne-kern --ohne-app\n' "${{ inputs.ref }}" "${{ github.sha }}")" \
+            "${{ steps.collect.outputs.dmg }}" "${{ steps.collect.outputs.dmg }}.sha256"
+          echo "https://github.com/${{ github.repository }}/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

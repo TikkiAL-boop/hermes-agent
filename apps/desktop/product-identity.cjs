@@ -8,19 +8,24 @@
 /// <reference types="node" />
 'use strict'
 
+// Tikki: the family assistant built on Hermes. The product name, app id and
+// per-variant state directories are the only Hermes → Tikki rename in the
+// tree; the agent, CLI (`hermes`) and gateway stay untouched underneath.
 const variants = {
-  '': { display: 'Hermes', kebab: 'hermes', pascal: 'Hermes' },
+  '': { display: 'Tikki', kebab: 'tikki', pascal: 'Tikki' },
   light: {
-    display: 'Hermes Light',
-    kebab: 'hermes-light',
-    pascal: 'HermesLight'
+    display: 'Tikki Light',
+    kebab: 'tikki-light',
+    pascal: 'TikkiLight'
   },
   bundled: {
-    display: 'Hermes Agent',
-    kebab: 'hermes-bundled',
-    pascal: 'HermesBundled'
+    display: 'Tikki Agent',
+    kebab: 'tikki-bundled',
+    pascal: 'TikkiBundled'
   }
 }
+const ORG_KEBAB = 'team.tikki'
+const ORG_PASCAL = 'TikkiTeam'
 
 const variant = process.env.HERMES_DESKTOP_VARIANT || ''
 if (!['', 'light', 'bundled', 'store'].includes(variant)) {
@@ -66,14 +71,14 @@ const identity = {
   store,
   light,
   displayName,
-  appId: `com.nousresearch.${name.kebab}${kebabSuffix}`,
+  appId: `${ORG_KEBAB}.${name.kebab}${kebabSuffix}`,
   // Store and commit builds do not publish a release feed.
   channel: store || buildCommit ? null : light ? (canary ? 'light-canary' : 'light') : (canary ? 'canary' : 'latest'),
   appNamePascal: `${name.pascal}${pascalSuffix}`,
   artifactNamePascal: name.pascal,
   windowsExecutableName: kebabSuffix ? cliName : displayName,
   cliName,
-  msixAppIdWithOrg: `NousResearch.${name.pascal}${pascalSuffix}`,
+  msixAppIdWithOrg: `${ORG_PASCAL}.${name.pascal}${pascalSuffix}`,
   ...(store
     ? {
         storeMsix: {

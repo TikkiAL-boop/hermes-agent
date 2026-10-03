@@ -294,9 +294,13 @@ def test_gui_brew_install_launches_installed_app_when_present(tmp_path, monkeypa
 
 @pytest.mark.parametrize("exists,platform", [(True, "darwin"), (False, "darwin"), (True, "linux")])
 def test_launch_installed_macos_desktop_app_gates_on_bundle_and_platform(tmp_path, monkeypatch, exists, platform):
+    from hermes_cli.desktop_identity import desktop_app_name
+
     monkeypatch.setattr(main_desktop.sys, "platform", platform)
-    exe = Path("/Applications/Hermes.app/Contents/MacOS/Hermes")
-    monkeypatch.setattr(main_desktop.Path, "is_file", lambda self: exists if self == exe else Path.is_file(self))
+    name = desktop_app_name()
+    exe = Path(f"/Applications/{name}.app/Contents/MacOS/{name}")
+    real_is_file = Path.is_file
+    monkeypatch.setattr(main_desktop.Path, "is_file", lambda self: exists if self == exe else real_is_file(self))
     calls = []
     if exists and platform == "darwin":
         import hermes_cli.bundled_app as bundled_app

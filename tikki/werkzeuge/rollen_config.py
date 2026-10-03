@@ -1,0 +1,261 @@
+"""Tikki – Profilkonfiguration einer Rolle aus Katalog und Vorlage erzeugen.
+
+Wird von ``rollen-einrichten.sh`` aufgerufen, bevorzugt über den Hermes-Starter
+(``hermes --run-module tikki.werkzeuge.rollen_config``): dann laufen wir im
+Hermes-venv (ruamel.yaml ist da) und kennen den aktuellen Konfigurationsstand.
+Ohne Hermes im Pfad tut es auch ein Python mit ruamel.yaml; die Version wird
+dann nicht gestempelt und Hermes holt das beim ersten Start nach.
+
+Unterbefehle (alle Pfade absolut):
+
+    --pruefen                                      "ok", wenn ruamel.yaml importierbar ist
+    zeilen <katalog>                               slug<TAB>name<TAB>port je Rolle
+    vorschau <katalog> <vorlage> <slug>            eine Zeile, was geschrieben würde
+    schreiben <katalog> <vorlage> <slug> <ziel> [--modelle-zuruecksetzen]
+                                                   config.yaml schreiben, wenn abweichend; eine
+                                                   vorhandene Datei behält model/fallback_providers
+                                                   (hermes model, Admin → Modelle), außer mit Flag
+    honcho <vorlage-honcho> <slug> <ziel>         honcho.json der Rolle schreiben, wenn abweichend
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def _vererben(eintraege: list[dict]) -> list[dict]:
+    """Ein Klon (``klon_von``) erbt alles vom Original und überschreibt nur, was er selbst nennt
+    (Modellkette, Port, Name) – so bleibt ein Raumleiter-Klon derselbe Raumleiter mit anderem Modell."""
+    nach_slug = {e["slug"]: e for e in eintraege}
+    aus = []
+    for e in eintraege:
+        quelle = nach_slug.get(e.get("klon_von") or "")
+        aus.append({**quelle, **e} if quelle else e)
+    return aus
+
+
+def _katalog(pfad: str) -> list[dict]:
+    with open(pfad, encoding="utf-8") as f:
+        return _vererben(json.load(f))
+
+
+def _rolle(katalog: str, slug: str) -> dict:
+    for eintrag in _katalog(katalog):
+        if eintrag["slug"] == slug:
+            return eintrag
+    raise SystemExit(f"Rolle {slug!r} steht nicht in {katalog}")
+
+
+def _modelle(rolle: dict) -> tuple[tuple[str, str], tuple[str, str]]:
+    primary = tuple(rolle["modell"]["primary"].split("/", 1))
+    fallback = tuple(rolle["modell"]["fallback"].split("/", 1))
+    return primary, fallback  # type: ignore[return-value]
+
+
+def _einmischen(ziel, zusatz: dict) -> None:
+    """Rollen-eigene Einstellungen aus dem Katalog (``einstellungen``) tief einmischen."""
+    for schluessel, wert in zusatz.items():
+        if isinstance(wert, dict) and isinstance(ziel.get(schluessel), dict):
+            _einmischen(ziel[schluessel], wert)
+        else:
+            ziel[schluessel] = wert
+
+
+def aktuelle_config_version() -> int | None:
+    """Der Stand, den Hermes selbst stempeln würde. Ohne Hermes-Umgebung: None.
+
+    Ohne Stempel stuft Hermes die Datei als unversioniert ein, stempelt sie beim
+    ersten Start und schreibt sie neu; das Skript sähe danach eine Abweichung
+    und würde sie zurückdrehen. Mit dem Stempel bleibt die Datei stabil.
+    """
+    try:
+        from hermes_cli.config_defaults import DEFAULT_CONFIG
+    except Exception:
+        return None
+    version = DEFAULT_CONFIG.get("_config_version")
+    return int(version) if isinstance(version, int) else None
+
+
+def _yaml():
+    """Derselbe Emitter wie Hermes' config.yaml-Schreiber (``hermes_yaml.roundtrip_yaml``): sonst
+    schreibt Hermes die Datei beim ersten ``hermes model`` mit anderer Einrückung neu, und der
+    nächste Installer-Lauf sähe eine Abweichung und drehte alles zurück."""
+    try:
+        from hermes_yaml import roundtrip_yaml
+
+        return roundtrip_yaml()
+    except ImportError:
+        from ruamel.yaml import YAML
+
+        yaml = YAML(typ="rt")
+        yaml.width = 2**31 - 1
+        yaml.preserve_quotes = True
+        yaml.allow_unicode = True
+        yaml.default_flow_style = False
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        return yaml
+
+
+def _bestehende_modelle(ziel: str | None) -> dict:
+    """``model``/``fallback_providers`` einer vorhandenen config.yaml – was Thorsten über
+    ``hermes model`` oder Admin → Modelle gewählt hat, überlebt den nächsten Installer-Lauf."""
+    if not ziel or not Path(ziel).is_file():
+        return {}
+    try:
+        alt = _yaml().load(Path(ziel).read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
+    if not isinstance(alt, dict):
+        return {}
+    return {
+        k: alt[k] for k, art in (("model", dict), ("fallback_providers", list))
+        if isinstance(alt.get(k), art)
+    }
+
+
+def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None, *,
+                  modelle_zuruecksetzen: bool = False):
+    """Vorlage laden und mit Modellen, Werkzeugen und Port der Rolle füllen.
+
+    ``ziel`` (Pfad der config.yaml) verankert die Skill-Ordner (Tikki-Skills, alle eingebauten
+    Hermes-Skills, die OpenClaw-Bibliothek im Profil ``openclaw``) und liefert bei einer
+    vorhandenen Datei die gewählten Modelle; die Katalogmodelle gelten nur für eine neue Datei
+    oder mit ``modelle_zuruecksetzen``.
+    """
+    rolle = _rolle(katalog, slug)
+    yaml = _yaml()
+    with open(vorlage, encoding="utf-8") as f:
+        cfg = yaml.load(f)
+
+    (p_prov, p_model), (f_prov, f_model) = _modelle(rolle)
+    version = aktuelle_config_version()
+    if version is not None:
+        cfg.insert(0, "_config_version", version)
+    cfg["model"]["provider"] = p_prov
+    cfg["model"]["default"] = p_model
+    cfg["fallback_providers"] = [{"provider": f_prov, "model": f_model}] + [
+        {"provider": prov, "model": model}
+        for prov, model in (eintrag.split("/", 1) for eintrag in rolle["modell"].get("weitere", []))
+    ]
+    if not modelle_zuruecksetzen:
+        for schluessel, wert in _bestehende_modelle(ziel).items():
+            cfg[schluessel] = wert
+    cfg.setdefault("approvals", {})["mode"] = rolle.get("freigabe", "smart")
+    werkzeuge = list(rolle.get("werkzeuge", []))
+    cfg.setdefault("platform_toolsets", {})
+    cfg["platform_toolsets"]["api_server"] = list(werkzeuge)
+    cfg["platform_toolsets"]["cli"] = list(werkzeuge)
+    # Plugin-Toolsets (heißen wie die Plugins: pa, gedaechtnis) gelten Hermes ohne diesen Eintrag
+    # als „neu“ und damit auf jeder Oberfläche als eingeschaltet – auch bei Rollen, die sie im
+    # Katalog nicht haben (hermes_cli/tools_config.py::_enabled_plugin_toolsets). Als „bekannt“
+    # eingetragen zählt allein die Werkzeugliste der Rolle.
+    plugin_toolsets = sorted(str(p) for p in (cfg.get("plugins") or {}).get("enabled") or [])
+    cfg["known_plugin_toolsets"] = {"api_server": list(plugin_toolsets), "cli": list(plugin_toolsets)}
+    api = cfg.setdefault("platforms", {}).setdefault("api_server", {})
+    api["enabled"] = True
+    api.setdefault("extra", {})["port"] = int(rolle["port"])
+    api["extra"].setdefault("host", "127.0.0.1")
+    # Delegation nur für Rollen, die sie im Katalog haben
+    if "delegation" not in werkzeuge:
+        cfg.pop("delegation", None)
+    if "skills" in werkzeuge and ziel:
+        repo = Path(katalog).resolve().parents[2]
+        profile = Path(ziel).resolve().parent.parent
+        # Alle eingebauten Hermes-Skills als ein Ordner: folgen Git ohne Kopien.
+        cfg.setdefault("skills", {})["external_dirs"] = [
+            str(repo / "tikki" / "skills"),
+            str(repo / "skills"),
+            str(profile / "openclaw" / "skills"),
+        ]
+    _einmischen(cfg, rolle.get("einstellungen") or {})
+
+    buf = io.StringIO()
+    yaml.dump(cfg, buf)
+    return buf.getvalue()
+
+
+def schreiben(katalog: str, vorlage: str, slug: str, ziel: str, *, modelle_zuruecksetzen: bool = False) -> bool:
+    """Schreibt config.yaml nur, wenn sich der Inhalt ändert. True = geschrieben."""
+    neu = rollen_config(katalog, vorlage, slug, ziel, modelle_zuruecksetzen=modelle_zuruecksetzen)
+    zielpfad = Path(ziel)
+    alt = zielpfad.read_text(encoding="utf-8") if zielpfad.exists() else None
+    if alt == neu:
+        return False
+    tmp = zielpfad.with_name(zielpfad.name + ".tmp")
+    tmp.write_text(neu, encoding="utf-8")
+    os.replace(tmp, zielpfad)
+    return True
+
+
+def honcho_config(vorlage: str, slug: str) -> str:
+    """Die Honcho-Vorlage mit dem AI-Peer der Rolle; der Rest gilt für alle Rollen gleich."""
+    with open(vorlage, encoding="utf-8") as f:
+        cfg = json.load(f)
+    cfg.pop("_hinweis", None)
+    cfg["aiPeer"] = slug
+    return json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
+
+
+def honcho_schreiben(vorlage: str, slug: str, ziel: str) -> bool:
+    """Schreibt honcho.json nur, wenn sich der Inhalt ändert. True = geschrieben."""
+    neu = honcho_config(vorlage, slug)
+    zielpfad = Path(ziel)
+    alt = zielpfad.read_text(encoding="utf-8") if zielpfad.exists() else None
+    if alt == neu:
+        return False
+    tmp = zielpfad.with_name(zielpfad.name + ".tmp")
+    tmp.write_text(neu, encoding="utf-8")
+    os.replace(tmp, zielpfad)
+    return True
+
+
+def main(argv: list[str]) -> int:
+    if not argv:
+        print(__doc__, file=sys.stderr)
+        return 2
+    befehl, rest = argv[0], argv[1:]
+    if befehl == "--pruefen":
+        import ruamel.yaml  # noqa: F401
+
+        print("ok")
+        return 0
+    if befehl == "zeilen":
+        (katalog,) = rest
+        for eintrag in _katalog(katalog):
+            # slug, Name, Port, Rolle, deren SOUL gilt (Klone nehmen die des Originals)
+            print(f"{eintrag['slug']}\t{eintrag['name']}\t{eintrag['port']}\t{eintrag.get('klon_von') or eintrag['slug']}")
+        return 0
+    if befehl == "vorschau":
+        katalog, vorlage, slug = rest
+        rolle = _rolle(katalog, slug)
+        (p_prov, p_model), (f_prov, f_model) = _modelle(rolle)
+        version = aktuelle_config_version()
+        stempel = f" _config_version={version}" if version is not None else ""
+        print(f"  [dry-run] config.yaml: model={p_prov}/{p_model} fallback={f_prov}/{f_model} "
+              f"port={rolle['port']} approvals={rolle['freigabe']} toolsets={rolle['werkzeuge']}{stempel}")
+        return 0
+    if befehl == "schreiben":
+        zuruecksetzen = "--modelle-zuruecksetzen" in rest
+        katalog, vorlage, slug, ziel = [r for r in rest if r != "--modelle-zuruecksetzen"]
+        if schreiben(katalog, vorlage, slug, ziel, modelle_zuruecksetzen=zuruecksetzen):
+            print(f"  config.yaml geschrieben: {ziel}")
+        else:
+            print("  config.yaml unverändert")
+        return 0
+    if befehl == "honcho":
+        vorlage, slug, ziel = rest
+        if honcho_schreiben(vorlage, slug, ziel):
+            print(f"  honcho.json geschrieben: {ziel}")
+        else:
+            print("  honcho.json unverändert")
+        return 0
+    print(f"Unbekannter Befehl: {befehl}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

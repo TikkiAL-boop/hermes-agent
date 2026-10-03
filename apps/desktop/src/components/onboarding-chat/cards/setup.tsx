@@ -5,7 +5,6 @@
  */
 
 import { useStore } from '@nanostores/react'
-import { Puzzle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
@@ -24,7 +23,9 @@ import type { LayoutNode } from '@/components/pane-shell/tree/model'
 import { ConnectorLogo } from '@/components/ui/connector-logo'
 import { SearchField } from '@/components/ui/search-field'
 import { registry } from '@/contrib/registry'
+import { BRAND_NAME } from '@/i18n/brand'
 import { connectorIconUrl, connectorTitle } from '@/lib/connector-tools'
+import { Puzzle } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { type ConnectorCatalog, useConnectorCatalog } from '@/store/connector-catalog'
 import { $onboardingAnswers, setOnboardingAnswers } from '@/store/onboarding-answers'
@@ -170,8 +171,8 @@ export function ConnectorPicks({ catalog, commit, done, locked, plugins }: Conne
           here. Saying so is what keeps the Connect cards later from reading as
           a second ask for the same thing. */}
       <p className="text-xs text-muted-foreground">
-        <strong className="font-medium text-foreground">Nothing connects or installs yet.</strong> Hermes will offer to
-        link these, or install a plugin, when a task needs them, and asks first.
+        <strong className="font-medium text-foreground">Nothing connects or installs yet.</strong> {BRAND_NAME} will
+        offer to link these, or install a plugin, when a task needs them, and asks first.
       </p>
     </CardFrame>
   )

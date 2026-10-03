@@ -54,7 +54,7 @@ import {
   sessionPinId
 } from '@/store/session'
 import { isSessionRemovalPending } from '@/store/session-removal'
-import { requestForSessionProfile } from '@/store/session-request-router'
+import { requestForSessionProfile, type SessionOwnerRoute } from '@/store/session-request-router'
 import {
   $sessionStates,
   $sessionTileDelegateRevision,
@@ -232,11 +232,19 @@ const tileTranscribeAudio = async (audio: Blob) => {
   return (await transcribeAudio(await blobToDataUrl(audio), audio.type)).transcript
 }
 
-function TileChat({
+/**
+ * One session's full chat surface under its own SessionView + ComposerScope.
+ * Tiles render it inside a layout-tree pane; a Tikki suite renders it in the
+ * middle of its room with the suite's owner route pinned (`ownerRoute`), since
+ * a suite session lives on the room lead's profile and is in no tile store.
+ */
+export function TileChat({
+  ownerRoute: pinnedOwnerRoute,
   runtimeId,
   storedSessionId,
   view
 }: {
+  ownerRoute?: SessionOwnerRoute
   runtimeId: string
   storedSessionId: string
   view: SessionView
@@ -254,10 +262,14 @@ function TileChat({
   const messagingRows = useStore($messagingSessions)
 
   const ownerRoute = useMemo(() => {
+    if (pinnedOwnerRoute) {
+      return pinnedOwnerRoute
+    }
+
     const rows = cronRows.length || messagingRows.length ? [...sessionRows, ...cronRows, ...messagingRows] : sessionRows
 
     return tileOwnerRoute(tiles, rows, storedSessionId)
-  }, [cronRows, messagingRows, sessionRows, storedSessionId, tiles])
+  }, [cronRows, messagingRows, pinnedOwnerRoute, sessionRows, storedSessionId, tiles])
 
   const requestTileGateway = useCallback(
     <T,>(method: string, params?: Record<string, unknown>, timeoutMs?: number, signal?: AbortSignal): Promise<T> =>

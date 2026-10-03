@@ -23,6 +23,7 @@ import time as _time_mod
 from pathlib import Path
 from typing import Callable, Optional
 from hermes_cli.desktop_console import desktop_console_output, desktop_launch_notice
+from hermes_cli.desktop_identity import desktop_app_name, desktop_app_names
 from hermes_platform.host import facts
 
 # Log-record parity with the origin module.
@@ -136,15 +137,18 @@ def _desktop_packaged_executable_in(release_dir: Path) -> Optional[Path]:
     *release_dir* is electron-builder's ``directories.output`` — the live ``apps/desktop/release`` or a
     stage-and-swap staging dir (#86443).
     """
+    names = desktop_app_names()
     if sys.platform == "darwin":
-        candidates = list(release_dir.glob("mac*/Hermes.app/Contents/MacOS/Hermes"))
+        candidates = [p for name in names for p in release_dir.glob(f"mac*/{name}.app/Contents/MacOS/{name}")]
     elif sys.platform == "win32":
         candidates = [
-            release_dir / d / "Hermes.exe" for d in ("win-unpacked", "win-ia32-unpacked", "win-arm64-unpacked")
+            release_dir / d / f"{name}.exe"
+            for name in names for d in ("win-unpacked", "win-ia32-unpacked", "win-arm64-unpacked")
         ]
     else:
         candidates = [
-            release_dir / d / n for d in ("linux-unpacked", "linux-arm64-unpacked") for n in ("hermes", "Hermes")
+            release_dir / d / n
+            for name in names for d in ("linux-unpacked", "linux-arm64-unpacked") for n in (name.lower(), name)
         ]
 
     existing = [p for p in candidates if p.exists()]
@@ -943,7 +947,7 @@ def _running_macos_app_bundles() -> set[Path]:
     bundles: set[Path] = set()
     for proc in psutil.process_iter(["exe"]):
         exe = proc.info.get("exe") or ""
-        if exe.endswith("/Contents/MacOS/Hermes"):
+        if any(exe.endswith(f"/Contents/MacOS/{name}") for name in desktop_app_names()):
             bundles.add(Path(exe).resolve().parents[2])
     return bundles
 
@@ -1037,7 +1041,7 @@ def _installed_desktop_launch_target(desktop_dir: Path, packaged_executable: Pat
     rebuilt_hash = _app_asar_hash(packaged_executable.parents[2])
     for app in _installed_desktop_apps():
         if rebuilt_hash is not None and _app_asar_hash(app) == rebuilt_hash:
-            return app / "Contents" / "MacOS" / "Hermes"
+            return app / "Contents" / "MacOS" / app.stem
     return packaged_executable
 
 
@@ -1525,8 +1529,11 @@ def _launch_installed_macos_desktop_app() -> bool:
     """
     if sys.platform != "darwin":
         return False
-    executable = Path("/Applications/Hermes.app/Contents/MacOS/Hermes")
-    if not executable.is_file():
+    executable = next(
+        (p for p in (Path(f"/Applications/{n}.app/Contents/MacOS/{n}") for n in desktop_app_names()) if p.is_file()),
+        None,
+    )
+    if executable is None:
         return False
     from hermes_cli.bundled_app import launch_detached
 

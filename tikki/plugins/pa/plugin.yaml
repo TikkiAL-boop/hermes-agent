@@ -1,0 +1,7 @@
+name: pa
+version: 1.0.0
+description: "Tikkis persönliche Assistenz: Postfach lesen und beantworten (auch in Daueraufträgen ohne App) und das Briefing sammeln – was erledigt wurde, was neu ist."
+author: "Tikki"
+provides_tools:
+  - post
+  - briefing_sammeln

@@ -35,6 +35,10 @@ export type ChatMessage = {
   /** Result body only; the system text remains the compact completion label. */
   asyncResult?: string
   asyncResultKind?: 'process'
+  /** The delegation completion envelope as the backend wrote it, task headers
+   *  included: `asyncResult` has already merged the per-task bodies, and the
+   *  room view needs to know which child said what. */
+  asyncResultSource?: string
   timestamp?: number
   completedAt?: number
   pending?: boolean

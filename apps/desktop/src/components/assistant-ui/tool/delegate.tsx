@@ -3,6 +3,7 @@
 import { useStore } from '@nanostores/react'
 import { type FC, type ReactNode, useMemo } from 'react'
 
+import { auftragAusText } from '@/app/areas/tikki/rollen'
 import { useSessionView } from '@/app/chat/session-view'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
@@ -83,6 +84,11 @@ function DelegateRowView({ row }: { row: DelegateRow }) {
     !live && row.durationSeconds ? formatDurationSeconds(row.durationSeconds) : ''
   ].filter(Boolean)
 
+  // Tikki: the room lead addresses each task to a role (`AN: rechercheur`);
+  // that role, not "task 2", is who this row is.
+  const auftrag = auftragAusText(row.goal)
+  const rolle = auftrag.rolle
+
   // Only a child that reported its own session id has somewhere to go.
   const open = sessionId ? () => void openSessionInNewWindow(sessionId, { watch: true }) : undefined
 
@@ -92,9 +98,20 @@ function DelegateRowView({ row }: { row: DelegateRow }) {
   // and the whole card read as stacked ghosts (#105579). styles.css's own
   // invariant: the mark is per surface and never on a container.
   return (
-    <div className="grid min-w-0 max-w-full gap-0.5 rounded-xl border border-(--ui-stroke-tertiary) px-3 py-2">
+    <div
+      className="grid min-w-0 max-w-full gap-0.5 rounded-xl border border-(--ui-stroke-tertiary) px-3 py-2"
+      data-tikki-bot={rolle?.slug ?? ''}
+    >
       <div className="flex min-w-0 max-w-full items-center gap-1.5" data-conversation-scaffold="">
         <span className={SCAFFOLD_GLYPH_CLASS}>{statusGlyph(row.status, statusLabel)}</span>
+        {rolle && (
+          <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-(--ui-text-primary)">
+            <span aria-hidden className="leading-none">
+              {rolle.icon}
+            </span>
+            {rolle.name}
+          </span>
+        )}
         <button
           className={cn(
             SCAFFOLD_LABEL_CLASS,
@@ -105,7 +122,7 @@ function DelegateRowView({ row }: { row: DelegateRow }) {
           onClick={open}
           type="button"
         >
-          {row.goal}
+          {rolle ? auftrag.titel : row.goal}
         </button>
         {meta.length > 0 && <span className={SCAFFOLD_META_CLASS}>{meta.join(' · ')}</span>}
         {live && <ActivityTimerText className={cn(SCAFFOLD_META_CLASS, 'ml-auto')} seconds={elapsed} />}

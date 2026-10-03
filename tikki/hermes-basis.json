@@ -1,0 +1,8 @@
+{
+  "_hinweis": "Stand von Hermes (NousResearch/hermes-agent, Zweig main), auf dem tikki-app zuletzt aufgesetzt wurde. hermes-aktualisieren.sh schreibt ihn nach jedem Update; der Update-Wächter in der App vergleicht dagegen.",
+  "repo": "NousResearch/hermes-agent",
+  "zweig": "main",
+  "commit": "09472a30a7706173c12f4bdf215c017163438f04",
+  "datum": "2026-09-27T18:28:26+05:30",
+  "hermes_version": "2026.9.24"
+}

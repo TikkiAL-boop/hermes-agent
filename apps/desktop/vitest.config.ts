@@ -11,6 +11,8 @@ const reactUi: TestProjectConfiguration = {
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     globals: true,
+    // Upstream tests assert Hermes wording; see src/i18n/brand.ts.
+    env: { TIKKI_BRANDING: 'off' },
     // The first test in each file pays jsdom env init + full module transform,
     // which can exceed vitest's 5000ms default under CI/load. 15s gives the
     // cold start headroom without masking genuinely hung tests. Hooks pay the

@@ -23,8 +23,9 @@ Unterbefehle:
     takt    [--db PFAD]            fällige Runden, Türen und Übungsergebnisse einstellen
                                    (Exit 1, wenn ein Raum eine Nachricht abgelehnt hat)
     bericht [--json] [--db PFAD]   Stand aller Räume (für Wachhalter und Briefing); ohne --json
-                                   endet er mit ``{"wakeAgent": false}``, wenn kein Raum den
-                                   Wachhalter braucht – Hermes' Cron spart sich dann den Modelllauf
+                                   folgt der Block „Ressourcen“ aus dem Stand des MR-Bots und am
+                                   Ende ``{"wakeAgent": false}``, wenn kein Raum den Wachhalter
+                                   braucht – Hermes' Cron spart sich dann den Modelllauf
 """
 
 from __future__ import annotations
@@ -579,6 +580,14 @@ def _bericht_text(zeilen: list[dict]) -> str:
     return "\n".join(teile)
 
 
+def ressourcen_text() -> str:
+    """Der Block „Ressourcen“ aus dem letzten Stand des MR-Bots – nur gelesen, nie gesammelt; so sieht
+    der Rundgang einen Ausfall, ohne selbst anzuklopfen. ``weckbedarf`` bleibt davon unberührt."""
+    from tikki.plugins.pa.ressourcen import kurzbericht
+
+    return kurzbericht()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="suite_takt", description=__doc__.split("\n\n")[0])
     unter = parser.add_subparsers(dest="befehl", required=True)
@@ -599,6 +608,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(zeilen, ensure_ascii=False, indent=2))
         return 0
     print(_bericht_text(zeilen))
+    print(ressourcen_text())
     if not weckbedarf(zeilen):
         print(KEIN_WECKEN)
     return 0

@@ -7,7 +7,9 @@
   Daueraufträge), ungelesene Post, Räume, die warten, neue WhatsApps. Tikki trägt es vor.
 - Werkzeug ``lokale_modelle``: welche Modelle auf der Platte liegen (LM Studio, Ollama, Hugging-Face-
   Cache, ~/Models, ~/Downloads) und welcher Modellserver gerade läuft – die App fragt das beim Start.
-- ``hermes pa status|briefing|post|modelle`` zum Prüfen von Hand.
+- Werkzeug ``ressourcen_stand``: der Blick des MR-Bots – Anbieter (Schlüsselnamen, erreichbar, Modelle),
+  Abo-Kommandozeilen, lokale Server, Raumleiter-Klone und „Frei jetzt“; Stand in ``~/.tikki/ressourcen.json``.
+- ``hermes pa status|briefing|post|modelle|ressourcen`` zum Prüfen von Hand.
 
 Daueraufträge selbst legt Tikki mit dem Hermes-Werkzeug ``cronjob`` an („alle 4 Minuten das
 Postfach prüfen und beantworten, was zu beantworten ist“).
@@ -20,7 +22,7 @@ import logging
 from email.utils import parseaddr
 from pathlib import Path
 
-from . import briefing, modelle, post
+from . import briefing, modelle, post, ressourcen
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +134,24 @@ _MODELLE_SCHEMA = {
 }
 
 
+_RESSOURCEN_SCHEMA = {
+    "name": "ressourcen_stand",
+    "description": (
+        "Welche Modell-Kraft gerade frei ist: je Anbieter Schlüssel gesetzt (nur Namen), Endpunkt erreichbar, "
+        "Modelle; Abo-Kommandozeilen (claude, codex, gemini, grok) vorhanden und angemeldet; lokale Modelle und "
+        "laufende Server; Raumleiter-Klone mit Modellkette; und 'Frei jetzt' – welcher Klon nutzbar ist "
+        "(lokal → Abo → API). Rufe es auf, wenn ein Modell ausfällt, ein Limit erreicht ist oder jemand "
+        "@mr fragt. Nenne nie Schlüsselwerte."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "timeout": {"type": "number", "description": "Sekunden je Anbieter-Anfrage (Standard 5)."},
+        },
+    },
+}
+
+
 def _cli_setup(parser) -> None:
     sub = parser.add_subparsers(dest="pa_befehl")
     sub.add_parser("status", help="Postfach-Zugang und letztes Briefing")
@@ -144,12 +164,17 @@ def _cli_setup(parser) -> None:
     m.add_argument("--json", action="store_true", help="Maschinenlesbar (eine Zeile, Präfix TIKKI-MODELLE)")
     m.add_argument("--ordner", action="append", default=[], help="Zusätzlicher Ordner, mehrfach möglich")
     m.add_argument("--timeout", type=float, default=0.7, help="Sekunden je Server-Anfrage")
+    r = sub.add_parser("ressourcen", help="Modell-Ressourcen (MR): Anbieter, Abos, lokal, Klone, Frei jetzt")
+    r.add_argument("--json", action="store_true", help="Maschinenlesbar (eine Zeile, Präfix TIKKI-RESSOURCEN)")
+    r.add_argument("--timeout", type=float, default=5.0, help="Sekunden je Anbieter-Anfrage")
 
 
 def _cli(args) -> int:
     befehl = getattr(args, "pa_befehl", None) or "status"
     if befehl == "modelle":
         return modelle.cli(args)
+    if befehl == "ressourcen":
+        return ressourcen.cli(args)
     if befehl == "briefing":
         print(_antwort(briefing.sammeln(_home(), stempeln=not args.nur_lesen)))
         return 0
@@ -176,7 +201,11 @@ def register(ctx) -> None:
         name="lokale_modelle", toolset="pa", schema=_MODELLE_SCHEMA, handler=modelle.werkzeug,
         description=_MODELLE_SCHEMA["description"], emoji="🧠",
     )
+    ctx.register_tool(
+        name="ressourcen_stand", toolset="pa", schema=_RESSOURCEN_SCHEMA, handler=ressourcen.werkzeug,
+        description=_RESSOURCEN_SCHEMA["description"], emoji="📡",
+    )
     ctx.register_cli_command(
-        name="pa", help="Tikkis persönliche Assistenz: Postfach, Briefing, lokale Modelle",
+        name="pa", help="Tikkis persönliche Assistenz: Postfach, Briefing, lokale Modelle, Ressourcen",
         setup_fn=_cli_setup, handler_fn=_cli,
     )

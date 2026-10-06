@@ -726,12 +726,49 @@ Cloud gesperrt.
   Nutzer-Nachrichten), Code, Eingaben, Terminal, Browser-Webviews. So bleiben Hermes-Dateien
   unverändert und Updates konfliktarm.
 
+### 4.13 MR-Bot – Model Resources (`tikki/plugins/pa/ressourcen.py`, Rolle `mr`)
+
+Thorstens Wunsch (1.0): ein Bot, der immer die Übersicht über alle Modell-Ressourcen hat und dem
+Raumleiter sagt, welche Kraft gerade frei ist. Gebaut nach der Footprint-Leiter als Erweiterung des
+PA-Plugins, kein Kern.
+
+- **Werkzeug `ressourcen_stand`** (Toolset `pa`) und CLI `hermes pa ressourcen [--json]` bzw.
+  `hermes --run-module tikki.plugins.pa.ressourcen [--json]`. Sammelt (a) **Anbieter** aus
+  `providers.*` aller Rollen-Configs plus Hermes' eingebaute, die der Katalog nennt (`anthropic`,
+  `openai-codex`, `xai-oauth`, …): Schlüssel gesetzt – **nur Namen**, Werte bleiben im Modul –,
+  `GET /models` (5 s, wie `selbsttest.pruefe_anbieter`, dort unverändert), erste 20 Modell-IDs, bei
+  Abo-Anbietern `get_auth_status` (liest nur); (b) **Abo-Kommandozeilen** `claude`, `codex`,
+  `gemini`, `grok` über `hermes_platform.resolver.locate_command` (kein `shutil.which`), `--version`
+  mit Timeout, Anmeldedatei (`~/.claude/.credentials.json`, `~/.codex/auth.json`,
+  `~/.gemini/oauth_creds.json`); (c) **lokal** über `modelle.sammeln()`; (d) **Raumleiter + Klone**
+  mit Modellkette (`raeume.katalog()`); (e) **„Frei jetzt“**: welcher Klon nutzbar ist, nach seinem
+  Hauptmodell geordnet lokal (Server läuft) → Abo-Klon (angemeldet) → API-Klon (Schlüssel gesetzt
+  und erreichbar). Hermes' `hermes usage` braucht Netz je Anbieter und ist nicht aufgenommen.
+  Ergebnis mit Zeitstempel in `~/.tikki/ressourcen.json` (`TIKKI_HOME`); Textausgabe: Tabelle
+  „Anbieter | Schlüssel | erreichbar | Modelle“, Abos, Lokal, Raumleiter-Klone, `Frei jetzt: …`.
+- **Rolle `mr`** (📡, Port 8675, `cursor/claude-haiku-4-5` → `xai/grok-4.7` → `xai-oauth/grok-4.7`,
+  Werkzeuge `pa`, `terminal`, `file`, `skills`, `memory`, nicht ab Start im Raum). SOUL
+  `tikki/rollen/mr/SOUL.md`: spricht nur auf `@mr` oder bei Ausfall, nennt die Alternative als
+  Klon-Slug (`@raumleiter nimm raumleiter-xai`), nie Schlüsselwerte. Der Raumleiter trägt dafür
+  `pa` in seinen Werkzeugen (Delegation gibt nur weiter, was er hat) und fragt laut SOUL bei Ausfall
+  oder Limit `@mr`.
+- **Dauerauftrag `tikki-ressourcen`** (Profil `mr`, stündlich, `--no-agent`, Skript
+  `scripts/tikki-ressourcen.sh`), angelegt von `rollen-einrichten.sh` wie `tikki-takt`.
+- **Wachhalter**: `suite_takt bericht` endet mit dem Block „Ressourcen“ aus `ressourcen.json`
+  (`ressourcen.kurzbericht`: Frei jetzt, Ausfälle, Hinweis, wenn älter als 2 h) – nur gelesen, der
+  Rundgang klopft nicht selbst an; `weckbedarf` unverändert.
+- **App**: Admin → Modelle, Karte „Ressourcen (MR)“ (`areas/admin/ressourcen.ts`, Marke
+  `TIKKI-RESSOURCEN `, `cli.exec ['-p','tikki','pa','ressourcen','--json']`): Anbieter mit ✓/⚠/–,
+  Abos, Lokal, „Frei jetzt“. Tests: `tests/tikki/test_ressourcen.py` (Fake-HTTP 200/404, kein
+  Schlüsselwert im Stand, Reihenfolge, Datei unter `TIKKI_HOME`, Rundgang liest nur),
+  `admin/ressourcen.test.ts`.
+
 ### 4.7 Bot-Truppe (`tikki/`)
 
 | Datei | Zweck |
 |---|---|
 | `rollen/KATALOG.json` | Liste von 13 Rollen. Felder: `slug`, `name`, `icon`, `kurz`, `kategorie`, `modell.{primary,fallback}` (Form `anbieter/modell`), `werkzeuge` (Hermes-Toolset-Namen), `freigabe` (`smart`), `port`, `hermes_profil`, `im_raum_ab_start`. |
-| Rollen und Ports | `tikki` 8650 (Vorzimmer, grok-4.7 → opus-5.5, keine Werkzeuge) · `raumleiter` 8651 (opus-5.5 → grok-4.7, Werkzeuge: `delegation`, `todo`, `gedaechtnis` plus alle Bot-Werkzeuge zum Weitergeben, im Raum ab Start, bis 50 Bots) · `rechercheur` 8652 · `pruefer` 8653 · `schreiber` 8654 · `frontend-entwickler` 8655 · `backend-entwickler` 8656 · `sicherheitsbeauftragter` 8657 · `datenanalyst` 8658 · `organisator` 8659 · `api-fachmann` 8660 · `uebersetzer` 8661 (alle grok-4.7 → opus-5.5, `smart`, alle mit `skills`) · `wachhalter` 8662 (Claude-Abo → Codex-Abo → lokal). Felder neu: `modell.weitere` (weitere Ausweichmodelle), `einstellungen` (tief in die config.yaml gemischt, z. B. Vorzimmer `agent.reasoning_effort: low`, `display.streaming`). |
+| Rollen und Ports | `tikki` 8650 (Vorzimmer, grok-4.7 → opus-5.5, keine Werkzeuge) · `raumleiter` 8651 (opus-5.5 → grok-4.7, Werkzeuge: `delegation`, `todo`, `gedaechtnis` plus alle Bot-Werkzeuge zum Weitergeben, im Raum ab Start, bis 50 Bots) · `rechercheur` 8652 · `pruefer` 8653 · `schreiber` 8654 · `frontend-entwickler` 8655 · `backend-entwickler` 8656 · `sicherheitsbeauftragter` 8657 · `datenanalyst` 8658 · `organisator` 8659 · `api-fachmann` 8660 · `uebersetzer` 8661 (alle grok-4.7 → opus-5.5, `smart`, alle mit `skills`) · `wachhalter` 8662 (Claude-Abo → Codex-Abo → lokal) · `raumleiter-xai/-anthropic/-codex/-lokal` 8671–8674 (Klone, 4.7a) · `mr` 8675 (Model Resources, haiku-4-5 → grok-4.7 → SuperGrok, Werkzeuge `pa`, `terminal`, `file`, `skills`, `memory`, 4.13). Felder neu: `modell.weitere` (weitere Ausweichmodelle), `einstellungen` (tief in die config.yaml gemischt, z. B. Vorzimmer `agent.reasoning_effort: low`, `display.streaming`). |
 | `rollen/<slug>/SOUL.md` | 53–90 Zeilen je Rolle: Was du tust / Was du nie tust / Protokoll. Gemeinsame `## Hausregeln` am Ende jeder Datei: Deutsch, kurz, keine Modellwerbung, Aufgaben zu Ende bringen, Mensch nur per Zeile `BRAUCHE: …` mit Vorschlag, Ergebnisse im Raum-Chat. Der Raumleiter hat zusätzlich Delegationsformat, Rundenschleife, To-do-Listen „Tikki“ und „Du“, Stoppregel. |
 | `hermes/vorlage-rolle.yaml` | Vorlage für `~/.hermes/profiles/<slug>/config.yaml` mit **echten Hermes-Schlüsseln**: `model.{provider,default}`, `fallback_providers`, `providers.{cursor,xai}` (`base_url`, `key_env`, `api_mode: chat_completions`), `approvals.mode: smart`, `platform_toolsets.{api_server,cli}`, `platforms.api_server.{enabled,extra.host,extra.port}`, `delegation.{max_concurrent_children: 30, max_spawn_depth: 1}`, `display.compact`. |
 | `werkzeuge/rollen-einrichten.sh` | Legt je Rolle ein Hermes-Profil an, idempotent (`--dry-run`, `--nur <slug>`). Schreibt SOUL.md und config.yaml, **nie Schlüssel**. Echter Lauf in der Cloud (`d18ef6cd`): 12 Profile angelegt, zweiter Lauf ein No-op, `hermes -p <slug> doctor` meldet „Config version up to date“. |

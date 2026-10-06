@@ -24,6 +24,8 @@ Der Hermes-Quellcode außerhalb von `tikki/` bleibt unverändert.
 - **Raumleiter** – sitzt ab Start in jedem Raum, plant, delegiert an bis zu 30 Bots, prüft, fasst zusammen, stoppt erst bei Ziel oder Entscheidung.
 - **Arbeiter** (werden bei Bedarf geholt): Rechercheur, Prüfer, Schreiber, Frontend-Entwickler,
   Backend-Entwickler, Sicherheitsbeauftragter, Datenanalyst, Organisator, API-Fachmann, Übersetzer.
+- **MR** (Model Resources) – weiß, welche Schlüssel, Abos, lokalen Modelle und Raumleiter-Klone frei
+  sind; nennt dem Raumleiter bei Ausfall die Alternative (`hermes pa ressourcen`).
 
 Jede Seele enthält dieselben Hausregeln: Deutsch, kurz, keine Technik-Werbung, Aufgaben zu Ende
 bringen, bei echtem Bedarf eine `BRAUCHE:`-Zeile mit Vorschlag, Ergebnisse im Raum-Chat.
@@ -79,7 +81,8 @@ den Lauf auf eine Rolle.
 | `dienste/honcho/honcho.sh` | Honcho als eigener Dienst (Docker) |
 | `dienste/tencentdb/tencentdb.sh` | TencentDB Agent Memory je Mensch und fürs System (Docker) |
 | `plugins/gedaechtnis/` | Spiegelt jede Runde in TencentDB und die RAG-Sammlung; Werkzeug `nachschlagen` |
-| `plugins/pa/` | Persönliche Assistenz: Postfach (`post`), Briefing (`briefing_sammeln`), lokale Modelle (`lokale_modelle`) aus dem Backend; `hermes pa status\|briefing\|post\|modelle` |
+| `plugins/pa/` | Persönliche Assistenz: Postfach (`post`), Briefing (`briefing_sammeln`), lokale Modelle (`lokale_modelle`) aus dem Backend; `hermes pa status\|briefing\|post\|modelle\|ressourcen` |
+| `plugins/pa/ressourcen.py` | MR-Bot (Rolle `mr`, Port 8675): Werkzeug `ressourcen_stand` – Anbieter (Schlüsselnamen, erreichbar, Modelle), Abo-Kommandozeilen, lokale Server, Raumleiter-Klone, „Frei jetzt“; Stand in `~/.tikki/ressourcen.json`, stündlich per Cronjob `tikki-ressourcen`, im Wachhalter-Rundgang mitgelesen |
 | `skills/` | Tikki-Skills: `gemini-cli`, `notebooklm`, `openclaw-skills` |
 
 Reihenfolge und Einzelheiten: `HANDOVER.md`, Abschnitte 3 und 4.8–4.12.

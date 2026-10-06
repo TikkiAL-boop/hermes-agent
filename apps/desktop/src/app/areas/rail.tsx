@@ -32,7 +32,7 @@ export function AreaRail() {
     <nav
       aria-label={labels.rail.label}
       className={cn(
-        'tikki-boden flex w-[10.5rem] shrink-0 flex-col items-stretch gap-2 border-r border-(--tikki-glas-rand) px-2.5 pb-3',
+        'tikki-boden tikki-leiste flex w-[10.5rem] shrink-0 flex-col items-stretch gap-2 border-r border-(--tikki-glas-rand) px-2.5 pb-3',
         // Leave room for the macOS traffic lights on the hidden-inset titlebar.
         isMacPlatform() ? 'pt-10' : 'pt-3'
       )}

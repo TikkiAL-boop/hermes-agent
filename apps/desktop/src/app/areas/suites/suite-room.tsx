@@ -660,13 +660,13 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
           </span>
         )}
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)_17rem] gap-6 px-6 pt-5 pb-6">
-        <div className="flex min-h-0 flex-col gap-3">
+      <div className="tikki-buehne grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)_17rem] gap-6 px-6 pt-5 pb-6">
+        <div className="tikki-wand tikki-wand-links flex min-h-0 flex-col gap-3">
           <TodoWand messages={messages} />
           <AmTisch arbeitet={arbeitet} mitglieder={suite.mitglieder} />
         </div>
         <div
-          className="tikki-glas tikki-glas-dicht mx-4 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[2rem] border-(--tikki-gelb)/60 shadow-[0_0_56px_-8px_var(--tikki-glow-stark)]"
+          className="tikki-glas tikki-glas-dicht tikki-tischplatte mx-4 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[2rem] border-(--tikki-gelb)/60 shadow-[0_0_56px_-8px_var(--tikki-glow-stark)]"
           data-suite-tisch-chat=""
         >
           <Freigaben freigaben={freigaben} nachladen={nachladen} suite={suite} />
@@ -679,7 +679,7 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
           />
           <Sprechen nachladen={nachladen} suite={suite} />
         </div>
-        <div className="flex min-h-0 flex-col gap-3">
+        <div className="tikki-wand tikki-wand-rechts flex min-h-0 flex-col gap-3">
           <DatenScreen geladen={geladen} messages={chat} />
           <OutputScreen geladen={geladen} messages={chat} />
         </div>
@@ -910,7 +910,11 @@ function Grundbesatzung() {
   ]
 
   return (
-    <nav aria-label={r.besatzung} className="flex items-center justify-center gap-6 px-6 pb-4" data-suite-besatzung="">
+    <nav
+      aria-label={r.besatzung}
+      className="tikki-podest flex items-center justify-center gap-6 px-6 pb-4"
+      data-suite-besatzung=""
+    >
       {mitglieder.map(({ icon: Icon, key, onClick }) => (
         <button
           className="flex flex-col items-center gap-1 text-[11px] font-medium text-(--tikki-tinte) hover:text-(--tikki-gelb-tief)"

@@ -312,6 +312,19 @@ alles Bedienbare als **Glasfläche mit Leuchtrand**, Vorzimmer mit Karten neben 
 - **Admin, Post, Terminal, Browser**: Boden + Glasflächen, Admin-Navigation als Tafeln.
 - Hermes-Code unverändert; kein Hermes-Bereich wurde umgebaut, nur eingerahmt und getönt.
 
+### 4.2a'' Tiefe – „mehr 3D, mehr aufwendig“ (06.10., `tikki.css` ab „Tiefe“)
+
+Eine Bühne mit Fluchtpunkt statt flacher Karten, rein in CSS (kein WebGL, läuft auf jedem Mac):
+`.tikki-buehne` setzt `perspective`, die Seitenspalten sind `.tikki-wand-links/-rechts` (um 14°
+nach innen gekippt, beim Hover gerade), das Gespräch im Raum liegt als `.tikki-tischplatte`
+erhöht über einer gelben Tischplatten-Ellipse mit Glanz und Schlagschatten, `.tikki-raum::before`
+legt Deckenlicht und Vignette, `::after` ein perspektivisches Bodenraster. Jedes `.tikki-glas` hat
+einen schrägen Lichtstreifen, der beim Hover wandert; `.tikki-knopf` ist erhaben (Kante unten,
+Lift beim Hover, gedrückt beim Klick); `.tikki-podest` kippt den Ring der Grundbesatzung;
+`.tikki-leiste` gibt der linken Leiste eine Kante. `prefers-reduced-motion` schaltet Kippen und
+Lichtlauf ab. Die 3D-Grafiken von Thorsten (photorealistisch) ersetzen später die SVG-Hintergründe
+(`--tikki-raum`, `--tikki-boden`), die Bühne bleibt.
+
 ### 4.2a' Raumübersicht und persönliche Assistenz (01.10.)
 
 **Breite (03.10.):** Der Übersichts-Rahmen ist ein Container (`@container/vorzimmer`): unter 88 rem

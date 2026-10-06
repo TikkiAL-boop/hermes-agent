@@ -10,6 +10,7 @@ import {
   useState
 } from 'react'
 
+import { useVoiceRecorder } from '@/app/chat/composer/hooks/use-voice-recorder'
 import { CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
@@ -26,10 +27,14 @@ import {
   ImageIcon,
   Link,
   Loader2,
+  Mic,
+  MicOff,
   Search,
   Send,
   ShieldLock,
-  Users
+  Users,
+  Volume2,
+  VolumeX
 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { $gatewayState } from '@/store/session'
@@ -37,6 +42,15 @@ import { $gatewayState } from '@/store/session'
 import { KATALOG, rolle } from '../admin/katalog'
 import { areaLabels } from '../labels'
 import { setArea } from '../store'
+import {
+  neuVorzulesen,
+  setVorlesenAktiv,
+  sprich,
+  transkribieren,
+  VORLESEN_RAUM,
+  vorlesenAktiv,
+  vorlesenStopp
+} from '../tikki/stimme'
 
 import {
   $suiteEntsteht,
@@ -74,6 +88,8 @@ import { uebungsTeil } from './uebung'
 
 /** The log is pulled: the gateway has no push for rooms. */
 const POLL_MS = 2000
+/** Longest microphone take in the room; the same cap the composer applies by default. */
+const MIKRO_SEKUNDEN = 120
 
 const raumleiter = rolle(RAUMLEITER)
 
@@ -544,13 +560,33 @@ function Tisch({
   )
 }
 
-/** The person's seat: Enter sends, the name goes in front on its own. */
+/** The person's seat: Enter sends, the name goes in front on its own; the microphone dictates into the field. */
 function Sprechen({ nachladen, suite }: { nachladen: () => Promise<void>; suite: Suite }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
   const [text, setText] = useState('')
   const [sendet, setSendet] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
+  const feld = useRef<HTMLTextAreaElement | null>(null)
+
+  // The Hermes composer's own dictation hook: one press records, the next (or
+  // silence/cap) stops and transcribes; the words land in the field, never sent.
+  const { dictate, voiceStatus } = useVoiceRecorder({
+    focusInput: () => feld.current?.focus(),
+    maxRecordingSeconds: MIKRO_SEKUNDEN,
+    onTranscribeAudio: async audio => {
+      try {
+        return await transkribieren(audio)
+      } catch (error) {
+        setFehler(fehlertext(error))
+        throw error
+      }
+    },
+    onTranscript: wort => {
+      setFehler(null)
+      setText(alt => (alt.trim() ? `${alt.trimEnd()} ${wort}` : wort))
+    }
+  })
 
   const senden = async () => {
     const wert = text.trim()
@@ -601,9 +637,33 @@ function Sprechen({ nachladen, suite }: { nachladen: () => Promise<void>; suite:
           onChange={e => setText(e.target.value)}
           onKeyDown={taste}
           placeholder={s.schreiben}
+          ref={feld}
           rows={1}
           value={text}
         />
+        <button
+          aria-label={
+            voiceStatus === 'recording' ? s.mikroStopp : voiceStatus === 'transcribing' ? s.mikroSchreibt : s.mikro
+          }
+          aria-pressed={voiceStatus === 'recording'}
+          className={cn(
+            'tikki-knopf px-3 py-2 disabled:opacity-60',
+            voiceStatus === 'idle' && 'tikki-knopf-still',
+            voiceStatus === 'recording' && 'animate-pulse'
+          )}
+          data-suite-mikro={voiceStatus}
+          disabled={sendet || voiceStatus === 'transcribing'}
+          onClick={dictate}
+          type="button"
+        >
+          {voiceStatus === 'transcribing' ? (
+            <Loader2 aria-hidden className="size-4 animate-spin" />
+          ) : voiceStatus === 'recording' ? (
+            <MicOff aria-hidden className="size-4" />
+          ) : (
+            <Mic aria-hidden className="size-4" />
+          )}
+        </button>
         <button
           aria-label={s.senden}
           className="tikki-knopf px-3 py-2 disabled:opacity-60"
@@ -625,7 +685,9 @@ function Sprechen({ nachladen, suite }: { nachladen: () => Promise<void>; suite:
  */
 export function SuiteRoom({ suite }: { suite: Suite }) {
   const { locale } = useI18n()
-  const s = areaLabels(locale).suites
+  const labels = areaLabels(locale)
+  const s = labels.suites
+  const v = labels.vorzimmer
   const { events, fehler, freigaben, geladen, nachladen } = useRaumLog(suite)
   const teil = uebungsTeil(suite.titel)
 
@@ -638,6 +700,42 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
   const arbeitet = useMemo(() => werArbeitet(events), [events])
   const brauche = useMemo(() => brauchtAus(messages), [messages])
   const stand = useMemo(() => standAus(messages), [messages])
+  const [vorlesen, setVorlesen] = useState(() => vorlesenAktiv(VORLESEN_RAUM))
+  // Where reading stands in THIS room: the first load only sets the mark, so a
+  // room's history is never read back; from then on every new word of the lead is.
+  const gelesen = useRef<{ id: string; seq: number } | null>(null)
+
+  // eslint-disable-next-line no-restricted-syntax -- reading cursor advanced per poll, not an atom mirror
+  useEffect(() => {
+    if (!geladen) {
+      return
+    }
+
+    if (gelesen.current?.id !== suite.id) {
+      gelesen.current = { id: suite.id, seq: messages.reduce((max, m) => Math.max(max, m.seq), 0) }
+
+      return
+    }
+
+    const { seq, texte } = neuVorzulesen(messages, gelesen.current.seq)
+    gelesen.current = { id: suite.id, seq }
+
+    if (vorlesen && texte.length > 0) {
+      void sprich(texte.join('\n'))
+    }
+  }, [geladen, messages, suite.id, vorlesen])
+
+  useEffect(() => () => vorlesenStopp(), [])
+
+  const vorlesenUmschalten = () => {
+    const an = !vorlesen
+    setVorlesen(an)
+    setVorlesenAktiv(VORLESEN_RAUM, an)
+
+    if (!an) {
+      vorlesenStopp()
+    }
+  }
 
   return (
     <div className="tikki-raum flex min-h-0 min-w-0 flex-1 flex-col" data-suite-room={suite.id}>
@@ -651,6 +749,16 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
         <RaumMarken brauche={brauche} messages={chat} stand={stand} suite={suite} />
         <Tueren aktuell={suite} />
         <Verschmelzen aktuell={suite} />
+        <button
+          aria-label={`${s.vorlesen}: ${vorlesen ? v.vorlesenAn : v.vorlesenAus}`}
+          aria-pressed={vorlesen}
+          className={cn('tikki-knopf px-2.5 py-1 text-xs', !vorlesen && 'tikki-knopf-still')}
+          data-suite-vorlesen={vorlesen ? 'an' : 'aus'}
+          onClick={vorlesenUmschalten}
+          type="button"
+        >
+          {vorlesen ? <Volume2 aria-hidden className="size-3.5" /> : <VolumeX aria-hidden className="size-3.5" />}
+        </button>
         <span className="flex-1" />
         {raumleiter && (
           <span className="flex items-center gap-1.5 text-xs text-(--ui-text-secondary)">

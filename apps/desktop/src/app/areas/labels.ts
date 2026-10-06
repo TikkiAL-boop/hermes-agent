@@ -195,6 +195,10 @@ interface AreaLabels {
     denkt: (name: string) => string
     schreiben: string
     senden: string
+    mikro: string
+    mikroStopp: string
+    mikroSchreibt: string
+    vorlesen: string
     freigabe: string
     freigabeEinmal: string
     freigabeAblehnen: string
@@ -483,6 +487,10 @@ const de: AreaLabels = {
     denkt: name => `${name} denkt …`,
     schreiben: 'In den Raum sprechen … (Enter sendet, @raumleiter weckt nur ihn)',
     senden: 'Senden',
+    mikro: 'Mikrofon: sprechen statt tippen',
+    mikroStopp: 'Aufnahme beenden',
+    mikroSchreibt: 'Wird verschriftlicht …',
+    vorlesen: 'Raumleiter vorlesen',
     freigabe: 'bittet um Freigabe',
     freigabeEinmal: 'Einmal erlauben',
     freigabeAblehnen: 'Ablehnen',
@@ -771,6 +779,10 @@ const en: AreaLabels = {
     denkt: name => `${name} is thinking …`,
     schreiben: 'Speak into the room … (Enter sends, @raumleiter wakes only the lead)',
     senden: 'Send',
+    mikro: 'Microphone: speak instead of typing',
+    mikroStopp: 'Stop recording',
+    mikroSchreibt: 'Transcribing …',
+    vorlesen: 'Read the room lead aloud',
     freigabe: 'asks for approval',
     freigabeEinmal: 'Allow once',
     freigabeAblehnen: 'Deny',

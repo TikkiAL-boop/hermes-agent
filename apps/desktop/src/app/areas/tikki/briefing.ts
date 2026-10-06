@@ -1,7 +1,7 @@
 // The daily briefing: the app gathers what is new (mail, WhatsApp, rooms that
 // wait) and hands it to Tikki in the Vorzimmer, who tells it the way an
-// assistant does in the morning. Reading aloud uses the system voice, so it
-// works without any voice provider configured.
+// assistant does in the morning. Reading aloud speaks with Tikki's own voice
+// (Hermes TTS), the system voice when no provider answers (`stimme.ts`).
 
 import { requestComposerSubmit } from '@/app/chat/composer/focus'
 import { chatMessageText } from '@/lib/chat-messages/parts'
@@ -13,6 +13,7 @@ import { $sessionStates } from '@/store/session-states'
 import type { Suite } from '../suites/store'
 
 import { PA_PROFIL } from './auftraege'
+import { sprich, VORLESEN_UEBERSICHT, vorlesenAktiv } from './stimme'
 
 export interface BriefingMail {
   von: string
@@ -227,36 +228,7 @@ export function startBriefingAutomatik(ausloesen: () => Promise<void> | void): (
 
 // ─── Vorlesen ────────────────────────────────────────────────────────────────
 
-const VORLESEN_KEY = 'tikki.briefing.vorlesen'
-
-export const vorlesenAktiv = (): boolean => storedString(VORLESEN_KEY) === '1'
-export const setVorlesenAktiv = (an: boolean) => persistString(VORLESEN_KEY, an ? '1' : null)
-
-/** Speak with the system voice; German when available. */
-export function vorlesen(text: string): void {
-  if (typeof speechSynthesis === 'undefined' || !text.trim()) {
-    return
-  }
-
-  speechSynthesis.cancel()
-  const rede = new SpeechSynthesisUtterance(text.replace(/[*_`#>]/g, ''))
-  rede.lang = 'de-DE'
-  const stimme = speechSynthesis.getVoices().find(v => v.lang.startsWith('de'))
-
-  if (stimme) {
-    rede.voice = stimme
-  }
-
-  speechSynthesis.speak(rede)
-}
-
-export function vorlesenStopp(): void {
-  if (typeof speechSynthesis !== 'undefined') {
-    speechSynthesis.cancel()
-  }
-}
-
-/** While reading is on, every finished reply of the Vorzimmer chat is spoken once. */
+/** While reading is on, every finished reply of the Vorzimmer chat is spoken once (`stimme.ts`). */
 export function startVorleser(): () => void {
   let warBeschaeftigt = false
   let gesprochen = ''
@@ -272,7 +244,7 @@ export function startVorleser(): () => void {
     const fertig = warBeschaeftigt && !state.busy
     warBeschaeftigt = Boolean(state.busy)
 
-    if (!fertig || !vorlesenAktiv()) {
+    if (!fertig || !vorlesenAktiv(VORLESEN_UEBERSICHT)) {
       return
     }
 
@@ -281,7 +253,7 @@ export function startVorleser(): () => void {
 
     if (text && text !== gesprochen) {
       gesprochen = text
-      vorlesen(text)
+      void sprich(text)
     }
   })
 }

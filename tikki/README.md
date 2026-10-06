@@ -67,8 +67,9 @@ den Lauf auf eine Rolle.
 
 | Skript | Wofür |
 |---|---|
-| `installieren.sh` | Alles mit einem Befehl: Kern, App, Rollen, Schlüssel, Dienste, danach Selbsttest |
-| `werkzeuge/selbsttest.py` | Prüft jede Schicht (Rollen, Plugin, Cronjobs, Schlüsselnamen, App, Backend-Start) |
+| `installieren.sh` | Alles mit einem Befehl: Kern, App, Rollen, Schlüssel, Dienste, Sprach-Extras (`--ohne-sprache` lässt sie aus), danach Selbsttest |
+| `werkzeuge/selbsttest.py` | Prüft jede Schicht (Rollen, Plugin, Cronjobs, Schlüsselnamen, Anbieter, Sprache, App, Backend-Start) |
+| `hermes/vorlage-rolle.yaml` → `voice`/`stt`/`tts` | Sprache: Tikki hört über faster-whisper (`hermes pm install --extra voice`) und spricht mit Edge-TTS (`--extra edge-tts`), in der App über Hermes' eigene Sprachpfade (HANDOVER 4.2c) |
 | `werkzeuge/raeume.py` | Räume auf Hermes' gehosteten Gruppenräumen: anlegen, senden, Verlauf, Tür, verschmelzen, auflösen |
 | `werkzeuge/suite_takt.py` | Taktgeber ohne Modell (Cronjob `tikki-takt`): `TAKT-RUNDE` an fällige Räume, Türen weiterreichen, Übungsergebnisse an den Hauptraum, Raumbericht für den Wachhalter |
 | `werkzeuge/schluessel-einlesen.sh` | Schlüssel aus einer Textdatei in alle Profile übernehmen, ohne sie anzuzeigen |

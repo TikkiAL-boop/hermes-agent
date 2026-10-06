@@ -4,12 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/i18n'
 
 const rpc = vi.fn()
+const sprich = vi.fn(async () => 'hermes' as const)
 
 vi.mock('@/store/gateway', () => ({ activeGateway: () => ({ request: (...args: unknown[]) => rpc(...args) }) }))
+vi.mock('../tikki/stimme', async importOriginal => ({
+  ...((await importOriginal()) as object),
+  sprich: (...args: unknown[]) => sprich(...(args as []))
+}))
 
 const { SuiteRoom } = await import('./suite-room')
 const { $suites } = await import('./store')
 const { $gatewayState } = await import('@/store/session')
+const { VORLESEN_RAUM } = await import('../tikki/stimme')
 
 const MITGLIEDER = [
   { member_id: 'raumleiter', profile: 'raumleiter', handle: 'raumleiter', display_name: 'Raumleiter' },
@@ -67,6 +73,9 @@ const events = [
 afterEach(cleanup)
 beforeEach(() => {
   rpc.mockReset()
+  sprich.mockClear()
+  events.length = 5
+  window.localStorage.removeItem(VORLESEN_RAUM)
   $gatewayState.set('open')
   $suites.set([suite, { id: 'tikki-kueste-2', titel: 'Küste', mitglieder: MITGLIEDER, geaendert: 0, letzteSeq: 0 }])
 
@@ -166,6 +175,60 @@ describe('SuiteRoom', () => {
         request_id: 'r1'
       })
     )
+  })
+
+  it('offers a microphone next to send and a read-aloud switch in the header that is remembered', async () => {
+    const { container, getByLabelText } = mount()
+
+    await waitFor(() => expect(container.querySelector('[data-suite-log]')).toBeTruthy())
+
+    const mikro = container.querySelector('[data-suite-mikro]')
+    expect(mikro?.getAttribute('data-suite-mikro')).toBe('idle')
+    expect(mikro?.getAttribute('aria-label')).toBe('Mikrofon: sprechen statt tippen')
+    expect(mikro?.hasAttribute('title')).toBe(false)
+
+    const schalter = getByLabelText(/Raumleiter vorlesen/)
+    expect(schalter.getAttribute('data-suite-vorlesen')).toBe('aus')
+    fireEvent.click(schalter)
+    expect(schalter.getAttribute('data-suite-vorlesen')).toBe('an')
+    expect(schalter.getAttribute('aria-pressed')).toBe('true')
+    expect(window.localStorage.getItem(VORLESEN_RAUM)).toBe('1')
+    fireEvent.click(schalter)
+    expect(schalter.getAttribute('data-suite-vorlesen')).toBe('aus')
+    expect(window.localStorage.getItem(VORLESEN_RAUM)).toBeNull()
+  })
+
+  it('reads only what the room lead says after the room was opened, never its history', async () => {
+    window.localStorage.setItem(VORLESEN_RAUM, '1')
+    const { container, getByLabelText } = mount()
+
+    await waitFor(() => expect(container.querySelectorAll('[data-suite-nachricht]').length).toBe(2))
+    expect(sprich).not.toHaveBeenCalled()
+
+    events.push(
+      {
+        seq: 6,
+        event_id: 'e6',
+        kind: 'message.member',
+        actor: { kind: 'member', id: 'rechercheur' },
+        payload: { member_id: 'rechercheur', text: 'Drei Häuser gefunden.' },
+        created_at: 1_790_000_005
+      },
+      {
+        seq: 7,
+        event_id: 'e7',
+        kind: 'message.member',
+        actor: { kind: 'member', id: 'raumleiter' },
+        payload: { member_id: 'raumleiter', text: 'STAND: Drei Häuser, ich sortiere.' },
+        created_at: 1_790_000_006
+      }
+    )
+    // Sending reloads the log right away (the poll would, two seconds later).
+    fireEvent.change(getByLabelText(/In den Raum sprechen/), { target: { value: 'Weiter' } })
+    fireEvent.keyDown(getByLabelText(/In den Raum sprechen/), { key: 'Enter' })
+
+    await waitFor(() => expect(sprich).toHaveBeenCalledTimes(1))
+    expect(sprich).toHaveBeenCalledWith('STAND: Drei Häuser, ich sortiere.')
   })
 
   it('speaks through a door into another room, addressed to its room lead', async () => {

@@ -62,6 +62,7 @@
       "delegation",
       "todo",
       "gedaechtnis",
+      "pa",
       "web",
       "browser",
       "file",
@@ -155,6 +156,38 @@
     "port": 8674,
     "hermes_profil": "raumleiter-lokal",
     "im_raum_ab_start": false
+  },
+  {
+    "slug": "mr",
+    "name": "MR",
+    "icon": "📡",
+    "kurz": "Model Resources: weiß, welche Schlüssel, Abos, lokalen Modelle und Raumleiter-Klone gerade frei sind; nennt bei Ausfall die Alternative.",
+    "kategorie": "leitung",
+    "modell": {
+      "primary": "cursor/claude-haiku-4-5",
+      "fallback": "xai/grok-4.7",
+      "weitere": [
+        "xai-oauth/grok-4.7"
+      ]
+    },
+    "werkzeuge": [
+      "pa",
+      "terminal",
+      "file",
+      "skills",
+      "memory"
+    ],
+    "freigabe": "smart",
+    "port": 8675,
+    "hermes_profil": "mr",
+    "im_raum_ab_start": false,
+    "einstellungen": {
+      "tools": {
+        "tool_search": {
+          "enabled": "off"
+        }
+      }
+    }
   },
   {
     "slug": "deine-ki",

@@ -25,6 +25,28 @@ interface AreaLabels {
     users: { name: string; address: string; role: string; admin: string; member: string; invite: string; note: string }
     nodes: { name: string; kind: string; ram: string; role: string; status: string; note: string }
     gedaechtnis: { laeuft: string; aus: string; pruefe: string; erklaerung: string; starten: string }
+    ressourcen: {
+      titel: string
+      erklaerung: string
+      pruefen: string
+      aktualisieren: string
+      laedt: string
+      fehler: string
+      anbieter: string
+      schluessel: string
+      erreichbar: string
+      modelle: string
+      abo: string
+      angemeldet: string
+      abgemeldet: string
+      ja: string
+      nichtGeprueft: string
+      abos: string
+      lokal: string
+      keinServer: string
+      frei: string
+      nichtsFrei: string
+    }
     betrieb: {
       uebungen: string
       uebungenHinweis: string
@@ -219,6 +241,29 @@ const de: AreaLabels = {
       erklaerung:
         'Honcho ist Tikkis Gedächtnis und läuft als eigener Dienst auf diesem Rechner: ein Workspace für das System, ein Peer je Mensch, ein AI-Peer je Rolle, eine Sitzung je Suite. Alle Rollenprofile zeigen darauf.',
       starten: 'Starten im Terminal:'
+    },
+    ressourcen: {
+      titel: 'Ressourcen (MR)',
+      erklaerung:
+        'Was gerade frei ist: Anbieter-Schlüssel (nur Namen) und ob ihr Endpunkt antwortet, Abo-Kommandozeilen, lokale Modellserver, und welcher Raumleiter-Klon nutzbar ist – lokal vor Abo vor API. Geprüft auf dem Tikki-Rechner; stündlich erneuert der MR-Bot den Stand.',
+      pruefen: 'Jetzt prüfen',
+      aktualisieren: 'Aktualisieren',
+      laedt: 'wird geprüft …',
+      fehler: 'Prüfung fehlgeschlagen – läuft das Backend und ist das Profil tikki eingerichtet?',
+      anbieter: 'Anbieter',
+      schluessel: 'Schlüssel',
+      erreichbar: 'erreichbar',
+      modelle: 'Modelle',
+      abo: 'Abo',
+      angemeldet: 'angemeldet',
+      abgemeldet: 'abgemeldet',
+      ja: 'ja',
+      nichtGeprueft: 'nicht geprüft',
+      abos: 'Abos',
+      lokal: 'Lokal',
+      keinServer: 'kein Modellserver läuft',
+      frei: 'Frei jetzt',
+      nichtsFrei: 'nichts – kein Schlüssel erreichbar, kein Abo angemeldet, kein lokaler Server'
     },
     intro: {
       schluessel: 'Alle Anbieter-Schlüssel an einer Stelle. Sie liegen beim Backend, nie in der App.',
@@ -532,6 +577,29 @@ const en: AreaLabels = {
       erklaerung:
         "Honcho is Tikki's memory and runs as its own service on this machine: one workspace for the system, one peer per person, one AI peer per role, one session per suite. Every role profile points at it.",
       starten: 'Start it in the terminal:'
+    },
+    ressourcen: {
+      titel: 'Resources (MR)',
+      erklaerung:
+        'What is free right now: provider keys (names only) and whether their endpoint answers, subscription CLIs, local model servers, and which room-lead clone is usable – local before subscription before API. Probed on the Tikki machine; the MR bot refreshes it hourly.',
+      pruefen: 'Check now',
+      aktualisieren: 'Refresh',
+      laedt: 'checking …',
+      fehler: 'Check failed – is the backend running and the tikki profile set up?',
+      anbieter: 'Provider',
+      schluessel: 'Key',
+      erreichbar: 'reachable',
+      modelle: 'Models',
+      abo: 'Subscription',
+      angemeldet: 'signed in',
+      abgemeldet: 'signed out',
+      ja: 'yes',
+      nichtGeprueft: 'not checked',
+      abos: 'Subscriptions',
+      lokal: 'Local',
+      keinServer: 'no model server running',
+      frei: 'Free now',
+      nichtsFrei: 'nothing – no key reachable, no subscription signed in, no local server'
     }
   },
   areas: { admin: 'Admin', browser: 'Browser', post: 'Mail', suites: 'Suites', terminal: 'Terminal', tikki: 'Tikki' },

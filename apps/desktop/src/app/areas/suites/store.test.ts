@@ -16,8 +16,11 @@ const {
   $suitesBrauchen,
   $suitesFehler,
   $suitesStatus,
+  RollenFehlenFehler,
   aufgabenAus,
   auftragGeben,
+  besetzbareMitglieder,
+  fehlendeRollen,
   brauchtAus,
   fertigAus,
   ladeSuites,
@@ -407,8 +410,8 @@ describe('neueSuite', () => {
     const suite = await neueSuite('Urlaub Ostsee', 'Ein Plan mit Haus und Kosten.', { rollen: ['rechercheur'] })
     await warten()
 
-    expect(methoden().slice(0, 3)).toEqual(['groups.list', 'groups.create', 'groups.send'])
-    const create = calls()[1]![1]
+    expect(methoden().slice(0, 4)).toEqual(['groups.list', 'profiles.list', 'groups.create', 'groups.send'])
+    const create = calls()[2]![1]
     const members = create.members as { member_id: string; profile: string }[]
 
     expect(create.room_id).toMatch(/^tikki-urlaub-ostsee-[0-9a-z]+$/)
@@ -417,14 +420,14 @@ describe('neueSuite', () => {
     expect(grundbesatzung.length).toBeGreaterThanOrEqual(2)
     expect(members.map(m => m.member_id)).toEqual([...grundbesatzung, 'rechercheur'])
     expect(members.every(m => m.profile)).toBe(true)
-    expect(calls()[2]![1]).toMatchObject({
+    expect(calls()[3]![1]).toMatchObject({
       room_id: create.room_id,
       payload: {
         text: 'thorsten: @raumleiter RAUM: Urlaub Ostsee\nZIEL: Ein Plan mit Haus und Kosten.\nBitte plane die erste Runde und melde dich im Raum.',
         thread_id: 'haupt'
       }
     })
-    expect((calls()[2]![1].event_id as string).startsWith('tikki:')).toBe(true)
+    expect((calls()[3]![1].event_id as string).startsWith('tikki:')).toBe(true)
     // The person stands in the new room before the brief goes out.
     expect($aktiveSuite.get()).toMatchObject({ id: create.room_id, titel: 'Urlaub Ostsee' })
     expect(suite?.id).toBe(create.room_id)
@@ -537,5 +540,39 @@ describe('verschmelzen', () => {
         .map(([, p]) => p.room_id)
     ).toEqual(['tikki-a-1', 'tikki-b-2'])
     expect($aktiveSuite.get()?.id).toBe(neu?.id)
+  })
+})
+
+describe('besetzbareMitglieder – was dieser Rechner besetzen kann', () => {
+  const katalog = [
+    { slug: 'raumleiter', name: 'Raumleiter', hermes_profil: 'raumleiter', im_raum_ab_start: true },
+    { slug: 'deine-ki', name: 'Deine KI', hermes_profil: 'deine-ki', im_raum_ab_start: true },
+    { slug: 'rechner', name: 'Rechner', hermes_profil: 'rechner', im_raum_ab_start: false },
+    {
+      slug: 'raumleiter-xai',
+      name: 'xAI',
+      hermes_profil: 'raumleiter-xai',
+      im_raum_ab_start: false,
+      klon_von: 'raumleiter'
+    }
+  ] as unknown as Parameters<typeof besetzbareMitglieder>[3]
+
+  it('lässt eine fehlende Nebenrolle weg und gibt einen fehlenden Klon an den Raumleiter zurück', () => {
+    const profile = new Set(['raumleiter', 'deine-ki'])
+
+    expect(besetzbareMitglieder(['rechner'], profile, 'raumleiter-xai', katalog).map(m => m.profile)).toEqual([
+      'raumleiter',
+      'deine-ki'
+    ])
+    expect(besetzbareMitglieder(['rechner'], null, 'raumleiter-xai', katalog).map(m => m.profile)).toEqual([
+      'raumleiter-xai',
+      'deine-ki',
+      'rechner'
+    ])
+  })
+
+  it('nennt die fehlende Grundbesatzung statt den Raum halb zu öffnen', () => {
+    expect(() => besetzbareMitglieder([], new Set(['raumleiter']), undefined, katalog)).toThrow(RollenFehlenFehler)
+    expect(fehlendeRollen(new Error("member 1 profile 'deine-ki' is not local to this gateway"))).toEqual(['deine-ki'])
   })
 })

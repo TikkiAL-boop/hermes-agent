@@ -142,6 +142,7 @@ interface AreaLabels {
     mitglieder: (n: number) => string
     neu: string
     raumdienstFehlt: string
+    rollenFehlen: (profile: string) => string
     verlauf: string
     wirdEroeffnet: string
     ziel: string
@@ -162,6 +163,8 @@ interface AreaLabels {
     taktEigener: string
     taktPlatzhalter: string
     dauerauftrag: string
+    leiter: string
+    leiterStandard: (modell: string) => string
     rollen: string
     uebungenGeplant: (n: number) => string
     uebungslaeufe: (n: number) => string
@@ -404,6 +407,8 @@ const de: AreaLabels = {
     neu: 'Neue Suite',
     raumdienstFehlt:
       'Der Raumdienst läuft auf diesem Backend nicht. Das Hermes-Gateway neu starten (tikki/werkzeuge/rollen-einrichten.sh richtet es ein).',
+    rollenFehlen: (profile: string) =>
+      `Auf diesem Rechner fehlen die Rollen ${profile}. Einmal tikki/werkzeuge/rollen-einrichten.sh ausführen, dann klappt die Suite.`,
     verlauf: 'Verlauf',
     wirdEroeffnet: 'Suite wird eröffnet …',
     ziel: 'Ziel',
@@ -423,6 +428,8 @@ const de: AreaLabels = {
     taktEigener: 'Eigener Takt …',
     taktPlatzhalter: 'z. B. alle 2 Stunden, montags 09:00, 0 7 * * *',
     dauerauftrag: 'Dauerauftrag',
+    leiter: 'Raumleiter-Modell',
+    leiterStandard: (modell: string) => `Standard (${modell})`,
     rollen: 'Bots von Anfang an am Tisch (Raumleiter und deine KI sitzen immer dort)',
     uebungenGeplant: n => (n > 1 ? `Dazu ${n - 1} Übungsläufe mit anderen Ansätzen, wenn Kapazität frei ist.` : ''),
     uebungslaeufe: n => (n === 1 ? '1 Übungslauf' : `${n} Übungsläufe`),
@@ -665,6 +672,8 @@ const en: AreaLabels = {
     neu: 'New suite',
     raumdienstFehlt:
       'The room service is not running on this backend. Restart the Hermes gateway (tikki/werkzeuge/rollen-einrichten.sh sets it up).',
+    rollenFehlen: (profile: string) =>
+      `The roles ${profile} are missing on this machine. Run tikki/werkzeuge/rollen-einrichten.sh once, then the suite opens.`,
     verlauf: 'History',
     wirdEroeffnet: 'Opening suite …',
     ziel: 'Goal',
@@ -684,6 +693,8 @@ const en: AreaLabels = {
     taktEigener: 'Custom schedule …',
     taktPlatzhalter: 'e.g. alle 2 Stunden, montags 09:00, 0 7 * * *',
     dauerauftrag: 'Standing order',
+    leiter: 'Room-lead model',
+    leiterStandard: (modell: string) => `Default (${modell})`,
     rollen: 'Bots at the table from the start (the room lead and your AI always sit there)',
     uebungenGeplant: n => (n > 1 ? `Plus ${n - 1} practice runs with other approaches when capacity allows.` : ''),
     uebungslaeufe: n => (n === 1 ? '1 practice run' : `${n} practice runs`),

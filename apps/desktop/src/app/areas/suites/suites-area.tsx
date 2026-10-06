@@ -6,7 +6,7 @@ import { Armchair, Bell, CheckCircle2, Loader2, Plus, Search } from '@/lib/icons
 import { cn } from '@/lib/utils'
 
 import { $uebungslaeufe } from '../admin/betrieb-store'
-import { rolle, ROLLEN } from '../admin/katalog'
+import { RAUMLEITER_KLONE, rolle, ROLLEN } from '../admin/katalog'
 import { areaLabels } from '../labels'
 
 import {
@@ -17,6 +17,7 @@ import {
   $suitesBrauchen,
   $suitesFehler,
   $suitesStatus,
+  fehlendeRollen,
   ladeSuites,
   neueSuite,
   oeffneSuite,
@@ -26,6 +27,15 @@ import {
 } from './store'
 import { SuiteRoom } from './suite-room'
 import { uebungsTeil } from './uebung'
+
+type SuiteLabels = ReturnType<typeof areaLabels>['suites']
+
+/** The one line a person reads when a room could not be opened or the list not loaded. */
+const fehlerzeile = (fehler: string, s: SuiteLabels): string => {
+  const rollen = fehlendeRollen(fehler)
+
+  return raumdienstFehlt(fehler) ? s.raumdienstFehlt : rollen.length ? s.rollenFehlen(rollen.join(', ')) : fehler
+}
 
 /** Practice rooms hang under their project's room; a practice room without one stands alone. */
 export function verlaufGruppen(suites: readonly Suite[]): { suite: Suite; uebungen: Suite[] }[] {
@@ -105,6 +115,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
   const [taktWahl, setTaktWahl] = useState('')
   const [eigenerTakt, setEigenerTakt] = useState('')
   const [rollen, setRollen] = useState<string[]>([])
+  const [leiter, setLeiter] = useState('')
   const [verbindeName, setVerbindeName] = useState('')
   const [verbindeFehler, setVerbindeFehler] = useState(false)
   const takt = taktWahl === EIGENER ? eigenerTakt.trim() : taktWahl
@@ -116,7 +127,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
       return
     }
 
-    await neueSuite(name, ziel, { rollen, takt: takt || undefined })
+    await neueSuite(name, ziel, { rollen, takt: takt || undefined, raumleiter: leiter || undefined })
     setName('')
     setZiel('')
     setTaktWahl('')
@@ -199,6 +210,26 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
               />
             )}
           </div>
+          {RAUMLEITER_KLONE.length > 0 && (
+            <label className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-[11px] text-(--tikki-tinte-weich)">{s.leiter}</span>
+              <select
+                aria-label={s.leiter}
+                className="tikki-feld py-1.5 text-sm"
+                data-suite-leiter=""
+                disabled={Boolean(entsteht)}
+                onChange={e => setLeiter(e.target.value)}
+                value={leiter}
+              >
+                <option value="">{s.leiterStandard(raumleiter?.modell.primary ?? '')}</option>
+                {RAUMLEITER_KLONE.map(k => (
+                  <option key={k.slug} value={k.slug}>
+                    {k.name} · {k.modell.primary}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <fieldset className="flex flex-wrap gap-1.5" data-suite-rollen="">
             <legend className="mb-1 text-[11px] text-(--tikki-tinte-weich)">{s.rollen}</legend>
             {WAEHLBARE_ROLLEN.map(r => (
@@ -227,6 +258,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
                 setName('')
                 setZiel('')
                 setRollen([])
+                setLeiter('')
               }}
               type="button"
             >
@@ -472,8 +504,8 @@ function SuitesLobby() {
           )}
           {status === 'fehler' && (
             <div className="tikki-glas my-2 p-3 text-sm" role="alert">
-              <p className="text-(--tikki-tinte)">{fehler && raumdienstFehlt(fehler) ? s.raumdienstFehlt : s.fehler}</p>
-              {fehler && !raumdienstFehlt(fehler) && (
+              <p className="text-(--tikki-tinte)">{fehler ? fehlerzeile(fehler, s) : s.fehler}</p>
+              {fehler && !raumdienstFehlt(fehler) && fehlendeRollen(fehler).length === 0 && (
                 <p className="mt-1 font-mono text-xs text-(--tikki-tinte-weich)">{fehler}</p>
               )}
               <button
@@ -516,7 +548,7 @@ function SuitesLobby() {
         <SuiteFenster nameFeld={nameFeld} suites={suites} />
         {fehler && status !== 'fehler' && (
           <p className="text-sm text-destructive" role="alert">
-            {fehler}
+            {fehlerzeile(fehler, s)}
           </p>
         )}
         <div className="max-w-md">

@@ -361,6 +361,60 @@ export function fehlertext(error: unknown): string {
 export const raumdienstFehlt = (error: unknown): boolean =>
   (error as { code?: number })?.code === 4123 || /worker is unavailable|driver is unavailable/i.test(fehlertext(error))
 
+/** The base crew is not set up on this machine: `rollen-einrichten.sh` has not run (or not for these roles). */
+export class RollenFehlenFehler extends Error {
+  constructor(readonly profile: readonly string[]) {
+    super(`Rollen fehlen auf diesem Rechner: ${profile.join(', ')}`)
+    this.name = 'RollenFehlenFehler'
+  }
+}
+
+/** The profiles a failed room creation misses – from our own check or from the backend's refusal. */
+export const fehlendeRollen = (error: unknown): string[] =>
+  error instanceof RollenFehlenFehler
+    ? [...error.profile]
+    : [...fehlertext(error).matchAll(/profile '([^']+)' is not local/g)].map(m => m[1]!)
+
+/** Profiles this gateway knows, or null when it cannot say (an older backend decides itself then). */
+async function bekannteProfile(): Promise<Set<string> | null> {
+  try {
+    const res = await anfrage<{ profiles?: Array<{ name: string }> }>('profiles.list', { include_sessions: false })
+
+    return Array.isArray(res?.profiles) ? new Set(res.profiles.map(p => p.name)) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The roster this machine can seat: chosen roles whose profile is missing stay away (the room still
+ * opens), a missing base-crew profile is an error worth reading, and a missing clone profile hands
+ * the lead back to the plain room lead.
+ */
+export function besetzbareMitglieder(
+  rollen: readonly string[],
+  profile: ReadonlySet<string> | null,
+  raumleiter?: string,
+  katalog: readonly KatalogRolle[] = KATALOG
+): Mitglied[] {
+  const klon = raumleiter && katalog.find(x => x.slug === raumleiter)
+  const leiter = profile && klon && !profile.has(klon.hermes_profil) ? undefined : raumleiter
+  const alle = raumMitglieder(rollen, katalog, leiter)
+
+  if (!profile) {
+    return alle
+  }
+
+  const grund = new Set(katalog.filter(r => r.im_raum_ab_start).map(r => r.slug))
+  const fehlen = alle.filter(m => grund.has(m.member_id) && !profile.has(m.profile)).map(m => m.profile)
+
+  if (fehlen.length) {
+    throw new RollenFehlenFehler(fehlen)
+  }
+
+  return alle.filter(m => profile.has(m.profile))
+}
+
 const alsSuite = (row: RaumZeile): Suite => ({
   id: row.room_id,
   titel: (row.name || '').trim() || row.room_id,
@@ -621,15 +675,17 @@ async function raumAnlegen(
     return { neu: false, suite: vorhanden }
   }
 
+  const profile = await bekannteProfile()
   const erzeugen = (leiter?: string) =>
     anfrage<{ room: RaumZeile }>('groups.create', {
       room_id: raumId(titel),
       name: titel,
-      members: raumMitglieder(rollen, KATALOG, leiter)
+      members: besetzbareMitglieder(rollen, profile, leiter)
     })
 
-  // A backend set up before the clones existed rejects the unknown profile: the room lead itself leads then.
-  const created = await (raumleiter ? erzeugen(raumleiter).catch(() => erzeugen()) : erzeugen())
+  // Without a profile list, a backend set up before the clones existed rejects the unknown profile:
+  // the room lead itself leads then.
+  const created = await (raumleiter && !profile ? erzeugen(raumleiter).catch(() => erzeugen()) : erzeugen(raumleiter))
 
   if (!created?.room?.room_id) {
     throw new Error('groups.create returned no room')
@@ -675,6 +731,8 @@ async function uebungenStarten(name: string, ziel: string, rollen: readonly stri
 export interface NeueSuiteOptionen extends Eroeffnung {
   /** Catalogue roles at the table from the start, besides the base crew. */
   rollen?: readonly string[]
+  /** Room-lead clone (catalogue `klon_von: raumleiter`) that leads the person's room; empty = the room lead itself. */
+  raumleiter?: string
   /** False opens the room on the gateway without walking into it (Vorzimmer handoff). */
   oeffnen?: boolean
 }
@@ -687,7 +745,7 @@ export interface NeueSuiteOptionen extends Eroeffnung {
 export async function neueSuite(
   name: string,
   ziel: string,
-  { oeffnen = true, rollen = [], ...eroeffnung }: NeueSuiteOptionen = {}
+  { oeffnen = true, rollen = [], raumleiter, ...eroeffnung }: NeueSuiteOptionen = {}
 ): Promise<Suite | undefined> {
   const titel = name.trim()
 
@@ -698,7 +756,7 @@ export async function neueSuite(
   $suiteEntsteht.set(titel)
 
   try {
-    const raum = await raumAnlegen(titel, rollen)
+    const raum = await raumAnlegen(titel, rollen, raumleiter)
 
     if (raum.neu) {
       $suites.set([raum.suite, ...$suites.get()])
@@ -719,7 +777,6 @@ export async function neueSuite(
     return raum.suite
   } catch (error) {
     $suitesFehler.set(fehlertext(error))
-    $suitesStatus.set($suites.get().length ? 'bereit' : 'fehler')
 
     return undefined
   } finally {

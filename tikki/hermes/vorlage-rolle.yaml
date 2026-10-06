@@ -112,6 +112,32 @@ plugins:
     - "gedaechtnis"
     - "pa"
 
+# Sprache (Hermes-Schlüssel aus hermes_cli/config_defaults.py: voice, stt, tts). Die App hört
+# über das Mikrofon des Rechners, auf dem sie läuft, und schickt die Aufnahme an das Backend
+# (/api/audio/transcribe); gesprochen wird mit dem hier gewählten TTS-Anbieter im Fenster der App.
+voice:
+  voice_chat_mode: "chained"       # Mikrofon → STT → Hermes → TTS (kein OpenAI-Live-Modell)
+  barge_in: true                   # Reinreden unterbricht die Stimme
+  stop_phrases: ["stopp", "stop"]  # beendet ein Sprachgespräch
+stt:
+  provider: "local"                # faster-whisper auf dem Backend-Rechner: hermes pm install --extra voice
+  language: "de"
+  local:
+    model: "small"                 # schnell genug für den Dialog; "medium"/"large-v3" genauer, langsamer
+    vad: true
+tts:
+  provider: "edge"                 # Microsoft Edge TTS, kostenlos, braucht Internet: hermes pm install --extra edge-tts
+  edge:
+    voice: "de-DE-KatjaNeural"     # weitere deutsche Stimmen: de-DE-ConradNeural, de-DE-SeraphinaMultilingualNeural
+  streaming:
+    min_len: 20
+  # Offline statt Edge – Piper (hermes pm install --extra piper, Stimme lädt beim ersten Mal):
+  #   provider: "piper"
+  #   piper: { voice: "de_DE-thorsten-high" }
+  # MLX-Kokoro oder eine andere Kommandozeile als eigener Anbieter (tts.providers.<name>: {type: command,
+  # command: "… {input_path} … {output_path}"}, tools/tts_command_provider.py; Doku
+  # website/docs/user-guide/features/voice-mode.md); xAI als zweiter Kanal: provider "xai" (XAI_API_KEY).
+
 # Unnötige Anzeige im Terminal abschalten.
 display:
   compact: true

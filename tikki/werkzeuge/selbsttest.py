@@ -10,6 +10,7 @@ Prüft jede Schicht einzeln und sagt, was fehlt – ohne je einen Schlüsselwert
     Gateway      das Host-Gateway läuft (fährt Räume, Takt und Daueraufträge)
     Schlüssel    für das Vorzimmer-Modell liegt mindestens ein Schlüssel (nur Namen)
     Anbieter     jeder Anbieter mit Schlüssel (providers.*) beantwortet GET /models
+    Sprache      stt.provider und tts.provider des Vorzimmers sind im Backend nutzbar (Hermes' eigene Auflösung)
     App          die gebaute Tikki-App wird gefunden (auf dem Mac auch in /Applications)
     Backend      `hermes serve` startet und beantwortet /api/status
 
@@ -218,6 +219,47 @@ def pruefe_schluessel(profile: Path) -> Punkt:
     return Punkt("Schlüssel", OK, "Vorzimmer hat: " + ", ".join(vorhanden))
 
 
+def pruefe_sprache(profile: Path, profil: str = "tikki") -> Punkt:
+    """Hört und spricht das Vorzimmer? ``stt``/``tts`` aus <profil>/config.yaml, aufgelöst wie Hermes
+    es beim Sprechen tut (``transcription_tools._get_provider``, ``tts_tool._select_builtin_engine``)
+    im Home des Profils. Prüfen heißt nicht installieren: Hermes' Importer würden ein fehlendes Extra
+    sonst nachziehen (``pm.ensure_import``), hier läuft er leer. Das Mikrofon nimmt die App auf
+    (Browser), ein Audiogerät am Backend ist darum nicht nötig."""
+    cfg = _config(profile / profil)
+    stt_cfg = cfg.get("stt") if isinstance(cfg.get("stt"), dict) else {}
+    tts_cfg = cfg.get("tts") if isinstance(cfg.get("tts"), dict) else {}
+    stt_gewollt = str(stt_cfg.get("provider") or "").lower().strip()
+    tts_gewollt = str(tts_cfg.get("provider") or "edge").lower().strip()
+    if not stt_gewollt:
+        return Punkt("Sprache", WARNUNG, f"kein stt.provider in {profil}/config.yaml → tikki/werkzeuge/rollen-einrichten.sh")
+
+    import pm
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from tools.transcription_tools import _get_provider
+    from tools.tts_tool import _select_builtin_engine
+
+    marke, nachziehen = set_hermes_home_override(profile / profil), pm.ensure_import
+    pm.ensure_import = lambda extra: None
+    try:
+        stt = _get_provider(stt_cfg)
+        engine, tts_fehler = _select_builtin_engine(tts_gewollt)
+    finally:
+        pm.ensure_import = nachziehen
+        reset_hermes_home_override(marke)
+
+    probleme = []
+    if stt == "none":
+        probleme.append(f"Spracheingabe {stt_gewollt} nicht nutzbar → " + (
+            "hermes pm install --extra voice" if stt_gewollt == "local" else "Schlüssel und SDK des Anbieters prüfen"))
+    if tts_fehler:
+        probleme.append("Sprachausgabe: " + str(json.loads(tts_fehler).get("error") or tts_fehler))
+    elif engine != tts_gewollt:
+        probleme.append(f"Sprachausgabe {tts_gewollt} fehlt, Hermes nimmt {engine}")
+    if probleme:
+        return Punkt("Sprache", WARNUNG, "; ".join(probleme))
+    return Punkt("Sprache", OK, f"hört mit {stt}, spricht mit {engine} (Sprache {stt_cfg.get('language') or 'auto'})")
+
+
 def pruefe_app() -> Punkt:
     from hermes_cli.desktop_identity import desktop_app_name
     from hermes_cli.main_desktop import _desktop_packaged_executable
@@ -277,7 +319,8 @@ def alle(home: Path, *, app: bool, backend: bool, hermes: str) -> list[Punkt]:
     profile = home / "profiles"
     punkte = [
         pruefe_zweig(), pruefe_rollen(profile), pruefe_vorzimmer(home), pruefe_gedaechtnis(profile),
-        pruefe_takt(profile), pruefe_schluessel(profile), pruefe_anbieter(profile), pruefe_gateway(),
+        pruefe_takt(profile), pruefe_schluessel(profile), pruefe_anbieter(profile), pruefe_sprache(profile),
+        pruefe_gateway(),
     ]
     if app:
         punkte.append(pruefe_app())

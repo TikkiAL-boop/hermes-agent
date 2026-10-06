@@ -34,6 +34,9 @@ Alles darin ist gegen den Code geprüft; Vermutungen sind als solche markiert.
   der Raumleiter aus dem Vergleich.
 - **Gedächtnis** (4.9): Honcho als Anbieter, dazu das Tikki-Plugin `gedaechtnis` (TencentDB je
   Mensch + System, RAG je Mensch, Hindsight optional, Werkzeug `nachschlagen`).
+- **Sprache** (4.2c): Mikrofon im Raum, Vorlesen in Raum und Übersicht mit Tikkis Stimme – alles über
+  Hermes' eigene Sprachpfade (Composer-Dictation, `playSpeechText`), Systemstimme nur als Rückfall;
+  Konfiguration in der Rollenvorlage, Extras `voice` + `edge-tts` über `installieren.sh`.
 - **Abos und Skills** (4.10, 4.11): Claude, Codex, Grok, Gemini, NotebookLM ohne Zusatzkosten;
   der ganze ClawHub-Katalog (OpenClaw) durchsuchbar, Skills auf Abruf.
 - **Noch nicht gebaut**: PA-Modi im Vorzimmer, Nutzer-Login (heute fest `thorsten`),
@@ -395,8 +398,8 @@ Verträge: `tests/tikki/test_pa.py`, `tikki/briefing.test.ts`, `tikki/auftraege.
   bzw. `WA_BRIDGE_TOKEN`; Skill `whatsapp-hermes` beschreibt die API), wartende und zuletzt
   besuchte Suiten, und gibt alles als `TAGESBRIEFING …` an Tikki (SOUL: vortragen wie eine
   Assistentin am Morgen). **Vorlesen**: Schalter neben dem Knopf; jede fertige Antwort im Vorzimmer
-  wird mit der Systemstimme (de-DE) gesprochen, ohne Sprach-Anbieter. Geprüft im Durchlauf: die
-  Nachricht landet im Chat und öffnet eine Sitzung.
+  wird gesprochen – seit 06.10. mit Tikkis Stimme über Hermes-TTS, Systemstimme (de-DE) nur als
+  Rückfall (4.2c). Geprüft im Durchlauf: die Nachricht landet im Chat und öffnet eine Sitzung.
 - **Update-Wächter** (`tikki/update-waechter.ts`, `tikki/hermes-basis.json`): vergleicht beim Start
   und alle sechs Stunden den Hermes-Stand, auf dem tikki-app aufsetzt, mit `NousResearch/hermes-agent`
   `main` (GitHub-API, ohne Schlüssel) und zeigt im Vorzimmer die Karte „Tikki-Update verfügbar“
@@ -406,6 +409,70 @@ Verträge: `tests/tikki/test_pa.py`, `tikki/briefing.test.ts`, `tikki/auftraege.
   begehbar); unten die **Grundbesatzung** (Raumleiter, Gedächtnis, Wachhalter, Prüfer, Suche); links
   „Am Tisch“ die Bots, die gerade arbeiten. Räume „verbinden“ inhaltlich: das Gedächtnis-Plugin
   spiegelt jeden Raum in die RAG-Sammlung, `nachschlagen` liest also raumübergreifend.
+
+### 4.2c Sprache – Tikki spricht und hört zu (06.10.)
+
+Kein eigenes Sprach-Backend: Tikki nutzt Hermes' Sprachtechnik, so wie der Hermes-Composer sie
+nutzt. Gemeinsamer Kern `areas/tikki/stimme.ts`, verwendet von Übersicht und Raum.
+
+**Hören (Raum).** Im Eingabefeld des Raums (`suite-room.tsx::Sprechen`) sitzt neben „Senden“ ein
+Mikrofon-Knopf (`data-suite-mikro="idle|recording|transcribing"`, `aria-label`, kein `title`).
+Er benutzt den Dictation-Hook des Hermes-Composers (`app/chat/composer/hooks/use-voice-recorder.ts`
+→ `use-mic-recorder.ts`): ein Druck startet die Aufnahme mit dem Mikrofon des App-Rechners
+(MediaRecorder, Mikrofon-Freigabe über `hermesDesktop.requestMicrophoneAccess`), der nächste Druck,
+Stille oder die Kappe (120 s) beendet sie; `stimme.ts::transkribieren` schickt die Aufnahme wie der
+Composer: zuerst **provider-direkt** (`lib/voice-client-direct.ts`, wenn `/api/audio/voice-config`
+einen Cloud-STT mit Schlüssel meldet – openai/groq/xai/elevenlabs/deepinfra), sonst **Relay**
+`POST /api/audio/transcribe` (`hermes_cli/web_routers/audio.py`) → `tools/voice_mode.transcribe_recording`
+→ `tools/transcription_tools.transcribe_audio` mit `stt.provider` des Profils. Das Transkript landet im
+Textfeld (angehängt, nie gesendet); Fehler stehen als Zeile `role="alert"` über dem Feld (zusätzlich
+Hermes' Toast). **Nicht** `voice.record`/`voice.toggle` (`tui_gateway/methods_voice.py`): die nehmen am
+Mikrofon des *Backend*-Rechners auf (TUI-Pfad, `hermes_cli.voice.start_continuous`) und verlangen
+`/voice on` – falsch, sobald die App ein entferntes Backend bedient.
+
+**Sprechen (Raum und Übersicht).** `stimme.ts::sprich(text)` ruft Hermes' `lib/voice-playback.ts::
+playSpeechText(text, {source: 'read-aloud'})` – dieselbe Leiter wie „Antworten vorlesen“ im Composer:
+provider-direkt (openai/elevenlabs/deepinfra mit Schlüssel) → WebSocket `/api/audio/speak-stream`
+(PCM, Satz für Satz) → `POST /api/audio/speak` (Base64-Data-URL). Synthese mit dem `tts.provider` des
+**aktiven Profils** (Tikki); abgespielt wird im App-Fenster. Spielt Hermes nichts (kein Anbieter, kein
+Extra, kein Backend), spricht die Browser-`speechSynthesis` (de-DE) – reine Entscheidung
+`stimmeWaehlen`. Eine Stimme zur Zeit (Kette), `vorlesenStopp()` stoppt beide und verwirft Wartendes
+(sonst würde die Systemstimme den von Hermes abgebrochenen Satz zu Ende sprechen). Ebenfalls nicht
+`voice.tts`: das spricht über den Lautsprecher des Backends.
+
+- **Raum**: Schalter `data-suite-vorlesen` im Raumkopf (Schlüssel `tikki.raum.vorlesen`). Ist er an,
+  wird jede **neue** Nachricht des Raumleiters vorgelesen – reine Funktion `neuVorzulesen(nachrichten,
+  abSeq)`: nur `von === 'raumleiter'`, nicht `(pass)`, keine Systemnachrichten, nichts vor der Marke;
+  beim ersten Laden des Verlaufs wird nur die Marke gesetzt (Verlauf wird nie nachgelesen), die Marke
+  wandert auch bei ausgeschaltetem Schalter mit.
+- **Übersicht**: `briefing.ts::startVorleser` spricht jede fertige Antwort über `sprich` (vorher nur
+  `speechSynthesis`); Schalter `data-vorzimmer-vorlesen`, Schlüssel `tikki.briefing.vorlesen`. Ein eigenes
+  Mikrofon braucht die Übersicht nicht: der eingebettete Hermes-Composer hat es (`composer/voice-fan.tsx`
+  → `onDictate` → derselbe `useVoiceRecorder`; `use-prompt-actions/index.ts::transcribeVoiceAudio`), es
+  funktioniert, sobald `stt.enabled` und ein STT-Anbieter im Profil `tikki` nutzbar ist; daneben der
+  Sprachgesprächs-Knopf (`voice.voice_chat_mode: chained`, STT → Turn → TTS, Reinreden stoppt die Stimme).
+
+**Konfiguration** (`tikki/hermes/vorlage-rolle.yaml`, nur Hermes-Schlüssel aus `config_defaults.py`):
+`voice.voice_chat_mode: chained`, `barge_in`, `stop_phrases: [stopp, stop]`; `stt.provider: local`
+(faster-whisper auf dem Backend, `language: de`, `local.model: small`, VAD); `tts.provider: edge`
+(`de-DE-KatjaNeural`, kostenlos, braucht Internet). Im Kommentar der Weg zu Piper
+(`de_DE-thorsten-high`, offline) und zu MLX-Kokoro als Kommando-Anbieter (`tts.providers.<name>`,
+`type: command`). **Was der Mac braucht**: `hermes pm install --extra voice --extra edge-tts` –
+beides sind Hermes-Extras, *nicht* in der Grundinstallation (`pyproject.toml`: `edge-tts = false`,
+`faster-whisper = false`); `installieren.sh` Schritt 8/9 „Sprache“ versucht es (Fehler = Hinweis,
+`--ohne-sprache` überspringt). Ohne die Extras: Mikrofon meldet den Hermes-Fehler, Vorlesen fällt auf
+die Systemstimme zurück. Mikrofon-Freigabe für Tikki.app in macOS-Systemeinstellungen → Datenschutz.
+`selbsttest.py` Punkt **Sprache**: löst `stt`/`tts` des Profils `tikki` mit Hermes' eigener Auflösung
+(`transcription_tools._get_provider`, `tts_tool._select_builtin_engine`) im Profil-Home auf, ohne
+nachzuinstallieren (`pm.ensure_import` läuft dabei leer).
+
+**Latenzziel**: erste Silbe < 1,5 s nach Ende der Aufnahme (Prüfbericht Schritt 4). Mit Edge-TTS
+hängt es am Netz (~0,5–1 s je Satz), mit `small`-Whisper auf dem Mac ~1 s je 5 s Aufnahme; Piper
+lokal ~0,2 s je Satz. Gemessen ist nichts – im Container gibt es weder Mikrofon noch Lautsprecher.
+Tests: `areas/tikki/stimme.test.ts` (Stimmwahl, Reihenfolge und Stopp, `neuVorzulesen`),
+`suites/suite-room.test.tsx` (Mikro-Knopf, Schalter, nur neue Raumleiter-Worte), Python
+`tests/tikki/test_selbsttest.py` (Punkt Sprache: fehlendes Whisper mit Installationsweg, Edge-Fehltext,
+kein Nachinstallieren). Ungeprüft: echte Aufnahme, echte Stimme, Mikrofon-Freigabe im gepackten Mac-Build.
 
 ### 4.2 Branding
 
@@ -1048,6 +1115,7 @@ Bereich Browser), Post, Terminal.
 | `9788cc0a` | Recherche-Skills für alle Rollen (YouTube-Transkripte, arXiv, Nachrichtenlage, Wiki) |
 | `b1ee94ba` | Design „Gelbes Glas“: Theme gelb, Glas-Leiste, Lobby nach Entwurf, Vorzimmer-Rahmen mit Karten, Raum und Admin im Glas |
 | (dieser) | Vorzimmer: Browserzeile, Tagesbriefing mit Vorlesen, Update-Wächter; Lobby-Hervorhebung; Raum mit Türen und Grundbesatzung; Schlüssel einlesen |
+| (06.10.) | Sprache: Mikrofon und Vorlesen im Raum, Hermes-TTS in der Übersicht, `stimme.ts`, Sprach-Schlüssel in der Rollenvorlage, Installer-Schritt und Selbsttest-Punkt „Sprache“ |
 
 Dieses Dokument: `tikki/HANDOVER.md`. Bitte bei jedem größeren Schritt fortschreiben,
 damit die nächste Übergabe wieder vollständig ist.

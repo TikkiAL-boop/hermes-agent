@@ -14,13 +14,15 @@
 #   5. API-Schlüssel aus ~/Downloads/cv.cv.txt (oder --schluessel DATEI), Werte bleiben unsichtbar
 #   6. Abos prüfen (Claude, Codex, Grok, Gemini, NotebookLM) – ändert nichts
 #   7. Raumleiter und Wachhalter als Dienst, damit Takt und Rundgang Neustarts überleben
-#   8. Selbsttest (tikki/werkzeuge/selbsttest.py)
+#   8. Sprache: Hermes' Sprach-Extras (faster-whisper fürs Hören, Edge-TTS fürs Sprechen)
+#   9. Selbsttest (tikki/werkzeuge/selbsttest.py)
 #
 # Optionen:
 #   --schluessel DATEI  Schlüsseldatei (Standard: ~/Downloads/cv.cv.txt, falls vorhanden)
 #   --ohne-kern         Schritt 1 auslassen (Hermes samt `hermes`-Befehl ist schon installiert)
 #   --ohne-app          die Desktop-App nicht bauen (nur Kern und Rollen)
 #   --ohne-dienste      Raumleiter/Wachhalter nicht als Dienst installieren
+#   --ohne-sprache      Sprach-Extras nicht installieren (Tikki tippt und liest mit der Systemstimme)
 #   --nur-pruefen       nichts installieren, nur den Selbsttest laufen lassen
 #
 # Erneut ausführen ist gefahrlos: jeder Schritt erkennt, was schon da ist.
@@ -33,6 +35,7 @@ SCHLUESSEL=""
 KERN=1
 APP=1
 DIENSTE=1
+SPRACHE=1
 NUR_PRUEFEN=0
 
 while [ $# -gt 0 ]; do
@@ -41,8 +44,9 @@ while [ $# -gt 0 ]; do
     --ohne-kern) KERN=0 ;;
     --ohne-app) APP=0 ;;
     --ohne-dienste) DIENSTE=0 ;;
+    --ohne-sprache) SPRACHE=0 ;;
     --nur-pruefen) NUR_PRUEFEN=1 ;;
-    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -91,7 +95,7 @@ fi
 
 # 1) Hermes-Kern über den offiziellen Installer. Er holt origin/tikki-app, legt lokale
 #    Änderungen als Stash ab (nichts geht verloren) und baut die App mit dem Namen Tikki.
-schritt "1/8  Kern, Abhängigkeiten und App bauen (dauert beim ersten Mal 10–20 Minuten)"
+schritt "1/9  Kern, Abhängigkeiten und App bauen (dauert beim ersten Mal 10–20 Minuten)"
 if [ "$KERN" = 1 ]; then
   INSTALL_ARGS=(--dir "$REPO" --branch "$ZWEIG" --non-interactive)
   [ "$APP" = 1 ] && INSTALL_ARGS+=(--include-desktop)
@@ -106,7 +110,7 @@ gut "Kern bereit: $HERMES"
 
 # 2) Auf dem Mac die gebaute App nach /Applications. Spätere `hermes update` erneuern diese
 #    Kopie selbst (der Kern findet sie über productName = Tikki).
-schritt "2/8  Tikki-App"
+schritt "2/9  Tikki-App"
 if [ "$APP" = 0 ]; then
   hinweis "übersprungen (--ohne-app)"
 elif [ "$(uname -s)" = Darwin ]; then
@@ -126,15 +130,15 @@ else
 fi
 
 # 3) Rollen
-schritt "3/8  Rollen, SOULs, Gedächtnis-Plugin, Skills, Cronjobs"
+schritt "3/9  Rollen, SOULs, Gedächtnis-Plugin, Skills, Cronjobs"
 "$HIER/werkzeuge/rollen-einrichten.sh"
 
 # 4) Vorzimmer
-schritt "4/8  Vorzimmer = Profil tikki"
+schritt "4/9  Vorzimmer = Profil tikki"
 "$HERMES" profile use tikki >/dev/null && gut "aktives Profil: tikki"
 
 # 5) Schlüssel – nie Werte ausgeben
-schritt "5/8  API-Schlüssel"
+schritt "5/9  API-Schlüssel"
 if [ -z "$SCHLUESSEL" ] && [ -f "$HOME/Downloads/cv.cv.txt" ]; then SCHLUESSEL="$HOME/Downloads/cv.cv.txt"; fi
 if [ -n "$SCHLUESSEL" ]; then
   "$HIER/werkzeuge/schluessel-einlesen.sh" "$SCHLUESSEL"
@@ -143,12 +147,12 @@ else
 fi
 
 # 6) Abos – nur prüfen
-schritt "6/8  Abos prüfen"
+schritt "6/9  Abos prüfen"
 "$HIER/werkzeuge/abos-einrichten.sh" || hinweis "Abo-Prüfung meldet Lücken – Anmeldung: tikki/werkzeuge/abos-einrichten.sh --anmelden"
 
 # 7) Dienst: EIN Host-Gateway aus dem Hauptprofil bedient alle Rollen (Hermes erlaubt pro Rechner
 #    nur eines; es fährt die Räume, die Cronjobs aller Profile und das Vorzimmer-Postfach).
-schritt "7/8  Tikki-Gateway als Dienst (fährt Räume und Daueraufträge rund um die Uhr)"
+schritt "7/9  Tikki-Gateway als Dienst (fährt Räume und Daueraufträge rund um die Uhr)"
 if [ "$DIENSTE" = 0 ]; then
   hinweis "übersprungen (--ohne-dienste)"
 elif AUSGABE="$("$HERMES" -p default gateway install 2>&1)"; then
@@ -166,7 +170,20 @@ fi
 "$HERMES" -p default config set bot_mode.turn_wait_seconds 1830 >/dev/null 2>&1 \
   || hinweis "bot_mode.turn_wait_seconds konnte nicht gesetzt werden"
 
-# 8) Selbsttest
+# 8) Sprache: Hermes' eigene Extras – `voice` (faster-whisper + Audio für stt.provider local) und
+#    `edge-tts` (tts.provider edge, Vorgabe in hermes/vorlage-rolle.yaml). Scheitert es (kein Netz,
+#    Plattform ohne Wheel), bleibt alles andere nutzbar: die App tippt, liest mit der Systemstimme.
+schritt "8/9  Sprache (hören mit faster-whisper, sprechen mit Edge-TTS)"
+if [ "$SPRACHE" = 0 ]; then
+  hinweis "übersprungen (--ohne-sprache)"
+elif AUSGABE="$("$HERMES" pm install --extra voice --extra edge-tts 2>&1)"; then
+  gut "Sprach-Extras installiert (voice, edge-tts); offline: hermes pm install --extra piper"
+else
+  hinweis "Sprach-Extras nicht installiert – später: hermes pm install --extra voice --extra edge-tts"
+  printf '%s\n' "$AUSGABE" | sed 's/^/    /' | tail -8
+fi
+
+# 9) Selbsttest
 selbsttest
 echo
 if [ "$(uname -s)" = Darwin ] && [ "$APP" = 1 ]; then

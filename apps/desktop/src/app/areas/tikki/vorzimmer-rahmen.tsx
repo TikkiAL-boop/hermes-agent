@@ -34,14 +34,12 @@ import {
   briefingGemerkt,
   briefingText,
   neueWhatsApps,
-  setVorlesenAktiv,
   startBriefingAutomatik,
   startVorleser,
-  ungeleseneMails,
-  vorlesenAktiv,
-  vorlesenStopp
+  ungeleseneMails
 } from './briefing'
 import { $modellsuche, $modellsucheStatus, ladeModellsuche, modellZeile } from './modelle'
+import { setVorlesenAktiv, VORLESEN_UEBERSICHT, vorlesenAktiv, vorlesenStopp } from './stimme'
 import { $updateStand, startUpdateWaechter } from './update-waechter'
 
 const tikki = rolle('tikki')
@@ -281,7 +279,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   const auftraegeStatus = useStore($auftraegeStatus)
   const modellsuche = useStore($modellsuche)
   const modellsucheStatus = useStore($modellsucheStatus)
-  const [vorlesen, setVorlesen] = useState(vorlesenAktiv)
+  const [vorlesen, setVorlesen] = useState(() => vorlesenAktiv(VORLESEN_UEBERSICHT))
   const [sammle, setSammle] = useState(false)
 
   // The lists are the backend's truth: read them once the gateway is open, and again whenever it reopens.
@@ -337,7 +335,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   const vorlesenUmschalten = () => {
     const an = !vorlesen
     setVorlesen(an)
-    setVorlesenAktiv(an)
+    setVorlesenAktiv(VORLESEN_UEBERSICHT, an)
 
     if (!an) {
       vorlesenStopp()

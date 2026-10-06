@@ -127,6 +127,60 @@ def test_anbieter_warnt_bei_404_mit_handlungshinweis_und_zeigt_nie_den_schluesse
     assert _Modelle.gesehen == [f"/v1/models Bearer {geheim}"]
 
 
+def _sprach_profil(tmp_path: Path, stt: str = "local", tts: str = "edge") -> Path:
+    profil = tmp_path / "profiles" / "tikki"
+    profil.mkdir(parents=True, exist_ok=True)
+    (profil / "config.yaml").write_text(
+        f"stt:\n  provider: \"{stt}\"\n  language: \"de\"\ntts:\n  provider: \"{tts}\"\n", encoding="utf-8"
+    )
+    return profil
+
+
+def test_sprache_meldet_fehlendes_whisper_mit_installationsweg_und_installiert_nichts(tmp_path: Path, monkeypatch) -> None:
+    import pm
+    from tools import transcription_tools, tts_tool
+
+    _sprach_profil(tmp_path)
+    monkeypatch.setattr(transcription_tools, "_HAS_FASTER_WHISPER", False)
+    monkeypatch.setattr(tts_tool, "_importable", lambda importer: True)
+    nachgezogen = []
+    stub = lambda extra: nachgezogen.append(extra)  # noqa: E731
+    monkeypatch.setattr(pm, "ensure_import", stub)
+
+    punkt = selbsttest.pruefe_sprache(tmp_path / "profiles")
+
+    assert punkt.stand == selbsttest.WARNUNG
+    assert "Spracheingabe local" in punkt.text and "hermes pm install --extra voice" in punkt.text
+    assert "Sprachausgabe" not in punkt.text
+    assert nachgezogen == []
+    assert pm.ensure_import is stub  # der Leerlauf gilt nur während der Prüfung
+
+
+def test_sprache_ist_in_ordnung_wenn_whisper_und_edge_da_sind_und_nennt_den_edge_fehltext_sonst(tmp_path: Path, monkeypatch) -> None:
+    from tools import transcription_tools, tts_tool
+
+    _sprach_profil(tmp_path)
+    monkeypatch.setattr(transcription_tools, "_HAS_FASTER_WHISPER", True)
+    monkeypatch.setattr(tts_tool, "_importable", lambda importer: True)
+
+    punkt = selbsttest.pruefe_sprache(tmp_path / "profiles")
+    assert punkt.stand == selbsttest.OK
+    assert "hört mit local" in punkt.text and "spricht mit edge" in punkt.text and "Sprache de" in punkt.text
+
+    monkeypatch.setattr(tts_tool, "_importable", lambda importer: False)
+    monkeypatch.setattr(tts_tool, "_check_neutts_available", lambda: False)
+    punkt = selbsttest.pruefe_sprache(tmp_path / "profiles")
+    assert punkt.stand == selbsttest.WARNUNG
+    assert "Sprachausgabe" in punkt.text and "edge-tts" in punkt.text
+
+
+def test_sprache_warnt_ohne_konfigurierten_anbieter_und_steht_im_gesamtlauf(tmp_path: Path) -> None:
+    punkte = {p.name: p for p in selbsttest.alle(tmp_path, app=False, backend=False, hermes="hermes")}
+
+    assert punkte["Sprache"].stand == selbsttest.WARNUNG
+    assert "stt.provider" in punkte["Sprache"].text
+
+
 def test_anbieter_ist_in_ordnung_wenn_models_antwortet_und_steht_im_gesamtlauf(tmp_path: Path, modell_server) -> None:
     _Modelle.status, _Modelle.gesehen = 200, []
     _anbieter_profil(tmp_path, modell_server.server_port, "key_" + "z" * 40)

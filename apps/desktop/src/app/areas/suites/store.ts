@@ -369,11 +369,17 @@ export class RollenFehlenFehler extends Error {
   }
 }
 
-/** The profiles a failed room creation misses – from our own check or from the backend's refusal. */
-export const fehlendeRollen = (error: unknown): string[] =>
-  error instanceof RollenFehlenFehler
-    ? [...error.profile]
-    : [...fehlertext(error).matchAll(/profile '([^']+)' is not local/g)].map(m => m[1]!)
+/** The profiles a failed room creation misses – from our own check (also once stored as text) or from the backend's refusal. */
+export const fehlendeRollen = (error: unknown): string[] => {
+  if (error instanceof RollenFehlenFehler) {
+    return [...error.profile]
+  }
+
+  const text = fehlertext(error)
+  const eigene = /^Rollen fehlen auf diesem Rechner: (.+)$/.exec(text)
+
+  return eigene ? eigene[1]!.split(', ') : [...text.matchAll(/profile '([^']+)' is not local/g)].map(m => m[1]!)
+}
 
 /** Profiles this gateway knows, or null when it cannot say (an older backend decides itself then). */
 async function bekannteProfile(): Promise<Set<string> | null> {

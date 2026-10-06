@@ -574,5 +574,6 @@ describe('besetzbareMitglieder – was dieser Rechner besetzen kann', () => {
   it('nennt die fehlende Grundbesatzung statt den Raum halb zu öffnen', () => {
     expect(() => besetzbareMitglieder([], new Set(['raumleiter']), undefined, katalog)).toThrow(RollenFehlenFehler)
     expect(fehlendeRollen(new Error("member 1 profile 'deine-ki' is not local to this gateway"))).toEqual(['deine-ki'])
+    expect(fehlendeRollen(new RollenFehlenFehler(['deine-ki', 'tikki']).message)).toEqual(['deine-ki', 'tikki'])
   })
 })

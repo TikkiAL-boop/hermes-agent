@@ -635,9 +635,23 @@ Profil ab, die App fällt auf den Raumleiter zurück. `ROLLEN` (ohne Klone) ist 
 Auswahl-Chips, Bots und Regeln; Admin → Modelle zeigt die Klone mit. Neu angelegte Profile bekommen
 immer die Katalogmodelle (`hermes profile create` kopiert sonst die config des aktiven Profils).
 
+**Raumleiter-Modell je Raum wählbar, Rollen vorab geprüft (06.10.).** Das Formular „Suite
+erstellen“ hat den Wähler „Raumleiter-Modell“ (`data-suite-leiter`, die Klone aus
+`RAUMLEITER_KLONE`; Standard = Raumleiter mit seiner Kette) → `neueSuite(..., { raumleiter })` →
+`raumAnlegen(titel, rollen, klon)`. Vor `groups.create` fragt die App `profiles.list` ab und baut
+die Besatzung mit `besetzbareMitglieder(rollen, profile, klon)`: eine gewählte Nebenrolle ohne
+Profil bleibt weg (der Raum geht trotzdem auf), ein Klon ohne Profil gibt an den Raumleiter zurück,
+eine fehlende Grundbesatzung wirft `RollenFehlenFehler` – die Lobby zeigt dann
+`suites.rollenFehlen` mit dem Befehl `rollen-einrichten.sh` statt des Backend-Satzes
+„member 1 profile 'x' is not local to this gateway“ (`fehlendeRollen()` versteht beide; `fehlerzeile`
+in `suites-area.tsx`). Anlass: „Suite erstellen geht nicht“ auf einem Mac, dem eine Rolle fehlte;
+vorher stand nur „Suites konnten nicht geladen werden“ da, und ein Fehler beim Anlegen stellte die
+geladene Liste auf „fehler“. Live geprüft (Harness `shots-fehlt.mjs`): Profil `uebersetzer` beiseite →
+Raum öffnet mit Tikki/Raumleiter(xai)/Deine KI ohne Übersetzer, Übungsläufe mit den Klonen; Profil
+`deine-ki` beiseite → kein Raum, Meldung mit Befehl.
+
 Offen an den Räumen: Vorschau von Dateien direkt im Output-Screen, Nutzerrechte je Raum,
-Raum-Postfach, ein Klon je Raum frei wählbar in der App (heute: Hauptraum = Raumleiter,
-Übungsläufe = Klone nach Ansatz).
+Raum-Postfach.
 
 ### 4.8 Dauerbetrieb: Takt, Türen, Wachhalter, Übungsläufe (`tikki/werkzeuge/suite_takt.py`)
 

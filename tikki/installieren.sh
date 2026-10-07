@@ -25,7 +25,9 @@
 #   --ohne-sprache      Sprach-Extras nicht installieren (Tikki tippt und liest mit der Systemstimme)
 #   --nur-pruefen       nichts installieren, nur den Selbsttest laufen lassen
 #
-# Erneut ausführen ist gefahrlos: jeder Schritt erkennt, was schon da ist.
+# Erneut ausführen ist gefahrlos: jeder Schritt erkennt, was schon da ist. Schritt 1 holt den
+# neuesten Stand des Zweigs; danach startet dieses Skript sich selbst aus dem neuen Stand neu
+# (--ohne-kern), damit die Schritte 2–9 mit dem frischen Code laufen und nicht mit dem alten.
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -99,7 +101,8 @@ schritt "1/9  Kern, Abhängigkeiten und App bauen (dauert beim ersten Mal 10–2
 if [ "$KERN" = 1 ]; then
   INSTALL_ARGS=(--dir "$REPO" --branch "$ZWEIG" --non-interactive)
   [ "$APP" = 1 ] && INSTALL_ARGS+=(--include-desktop)
-  bash "$REPO/scripts/install.sh" "${INSTALL_ARGS[@]}" || abbruch "Kern-Installation fehlgeschlagen (Log: ~/.hermes/logs/install.log)."
+  bash "$REPO/scripts/install.sh" "${INSTALL_ARGS[@]}" \
+    || abbruch "Kern-Installation fehlgeschlagen – die Zeilen mit ✗ oben sagen, welches Paket (bei einem toten Download: später erneut, Hermes nimmt dann den Spiegel)."
 else
   hinweis "übersprungen (--ohne-kern)"
 fi
@@ -107,6 +110,16 @@ export PATH="$HOME/.local/bin:$PATH"
 HERMES="$(hermes_bin)"
 [ -n "$HERMES" ] || abbruch "hermes-Befehl nicht gefunden."
 gut "Kern bereit: $HERMES"
+if [ "$KERN" = 1 ] && [ -z "${TIKKI_INSTALL_NEUSTART:-}" ]; then
+  # Der Checkout ist jetzt auf dem neuesten Stand – ab hier zählt der neue Installer.
+  NEU=(--ohne-kern)
+  [ "$APP" = 1 ] || NEU+=(--ohne-app)
+  [ "$DIENSTE" = 1 ] || NEU+=(--ohne-dienste)
+  [ "$SPRACHE" = 1 ] || NEU+=(--ohne-sprache)
+  [ -z "$SCHLUESSEL" ] || NEU+=(--schluessel "$SCHLUESSEL")
+  gut "Code auf Stand $(git -C "$REPO" rev-parse --short=12 HEAD) – Installer startet aus dem neuen Stand neu"
+  TIKKI_INSTALL_NEUSTART=1 exec bash "$REPO/tikki/installieren.sh" "${NEU[@]}"
+fi
 
 # 2) Auf dem Mac die gebaute App nach /Applications. Spätere `hermes update` erneuern diese
 #    Kopie selbst (der Kern findet sie über productName = Tikki).
@@ -116,15 +129,24 @@ if [ "$APP" = 0 ]; then
 elif [ "$(uname -s)" = Darwin ]; then
   GEBAUT="$(ls -dt "$REPO"/apps/desktop/release/mac*/Tikki.app 2>/dev/null | head -1 || true)"
   [ -n "$GEBAUT" ] || abbruch "keine gebaute Tikki.app unter apps/desktop/release."
+  # Eine laufende App wird nicht ersetzt – also beenden wir sie (sauber, per AppleScript) und warten.
+  # Sonst bleibt still die alte App in /Applications stehen, und der Mensch wundert sich.
   if pgrep -f "/Applications/Tikki.app/Contents/MacOS/Tikki" >/dev/null 2>&1; then
-    hinweis "Tikki läuft gerade – bitte beenden, dann dieses Skript erneut starten."
-  else
-    rm -rf /Applications/Tikki.app.neu
-    ditto "$GEBAUT" /Applications/Tikki.app.neu
-    rm -rf /Applications/Tikki.app
-    mv /Applications/Tikki.app.neu /Applications/Tikki.app
-    gut "/Applications/Tikki.app"
+    hinweis "Tikki läuft – wird für den Austausch beendet"
+    osascript -e 'tell application "Tikki" to quit' >/dev/null 2>&1 || true
+    for _ in $(seq 1 30); do
+      pgrep -f "/Applications/Tikki.app/Contents/MacOS/Tikki" >/dev/null 2>&1 || break
+      sleep 1
+    done
   fi
+  if pgrep -f "/Applications/Tikki.app/Contents/MacOS/Tikki" >/dev/null 2>&1; then
+    abbruch "Tikki lässt sich nicht beenden – bitte die App schließen und tikki/installieren.sh --ohne-kern erneut starten."
+  fi
+  rm -rf /Applications/Tikki.app.neu
+  ditto "$GEBAUT" /Applications/Tikki.app.neu
+  rm -rf /Applications/Tikki.app
+  mv /Applications/Tikki.app.neu /Applications/Tikki.app
+  gut "/Applications/Tikki.app ersetzt (Stand $(git -C "$REPO" rev-parse --short=12 HEAD))"
 else
   gut "gebaut unter apps/desktop/release (Start: hermes desktop)"
 fi

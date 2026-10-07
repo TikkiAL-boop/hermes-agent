@@ -292,12 +292,24 @@ def pruefe_app() -> Punkt:
     gebaut = _desktop_packaged_executable(REPO / "apps" / "desktop")
     if gebaut is None:
         return Punkt("App", FEHLER, f"keine gebaute {name}-App unter apps/desktop/release")
+    code_zeit = int(_git("log", "-1", "--format=%ct") or 0)
     if sys.platform == "darwin":
-        installiert = [p for p in (Path("/Applications"), Path.home() / "Applications") if (p / f"{name}.app").is_dir()]
+        installiert = [p / f"{name}.app" for p in (Path("/Applications"), Path.home() / "Applications") if (p / f"{name}.app").is_dir()]
         if not installiert:
             return Punkt("App", WARNUNG, f"gebaut, aber nicht in /Applications: {gebaut.parents[2]}")
-        return Punkt("App", OK, f"{installiert[0] / (name + '.app')}")
+        exe = installiert[0] / "Contents" / "MacOS" / name
+        if app_ist_aelter(exe.stat().st_mtime if exe.is_file() else 0, code_zeit):
+            return Punkt("App", FEHLER, f"{installiert[0]} ist älter als der Code (Stand {time.strftime('%d.%m. %H:%M', time.localtime(code_zeit))})"
+                         " → tikki/installieren.sh --ohne-kern (Tikki wird dafür beendet)")
+        return Punkt("App", OK, f"{installiert[0]}")
+    if app_ist_aelter(gebaut.stat().st_mtime, code_zeit):
+        return Punkt("App", FEHLER, f"{gebaut} ist älter als der Code → tikki/installieren.sh")
     return Punkt("App", OK, str(gebaut))
+
+
+def app_ist_aelter(app_zeit: float, code_zeit: float) -> bool:
+    """Eine App, die vor dem letzten Commit gebaut wurde, kann den Code nicht enthalten."""
+    return bool(code_zeit) and app_zeit < code_zeit
 
 
 def _freier_port() -> int:

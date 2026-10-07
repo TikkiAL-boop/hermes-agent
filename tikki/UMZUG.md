@@ -102,6 +102,14 @@ Räume, Gedächtnis und Modelle auf dem Hauptrechner.
 
 ## 6. Aktualisieren, nicht neu installieren
 
+**Der eine Weg, der immer stimmt:** `~/.hermes/hermes-agent/tikki/installieren.sh`. Er holt den
+Zweig, baut Kern und App, **beendet eine laufende Tikki-App und ersetzt sie in /Applications**,
+richtet die Rollen nach und endet mit dem Selbsttest. Zwei Fallen, die es vorher gab (07.10.
+behoben): lief Tikki während der Installation, blieb still die alte App stehen (jetzt wird sie
+beendet, sonst bricht der Installer hörbar ab), und die Schritte nach dem Code-Holen liefen noch
+mit dem alten Skript (jetzt startet der Installer sich aus dem neuen Stand neu). Der Selbsttest
+meldet eine App, die älter ist als der Code, als Fehler.
+
 - **Immer** `~/.hermes/hermes-agent/tikki/werkzeuge/tikki-update.sh` (= `hermes update --branch
   tikki-app`). Ein nacktes `hermes update` ist gesperrt (`updates.auto_switch_parked_branch: false`).
 - Neue Hermes-Version hereinholen: `tikki/werkzeuge/hermes-aktualisieren.sh` (Merge, Tests, Rollen

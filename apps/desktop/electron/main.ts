@@ -500,6 +500,7 @@ import { createSshTeardownTracker } from './ssh-teardown'
 import { createStreamThrottle } from './stream-throttle'
 import { installSystemCaTrust } from './system-ca'
 import { registerTerminalIpc } from './terminal-ipc'
+import { TikkiMailService } from './tikki-mail'
 import { nativeOverlayWidth as computeNativeOverlayWidth, titleBarOverlayOptions } from './titlebar-overlay-width'
 import {
   backgroundMaterialFor,
@@ -1077,7 +1078,7 @@ const BOOT_FAKE_STEP_MS = (() => {
   return Math.max(120, raw)
 })()
 
-const APP_NAME: string = IDENTITY_APP_NAME || process.env.HERMES_DESKTOP_APP_NAME || 'Hermes'
+const APP_NAME: string = IDENTITY_APP_NAME || process.env.HERMES_DESKTOP_APP_NAME || app.getName()
 const HUD_WINDOW_TITLE = `${APP_NAME} HUD`
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
@@ -2676,7 +2677,7 @@ async function waitForUpdateToFinish() {
       rememberLog(`[updates] detached update finished with manual action (branch ${result.branch}): ${result.message}`)
       dialog.showMessageBox({
         type: 'warning',
-        title: 'Hermes update',
+        title: 'Tikki update',
         message: 'The update finished, but needs one more step',
         detail: result.message
       })
@@ -2692,7 +2693,7 @@ async function waitForUpdateToFinish() {
       void dialog
         .showMessageBox({
           type: 'error',
-          title: 'Hermes update',
+          title: 'Tikki update',
           message: "Hermes couldn't finish updating",
           detail:
             "You're still on the previous version and can keep using it. Try the update again, or open the update log to report the problem.\n\n" +
@@ -13581,7 +13582,7 @@ function spawnSecondaryWindow({
     height: SESSION_WINDOW_MIN_HEIGHT,
     minWidth: SESSION_WINDOW_MIN_WIDTH,
     minHeight: SESSION_WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -13683,7 +13684,7 @@ function spawnBrowserWindow(tabId) {
     height: BROWSER_WINDOW_HEIGHT,
     minWidth: BROWSER_WINDOW_MIN_WIDTH,
     minHeight: BROWSER_WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -13785,7 +13786,7 @@ function createInstanceWindow(
     ...nextInstanceBounds(source),
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -14869,7 +14870,7 @@ function createWindow() {
     ...computeWindowOptions(savedWindowState, screen.getAllDisplays()),
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     // Frameless title bar on every platform so the renderer can paint the
     // "hide sidebar" button (and other left-side titlebar tools) flush with
     // the top edge — matching the macOS layout where the traffic lights sit
@@ -15831,6 +15832,34 @@ ipcMain.handle('hermes:connection-config:test', async (_event, payload) => testD
 // and re-encodes every stored secret (see applySecretStorageEncryption).
 ipcMain.handle('hermes:secret-storage:get', async () => ({ on: secretStoragePolicy().on }))
 ipcMain.handle('hermes:secret-storage:set', async (_event: any, on: any) => applySecretStorageEncryption(on === true))
+
+// ── Tikki Post (mail) IPC ───────────────────────────────────────────────────
+// The mail client's main-process half (tikki-mail.ts). Credentials go through
+// the same secret store as gateway tokens and never reach the renderer; every
+// call below is a plain request/response over IMAP or SMTP.
+const tikkiMailStorePath = () => path.join(app.getPath('userData'), 'tikki-mail.json')
+const tikkiMail = new TikkiMailService({
+  decrypt: decryptDesktopSecret,
+  encrypt: value => encryptDesktopSecret(value),
+  log: rememberLog,
+  readStoreText: () => fs.readFileSync(tikkiMailStorePath(), 'utf8'),
+  writeStoreText: (text: string) => {
+    fs.mkdirSync(path.dirname(tikkiMailStorePath()), { recursive: true })
+    fs.writeFileSync(tikkiMailStorePath(), text, { mode: 0o600 })
+  }
+})
+
+ipcMain.handle('tikki:mail:status', () => tikkiMail.status())
+ipcMain.handle('tikki:mail:login', (_event, input) => tikkiMail.login(input))
+ipcMain.handle('tikki:mail:logout', () => tikkiMail.logout())
+ipcMain.handle('tikki:mail:mailboxes', () => tikkiMail.mailboxes())
+ipcMain.handle('tikki:mail:list', (_event, mailbox, limit) => tikkiMail.list(String(mailbox), Number(limit) || 50))
+ipcMain.handle('tikki:mail:read', (_event, mailbox, uid) => tikkiMail.read(String(mailbox), Number(uid)))
+ipcMain.handle('tikki:mail:seen', (_event, mailbox, uid, seen) =>
+  tikkiMail.setSeen(String(mailbox), Number(uid), seen === true)
+)
+ipcMain.handle('tikki:mail:remove', (_event, mailbox, uid) => tikkiMail.remove(String(mailbox), Number(uid)))
+ipcMain.handle('tikki:mail:send', (_event, input) => tikkiMail.send(input))
 
 // ── v2 connection registry IPC (multi-source) ───────────────────────────────
 // Storage-level CRUD for named agent sources. Routing/pooling consumption of

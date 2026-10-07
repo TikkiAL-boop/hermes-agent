@@ -1,4 +1,20 @@
 <p align="center">
+  <img src="apps/desktop/assets/icon.png" alt="Tikki" width="160">
+</p>
+
+# Tikki
+
+**Tikki ist die persönliche Assistentin der Familie: eine App, in der Hermes, ein Browser, das Postfach und ein Terminal zusammen wohnen.**
+
+- Unten läuft [Hermes Agent](https://github.com/NousResearch/hermes-agent) unverändert (MIT-Lizenz, Nous Research). Skills, Werkzeuge, Gedächtnis, Gateway: alles bleibt, Updates von Upstream passen weiter.
+- Obendrauf liegt die Tikki-Schicht: Name und Icon (`apps/desktop/product-identity.cjs`, `apps/desktop/src/i18n/brand.ts`), die vier Bereiche **Tikki · Browser · Post · Terminal** und später die Räume mit Raumleiter und Bot-Team.
+- Läuft lokal auf dem Mac Studio und als Web-Oberfläche auf tikki.team.
+
+Branch `tikki-app` ist der Arbeitsstand, `main` folgt Upstream.
+
+---
+
+<p align="center">
   <img src="assets/banner.png" alt="Hermes Agent" width="100%">
 </p>
 

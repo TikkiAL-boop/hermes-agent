@@ -1,0 +1,143 @@
+# Tikki – Vorlage für ein Hermes-Rollenprofil
+# ---------------------------------------------------------------------------
+# Diese Datei wird von werkzeuge/rollen-einrichten.sh pro Rolle eingelesen,
+# mit Port, Modellen und Werkzeugen aus rollen/KATALOG.json gefüllt und als
+# ~/.hermes/profiles/<slug>/config.yaml geschrieben.
+#
+# Die Schlüssel entsprechen den echten Hermes-Konfigurationsschlüsseln
+# (siehe cli-config.yaml.example, hermes_cli/config_defaults.py,
+# website/docs/user-guide/features/api-server.md, website/docs/integrations/providers.md).
+#
+# Keine Schlüssel oder Passwörter in dieser Datei. Alle Geheimnisse kommen
+# ausschließlich aus Umgebungsvariablen (XAI_API_KEY, CURSOR_API_KEY, API_SERVER_KEY).
+# ---------------------------------------------------------------------------
+
+# Hauptmodell der Rolle. Wird pro Rolle ersetzt (modell.primary aus dem Katalog:
+# "anbieter/modell" -> provider: anbieter, default: modell).
+model:
+  provider: "xai"
+  default: "grok-4.7"
+
+# Ersatzkette, wenn das Hauptmodell nicht antwortet (429/503/Verbindungsfehler).
+# Wird pro Rolle ersetzt (modell.fallback aus dem Katalog).
+fallback_providers:
+  - provider: "cursor"
+    model: "claude-opus-5.5"
+
+# Eigene OpenAI-kompatible Anbieter. Der Schlüsselname (cursor, xai) ist zugleich
+# der Wert, den model.provider und fallback_providers[].provider verwenden.
+# Felder laut Hermes: base_url (Alias: api), key_env (Alias: api_key_env), api_mode
+# (Alias: transport), default_model, models, context_length, extra_headers, extra_body.
+providers:
+  cursor:
+    # ACHTUNG: base_url muss vor dem ersten Einsatz gegen die aktuelle
+    # Cursor-Dokumentation geprüft werden – hier nur als Vorgabe eingetragen.
+    base_url: "https://api.cursor.com/v1"
+    key_env: "CURSOR_API_KEY"
+    api_mode: "chat_completions"
+  xai:
+    # xAI ist in Hermes bereits als eingebauter Anbieter bekannt (XAI_API_KEY).
+    # Dieser Eintrag legt den Endpunkt ausdrücklich fest, damit alle Profile
+    # dieselbe Adresse nutzen, und schadet nicht, wenn der eingebaute greift.
+    base_url: "https://api.x.ai/v1"
+    key_env: "XAI_API_KEY"
+    api_mode: "chat_completions"
+  lokal:
+    # Eigener Modellserver im Haus (llama.cpp, vLLM, MLX, Ollama – alles mit
+    # OpenAI-kompatibler Schnittstelle). Adresse je Rechner anpassen; der Schlüssel
+    # ist meist beliebig, muss aber gesetzt sein (LOKAL_API_KEY in der .env).
+    # Hermes verlangt ein Kontextfenster von mindestens 64k Token: den Server so
+    # starten (llama.cpp -c 65536, vLLM --max-model-len 65536, Ollama
+    # OLLAMA_CONTEXT_LENGTH=65536) und, wenn Hermes es nicht selbst erkennt,
+    # model.context_length: 65536 setzen. Kleiner startet Hermes gar nicht erst.
+    base_url: "http://127.0.0.1:8080/v1"
+    key_env: "LOKAL_API_KEY"
+    api_mode: "chat_completions"
+
+# Updates: `hermes update` darf den Checkout nie von tikki-app auf main umschalten
+# (Hermes würde das bei fehlendem Kanal-Eintrag still tun und Tikki entfernen).
+updates:
+  auto_switch_parked_branch: false
+
+# Räume: alle Räume teilen den Raumleiter, Turns je Profil laufen nacheinander. Hermes'
+# Standard (120 s Wartezeit) ließe den zweiten Raum still scheitern; eine halbe Stunde
+# deckt Takt und Wachhalter in vielen Räumen ab.
+bot_mode:
+  turn_wait_seconds: 1830
+
+# Freigaben für gefährliche Befehle: manual | smart | off.
+# "smart" lässt einen Hilfsprüfer risikoarme Befehle automatisch freigeben.
+approvals:
+  mode: "smart"
+
+# Werkzeuge pro Oberfläche. Wird pro Rolle mit "werkzeuge" aus dem Katalog gefüllt.
+# Eine leere Liste bedeutet: keine Werkzeuge (z. B. Tikki im Vorzimmer).
+# Gültige Namen: toolsets.py (terminal, file, web, browser, delegation, todo, cronjob, …).
+platform_toolsets:
+  api_server: []
+  cli: []
+
+# OpenAI-kompatibler HTTP-Dienst dieser Rolle. Der Port kommt aus dem Katalog.
+# Der Bearer-Schlüssel wird NICHT hier gesetzt, sondern als API_SERVER_KEY in
+# ~/.hermes/profiles/<slug>/.env (Hermes verlangt ihn auch für 127.0.0.1).
+# Alternativ anerkannt: gateway.api_server.{port,host} – wird auf extra.* gespiegelt.
+platforms:
+  api_server:
+    enabled: true
+    extra:
+      host: "127.0.0.1"
+      port: 8650
+
+# Delegation (nur für den Raumleiter relevant; für andere Rollen unschädlich).
+# max_concurrent_children: Standard 10, ohne Obergrenze – der Raumleiter holt bis zu 50
+# Bots gleichzeitig an den Tisch (große Recherche-Pipelines).
+delegation:
+  max_concurrent_children: 50
+  max_spawn_depth: 1
+
+# Gedächtnis: Honcho ist der eine externe Gedächtnis-Anbieter jedes Tikki-Profils
+# (Hermes erlaubt genau einen je Profil). Ein Workspace „tikki“ für das System, ein
+# Peer je Mensch, ein AI-Peer je Rolle, eine Honcho-Sitzung je Suite (siehe
+# vorlage-honcho.json). Ohne HONCHO_API_KEY bzw. baseUrl bleibt das Plugin inaktiv.
+# Weitere Speicher (TencentDB Agent Memory, RAG) kommen als Werkzeuge dazu, nicht
+# als zweiter Anbieter – siehe HANDOVER.md, Abschnitt Gedächtnis.
+memory:
+  provider: "honcho"
+
+# Tikki-Plugins (Hermes lädt Plugins nur, wenn sie hier stehen). „gedaechtnis“ spiegelt
+# jede Runde in TencentDB und die Wissenssammlung des Menschen und gibt das Werkzeug
+# „nachschlagen“ (tikki/plugins/gedaechtnis/, von rollen-einrichten.sh verlinkt).
+plugins:
+  enabled:
+    - "gedaechtnis"
+    - "pa"
+
+# Sprache (Hermes-Schlüssel aus hermes_cli/config_defaults.py: voice, stt, tts). Die App hört
+# über das Mikrofon des Rechners, auf dem sie läuft, und schickt die Aufnahme an das Backend
+# (/api/audio/transcribe); gesprochen wird mit dem hier gewählten TTS-Anbieter im Fenster der App.
+voice:
+  voice_chat_mode: "chained"       # Mikrofon → STT → Hermes → TTS (kein OpenAI-Live-Modell)
+  barge_in: true                   # Reinreden unterbricht die Stimme
+  stop_phrases: ["stopp", "stop"]  # beendet ein Sprachgespräch
+stt:
+  provider: "local"                # faster-whisper auf dem Backend-Rechner: hermes pm install --extra voice
+  language: "de"
+  local:
+    model: "small"                 # schnell genug für den Dialog; "medium"/"large-v3" genauer, langsamer
+    vad: true
+tts:
+  provider: "edge"                 # Microsoft Edge TTS, kostenlos, braucht Internet: hermes pm install --extra edge-tts
+  edge:
+    voice: "de-DE-KatjaNeural"     # weitere deutsche Stimmen: de-DE-ConradNeural, de-DE-SeraphinaMultilingualNeural
+  streaming:
+    min_len: 20
+  # Offline statt Edge – Piper (hermes pm install --extra piper, Stimme lädt beim ersten Mal):
+  #   provider: "piper"
+  #   piper: { voice: "de_DE-thorsten-high" }
+  # MLX-Kokoro oder eine andere Kommandozeile als eigener Anbieter (tts.providers.<name>: {type: command,
+  # command: "… {input_path} … {output_path}"}, tools/tts_command_provider.py; Doku
+  # website/docs/user-guide/features/voice-mode.md); xAI als zweiter Kanal: provider "xai" (XAI_API_KEY).
+
+# Unnötige Anzeige im Terminal abschalten.
+display:
+  compact: true

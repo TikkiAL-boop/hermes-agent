@@ -1,6 +1,8 @@
 import { MessagePrimitive, useAuiState } from '@assistant-ui/react'
 import { type FC, useState } from 'react'
 
+import { BotErgebnisse } from '@/app/areas/tikki/bot-ergebnisse'
+import { botErgebnisse } from '@/app/areas/tikki/rollen'
 import { MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
 import { messageContentText } from '@/components/assistant-ui/thread/content'
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
@@ -64,9 +66,27 @@ export const SystemMessage: FC = () => {
   const text = useAuiState(s => messageContentText(s.message.content))
   const asyncResult = useAuiState(s => s.message.metadata.custom?.asyncResult)
   const processResult = useAuiState(s => s.message.metadata.custom?.asyncResultKind === 'process')
+  const asyncResultSource = useAuiState(s => s.message.metadata.custom?.asyncResultSource)
 
   if (!text) {
     return null
+  }
+
+  // Tikki: a delegation that came back is the bots reporting to the room. Only
+  // an envelope whose task boundaries parse gets the per-bot view; anything
+  // else stays on the collapsed Hermes row.
+  const ergebnisse = typeof asyncResultSource === 'string' ? botErgebnisse(asyncResultSource) : undefined
+
+  if (ergebnisse && ergebnisse.length > 0) {
+    return (
+      <MessagePrimitive.Root
+        className="w-full min-w-0 self-start"
+        data-role="system"
+        data-slot="aui_system-message-root"
+      >
+        <BotErgebnisse ergebnisse={ergebnisse} text={text} />
+      </MessagePrimitive.Root>
+    )
   }
 
   if (processResult || (typeof asyncResult === 'string' && asyncResult)) {

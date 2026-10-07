@@ -23,6 +23,14 @@
   transition: grid-template-rows 200ms cubic-bezier(0.4, 0, 0.2, 1) 70ms;
 }
 
+/* The explicit `visibility: visible` above beats the `visibility: hidden` a
+   keep-alive pane layer inherits, so an inactive layer's status rows painted
+   through whatever was on top of it (the Tikki area shell: the workspace strip
+   showed inside Post and Admin). Hidden pane wins. */
+[data-pane-hidden] .status-drawer-content {
+  visibility: hidden;
+}
+
 .status-drawer[data-collapsed] .status-drawer-content {
   visibility: hidden;
   opacity: 0.078;

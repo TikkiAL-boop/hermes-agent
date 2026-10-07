@@ -1,0 +1,253 @@
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { I18nProvider } from '@/i18n'
+
+const rpc = vi.fn()
+const sprich = vi.fn(async () => 'hermes' as const)
+
+vi.mock('@/store/gateway', () => ({ activeGateway: () => ({ request: (...args: unknown[]) => rpc(...args) }) }))
+vi.mock('../tikki/stimme', async importOriginal => ({
+  ...((await importOriginal()) as object),
+  sprich: (...args: unknown[]) => sprich(...(args as []))
+}))
+
+const { SuiteRoom } = await import('./suite-room')
+const { $suites } = await import('./store')
+const { $gatewayState } = await import('@/store/session')
+const { VORLESEN_RAUM } = await import('../tikki/stimme')
+
+const MITGLIEDER = [
+  { member_id: 'raumleiter', profile: 'raumleiter', handle: 'raumleiter', display_name: 'Raumleiter' },
+  { member_id: 'rechercheur', profile: 'rechercheur', handle: 'rechercheur', display_name: 'Rechercheur' }
+]
+
+const suite = { id: 'tikki-urlaub-1', titel: 'Urlaub', mitglieder: MITGLIEDER, geaendert: 1, letzteSeq: 5 }
+
+const events = [
+  {
+    seq: 1,
+    event_id: 'e1',
+    kind: 'message.user',
+    actor: { kind: 'user', id: 'tikki' },
+    payload: { text: 'thorsten: @raumleiter RAUM: Urlaub', thread_id: 'haupt' },
+    created_at: 1_790_000_000
+  },
+  {
+    seq: 2,
+    event_id: 'e2',
+    kind: 'turn.started',
+    actor: { kind: 'gateway', id: 'gw' },
+    payload: { member_id: 'raumleiter' },
+    created_at: 1_790_000_001
+  },
+  {
+    seq: 3,
+    event_id: 'e3',
+    kind: 'message.member',
+    actor: { kind: 'member', id: 'rechercheur' },
+    payload: { member_id: 'rechercheur', text: '(pass)' },
+    created_at: 1_790_000_002
+  },
+  {
+    seq: 4,
+    event_id: 'e4',
+    kind: 'message.member',
+    actor: { kind: 'member', id: 'raumleiter' },
+    payload: {
+      member_id: 'raumleiter',
+      text: 'STAND: Plane.\nAUFGABEN:\n- [x] Küste wählen\n- [ ] Haus suchen\nBRAUCHE: Dein Budget.'
+    },
+    created_at: 1_790_000_003
+  },
+  {
+    seq: 5,
+    event_id: 'e5',
+    kind: 'turn.started',
+    actor: { kind: 'gateway', id: 'gw' },
+    payload: { member_id: 'rechercheur' },
+    created_at: 1_790_000_004
+  }
+]
+
+afterEach(cleanup)
+beforeEach(() => {
+  rpc.mockReset()
+  sprich.mockClear()
+  events.length = 5
+  window.localStorage.removeItem(VORLESEN_RAUM)
+  $gatewayState.set('open')
+  $suites.set([suite, { id: 'tikki-kueste-2', titel: 'Küste', mitglieder: MITGLIEDER, geaendert: 0, letzteSeq: 0 }])
+
+  rpc.mockImplementation(async (method: string, params: Record<string, unknown>) => {
+    switch (method) {
+      case 'groups.log': {
+        const seite = events.filter(e => e.seq > Number(params.since_seq ?? 0))
+
+        return { events: seite, cursor: seite.at(-1)?.seq ?? params.since_seq, latest_seq: 5, has_more: false }
+      }
+
+      case 'groups.state':
+        return {
+          room: suite,
+          driver_status: {
+            running: true,
+            pending_actions: [
+              {
+                kind: 'approval',
+                member_id: 'rechercheur',
+                task_id: 't1',
+                execution_generation: 2,
+                request_id: 'r1',
+                approval: { tool: 'terminal', command: 'ls' }
+              }
+            ]
+          }
+        }
+
+      case 'groups.send':
+        return { event: { ...events[0], seq: 6, payload: params.payload } }
+
+      default:
+        return {}
+    }
+  })
+})
+
+const mount = () =>
+  render(
+    <I18nProvider configClient={null} initialLocale="de">
+      <SuiteRoom suite={suite} />
+    </I18nProvider>
+  )
+
+describe('SuiteRoom', () => {
+  it('shows who said what, hides (pass), reads the walls from the room lead, and shows who thinks', async () => {
+    const { container } = mount()
+
+    await waitFor(() => expect(container.querySelectorAll('[data-suite-nachricht]').length).toBe(2))
+    const [m, r] = [...container.querySelectorAll('[data-suite-nachricht]')]
+
+    expect(m?.getAttribute('data-suite-nachricht')).toBe('mensch')
+    expect(m?.textContent).toContain('thorsten')
+    expect(m?.textContent).toContain('@raumleiter RAUM: Urlaub')
+    expect(r?.textContent).toContain('Raumleiter')
+    expect(container.textContent).not.toContain('(pass)')
+    expect(container.querySelector('[data-suite-denkt]')?.getAttribute('data-suite-denkt')).toBe('rechercheur')
+    expect(container.querySelector('[data-suite-arbeitet="true"]')?.getAttribute('data-suite-stuhl')).toBe(
+      'rechercheur'
+    )
+    expect([...container.querySelectorAll('[data-suite-todos] li')].map(li => li.textContent)).toEqual([
+      'Küste wählen',
+      'Haus suchen'
+    ])
+    expect(container.querySelector('[data-suite-brauche]')?.textContent).toContain('Dein Budget.')
+    expect(container.querySelector('[data-suite-freigaben]')?.textContent).toContain('Rechercheur')
+  })
+
+  it('sends what the person types with the name in front and to the room lead, and answers an approval with groups.approve', async () => {
+    const { container, getByLabelText, getByRole } = mount()
+
+    await waitFor(() => expect(container.querySelector('[data-suite-freigaben]')).toBeTruthy())
+
+    fireEvent.change(getByLabelText(/In den Raum sprechen/), { target: { value: '2000 Euro' } })
+    fireEvent.keyDown(getByLabelText(/In den Raum sprechen/), { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(rpc).toHaveBeenCalledWith(
+        'groups.send',
+        expect.objectContaining({
+          room_id: 'tikki-urlaub-1',
+          payload: { text: 'thorsten: @raumleiter 2000 Euro', thread_id: 'haupt' }
+        })
+      )
+    )
+
+    fireEvent.click(getByRole('button', { name: 'Einmal erlauben' }))
+
+    await waitFor(() =>
+      expect(rpc).toHaveBeenCalledWith('groups.approve', {
+        room_id: 'tikki-urlaub-1',
+        member_id: 'rechercheur',
+        task_id: 't1',
+        execution_generation: 2,
+        choice: 'once',
+        request_id: 'r1'
+      })
+    )
+  })
+
+  it('offers a microphone next to send and a read-aloud switch in the header that is remembered', async () => {
+    const { container, getByLabelText } = mount()
+
+    await waitFor(() => expect(container.querySelector('[data-suite-log]')).toBeTruthy())
+
+    const mikro = container.querySelector('[data-suite-mikro]')
+    expect(mikro?.getAttribute('data-suite-mikro')).toBe('idle')
+    expect(mikro?.getAttribute('aria-label')).toBe('Mikrofon: sprechen statt tippen')
+    expect(mikro?.hasAttribute('title')).toBe(false)
+
+    const schalter = getByLabelText(/Raumleiter vorlesen/)
+    expect(schalter.getAttribute('data-suite-vorlesen')).toBe('aus')
+    fireEvent.click(schalter)
+    expect(schalter.getAttribute('data-suite-vorlesen')).toBe('an')
+    expect(schalter.getAttribute('aria-pressed')).toBe('true')
+    expect(window.localStorage.getItem(VORLESEN_RAUM)).toBe('1')
+    fireEvent.click(schalter)
+    expect(schalter.getAttribute('data-suite-vorlesen')).toBe('aus')
+    expect(window.localStorage.getItem(VORLESEN_RAUM)).toBeNull()
+  })
+
+  it('reads only what the room lead says after the room was opened, never its history', async () => {
+    window.localStorage.setItem(VORLESEN_RAUM, '1')
+    const { container, getByLabelText } = mount()
+
+    await waitFor(() => expect(container.querySelectorAll('[data-suite-nachricht]').length).toBe(2))
+    expect(sprich).not.toHaveBeenCalled()
+
+    events.push(
+      {
+        seq: 6,
+        event_id: 'e6',
+        kind: 'message.member',
+        actor: { kind: 'member', id: 'rechercheur' },
+        payload: { member_id: 'rechercheur', text: 'Drei Häuser gefunden.' },
+        created_at: 1_790_000_005
+      },
+      {
+        seq: 7,
+        event_id: 'e7',
+        kind: 'message.member',
+        actor: { kind: 'member', id: 'raumleiter' },
+        payload: { member_id: 'raumleiter', text: 'STAND: Drei Häuser, ich sortiere.' },
+        created_at: 1_790_000_006
+      }
+    )
+    // Sending reloads the log right away (the poll would, two seconds later).
+    fireEvent.change(getByLabelText(/In den Raum sprechen/), { target: { value: 'Weiter' } })
+    fireEvent.keyDown(getByLabelText(/In den Raum sprechen/), { key: 'Enter' })
+
+    await waitFor(() => expect(sprich).toHaveBeenCalledTimes(1))
+    expect(sprich).toHaveBeenCalledWith('STAND: Drei Häuser, ich sortiere.')
+  })
+
+  it('speaks through a door into another room, addressed to its room lead', async () => {
+    const { container, getByLabelText, getByRole } = mount()
+
+    await waitFor(() => expect(container.querySelector('[data-suite-log]')).toBeTruthy())
+    fireEvent.click(getByRole('button', { name: 'Türen' }))
+    fireEvent.click(container.querySelector('[data-suite-tuer="tikki-kueste-2"]')!)
+    fireEvent.change(getByLabelText('Nachricht an den anderen Raum'), { target: { value: 'Bitte den Stand' } })
+    fireEvent.click(getByRole('button', { name: 'Durch die Tür schicken' }))
+
+    await waitFor(() =>
+      expect(rpc).toHaveBeenCalledWith(
+        'groups.send',
+        expect.objectContaining({
+          room_id: 'tikki-kueste-2',
+          payload: { text: '[Tür aus „Urlaub“] @raumleiter Bitte den Stand', thread_id: 'haupt' }
+        })
+      )
+    )
+  })
+})

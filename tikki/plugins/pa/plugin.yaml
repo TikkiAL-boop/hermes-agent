@@ -1,0 +1,9 @@
+name: pa
+version: 1.0.0
+description: "Tikkis persönliche Assistenz: Postfach lesen und beantworten (auch in Daueraufträgen ohne App), das Briefing sammeln, lokale Modelle finden und den Ressourcen-Stand des MR-Bots."
+author: "Tikki"
+provides_tools:
+  - post
+  - briefing_sammeln
+  - lokale_modelle
+  - ressourcen_stand

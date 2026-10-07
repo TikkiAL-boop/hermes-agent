@@ -22,7 +22,8 @@ from gateway import hosted_rooms_common as common
 from gateway.hosted_rooms_common import compact_json
 
 
-MAX_DISCUSSION_MEMBERS = 6
+# Tikki: raised from 6 so a room can seat a whole crew; the storage ceiling is hosted_rooms.MAX_MEMBERS (128).
+MAX_DISCUSSION_MEMBERS = 128
 MIN_DISCUSSION_MEMBERS = 2
 MAX_DISCUSSION_ROUNDS = 3
 MAX_DISCUSSION_MESSAGES = 10
@@ -48,7 +49,7 @@ _MEMBER_CONTROL_FRAME_RE = re.compile(
 _MEMBER_CONTROL_FRAME_RELABEL = "[member-quoted "
 _TURN_ID_RE = re.compile(
     r"^d(?P<source>[1-9][0-9]*)\.r(?P<round>[0-2])\."
-    r"p(?P<position>[0-5])\.s(?P<seen>[1-9][0-9]*)\."
+    r"p(?P<position>[0-9]|[1-9][0-9]{1,2})\.s(?P<seen>[1-9][0-9]*)\."
     r"m(?P<member>[0-9a-f]{24})$")
 
 _TARGET_FIELDS = {
@@ -251,7 +252,7 @@ def _validate_member(raw: Any, index: int, known_profiles: set[str]) -> Discussi
 
 
 def validate_roster(value: Any, *, local_profiles: Iterable[str]) -> tuple[DiscussionMember, ...]:
-    """Validate a frozen 2-6 member roster of profiles on this gateway."""
+    """Validate a frozen roster (MIN..MAX_DISCUSSION_MEMBERS) of profiles on this gateway."""
     if not isinstance(value, list):
         raise DiscussionValidationError("members must be a list")
     if not MIN_DISCUSSION_MEMBERS <= len(value) <= MAX_DISCUSSION_MEMBERS:

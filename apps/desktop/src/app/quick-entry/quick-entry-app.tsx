@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef } from 'react'
 
+import { BRAND_NAME } from '@/i18n/brand'
 import { isSubmitEnter } from '@/lib/ime'
 import {
   initialQuickComposerState,
@@ -136,7 +137,7 @@ export function QuickEntryApp() {
                 dispatch({ type: 'dismiss' })
               }
             }}
-            placeholder={state.connected ? 'Ask Hermes…' : 'Not connected — open Hermes to reconnect'}
+            placeholder={state.connected ? `Ask ${BRAND_NAME}…` : `Not connected — open ${BRAND_NAME} to reconnect`}
             ref={inputRef}
             spellCheck={false}
             style={{

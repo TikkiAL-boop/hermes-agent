@@ -7,6 +7,14 @@ import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type { MachineProfile } from '../electron/machine-profile'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
+import type {
+  MailboxInfo,
+  MailLoginInput,
+  MailMessage,
+  MailStatus,
+  MailSummary,
+  SendMailInput
+} from '../electron/tikki-mail'
 import type { GrowRequest } from '../electron/window-growth'
 
 import type { WakeIndicatorState } from './lib/wake-indicator'
@@ -208,6 +216,19 @@ declare global {
       // secrets and can throw when the keychain is unusable.
       getSecretStorageEncryption: () => Promise<{ on: boolean }>
       setSecretStorageEncryption: (on: boolean) => Promise<{ on: boolean }>
+      // Tikki Post: the family mail client. The password never reaches the
+      // renderer; login verifies against IMAP and main remembers the account.
+      tikkiMail?: {
+        status: () => Promise<MailStatus>
+        login: (input: MailLoginInput) => Promise<MailStatus>
+        logout: () => Promise<MailStatus>
+        mailboxes: () => Promise<MailboxInfo[]>
+        list: (mailbox: string, limit?: number) => Promise<MailSummary[]>
+        read: (mailbox: string, uid: number) => Promise<MailMessage>
+        setSeen: (mailbox: string, uid: number, seen: boolean) => Promise<void>
+        remove: (mailbox: string, uid: number) => Promise<void>
+        send: (input: SendMailInput) => Promise<{ messageId: string }>
+      }
       // v2 multi-connection registry: named agent sources, all persisted
       // together (local + any number of remote/cloud/ssh instances).
       connections: {

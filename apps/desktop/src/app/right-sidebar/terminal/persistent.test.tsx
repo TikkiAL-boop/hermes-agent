@@ -87,6 +87,16 @@ function Harness() {
   )
 }
 
+function TwoSlotHarness({ second }: { second: boolean }) {
+  return (
+    <>
+      <TerminalSlot className="slot-a" />
+      {second && <TerminalSlot className="slot-b" />}
+      <PersistentTerminal onAddSelectionToChat={() => undefined} />
+    </>
+  )
+}
+
 function HiddenPaneHarness({ hidden }: { hidden: boolean }) {
   return (
     <>
@@ -350,6 +360,43 @@ describe('PersistentTerminal rect tracking', () => {
     expect(overlay.style.opacity).toBe('1')
     expect(overlay.style.pointerEvents).toBe('auto')
     expect(mount.container!.querySelector('[data-testid="terminal-workspace"]')).toBe(workspace)
+  })
+
+  it('returns to the earlier slot once a later-mounted slot unmounts', () => {
+    // Tikki's Terminal area mounts a second slot over the chat's bottom pane.
+    // The overlay can chase only ONE slot: the newest. When that area leaves,
+    // the chat's pane must get its terminal back — otherwise it stays blank.
+    installRaf()
+    const rectA = rect(10, 20, 200, 100)
+    const rectB = rect(300, 400, 500, 250)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('slot-b') ? rectB : rectA
+    })
+    $terminalTakeover.set(true)
+
+    mount.render(<TwoSlotHarness second={false} />)
+
+    const overlay = mount.container!.lastElementChild as HTMLElement
+    expect(overlay.style.top).toBe('10px')
+    expect(overlay.style.visibility).toBe('visible')
+
+    act(() => {
+      mount.root!.render(<TwoSlotHarness second />)
+    })
+
+    expect(overlay.style.top).toBe('300px')
+    expect(overlay.style.left).toBe('400px')
+    expect(overlay.style.visibility).toBe('visible')
+
+    act(() => {
+      mount.root!.render(<TwoSlotHarness second={false} />)
+    })
+
+    expect(overlay.style.top).toBe('10px')
+    expect(overlay.style.left).toBe('20px')
+    expect(overlay.style.visibility).toBe('visible')
+    expect(overlay.style.pointerEvents).toBe('auto')
+    expect(mount.container!.querySelector('[data-testid="terminal-workspace"]')).not.toBeNull()
   })
 
   it('hides the overlay on a tab switch that happens while the window is unfocused', () => {

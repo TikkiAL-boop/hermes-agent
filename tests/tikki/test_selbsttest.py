@@ -19,8 +19,9 @@ def test_leeres_zuhause_meldet_jede_fehlende_schicht_und_nie_einen_schluesselwer
 
     punkte = {p.name: p for p in selbsttest.alle(tmp_path, app=False, backend=False, hermes="hermes")}
 
-    for name in ("Rollen", "Vorzimmer", "Gedächtnis", "Takt"):
+    for name in ("Rollen", "Vorzimmer", "Gedächtnis", "Takt", "Raum"):
         assert punkte[name].stand == selbsttest.FEHLER, name
+    assert "not local" in punkte["Raum"].text and "rollen-einrichten" in punkte["Raum"].text
     assert punkte["Schlüssel"].stand == selbsttest.OK
     assert "XAI_API_KEY" in punkte["Schlüssel"].text
     assert all(geheim not in p.text for p in punkte.values())
@@ -188,3 +189,23 @@ def test_anbieter_ist_in_ordnung_wenn_models_antwortet_und_steht_im_gesamtlauf(t
     assert selbsttest.pruefe_anbieter(tmp_path / "profiles").stand == selbsttest.OK
     punkte = {p.name: p for p in selbsttest.alle(tmp_path, app=False, backend=False, hermes="hermes")}
     assert punkte["Anbieter"].stand == selbsttest.OK and "cursor" in punkte["Anbieter"].text
+
+
+def test_raum_prueft_wie_das_gateway_identitaet_nicht_nur_config(tmp_path: Path) -> None:
+    """Ein Profilordner ohne Identitätsdatei (nur ein Cache-Unterordner) zählt für den Raumdienst nicht."""
+    from tikki.werkzeuge import raeume
+
+    profile = tmp_path / "profiles"
+    for slug in raeume.grundbesatzung():
+        (profile / raeume.rolle(slug)["hermes_profil"] / "memories").mkdir(parents=True)
+    assert selbsttest.pruefe_raum(tmp_path).stand == selbsttest.FEHLER
+
+    for slug in raeume.grundbesatzung():
+        (profile / raeume.rolle(slug)["hermes_profil"] / "config.yaml").write_text("model: {}\n", encoding="utf-8")
+    punkt = selbsttest.pruefe_raum(tmp_path)
+    assert punkt.stand == selbsttest.WARNUNG and "Klone" in punkt.text
+
+    for klon in raeume.raumleiter_klone():
+        (profile / klon["hermes_profil"]).mkdir()
+        (profile / klon["hermes_profil"] / ".env").write_text("", encoding="utf-8")
+    assert selbsttest.pruefe_raum(tmp_path).stand == selbsttest.OK

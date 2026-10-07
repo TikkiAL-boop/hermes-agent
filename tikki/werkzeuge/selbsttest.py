@@ -139,6 +139,30 @@ def pruefe_takt(profile: Path) -> Punkt:
     return Punkt("Takt", OK, "Raumleiter-Takt (5 min) und Wachhalter-Rundgang (15 min) angelegt")
 
 
+def pruefe_raum(home: Path) -> Punkt:
+    """„Suite erstellen“ mit der Prüfung des Gateways selbst: Grundbesatzung und jeder Raumleiter-Klon
+    müssen Profile sein, die der Raumdienst als Mitglieder annimmt (mit Identitätsdatei, nicht
+    gelöscht) – ein Ordner, den nur ein Cronjob oder Cache angelegt hat, zählt nicht."""
+    from gateway.hosted_room_discussion import DiscussionValidationError, validate_roster
+    from tikki.werkzeuge import raeume
+
+    bekannt = raeume.lokale_profile(home)
+    fehlend: list[str] = []
+    for klon in [None, *(k["slug"] for k in raeume.raumleiter_klone())]:
+        try:
+            validate_roster(raeume.besetzung(raumleiter=klon), local_profiles=bekannt)
+        except DiscussionValidationError as e:
+            fehlend.append(f"{klon or 'Grundbesatzung'}: {e}")
+        except ValueError as e:
+            fehlend.append(f"{klon or 'Grundbesatzung'}: Katalog {e}")
+    if fehlend and fehlend[0].startswith("Grundbesatzung"):
+        return Punkt("Raum", FEHLER, fehlend[0] + " → tikki/werkzeuge/rollen-einrichten.sh")
+    if fehlend:
+        return Punkt("Raum", WARNUNG, "Klone ohne Profil (Räume gehen mit dem Raumleiter auf): "
+                     + "; ".join(fehlend) + " → rollen-einrichten.sh")
+    return Punkt("Raum", OK, f"Grundbesatzung und {len(raeume.raumleiter_klone())} Raumleiter-Klone nimmt der Raumdienst an")
+
+
 def pruefe_gateway() -> Punkt:
     """Das eine Host-Gateway fährt Räume und Daueraufträge – ohne es steht alles still."""
     from gateway.status import get_running_pid
@@ -320,7 +344,7 @@ def alle(home: Path, *, app: bool, backend: bool, hermes: str) -> list[Punkt]:
     punkte = [
         pruefe_zweig(), pruefe_rollen(profile), pruefe_vorzimmer(home), pruefe_gedaechtnis(profile),
         pruefe_takt(profile), pruefe_schluessel(profile), pruefe_anbieter(profile), pruefe_sprache(profile),
-        pruefe_gateway(),
+        pruefe_raum(home), pruefe_gateway(),
     ]
     if app:
         punkte.append(pruefe_app())

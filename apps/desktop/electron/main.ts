@@ -15837,16 +15837,25 @@ ipcMain.handle('hermes:secret-storage:set', async (_event: any, on: any) => appl
 // The mail client's main-process half (tikki-mail.ts). Credentials go through
 // the same secret store as gateway tokens and never reach the renderer; every
 // call below is a plain request/response over IMAP or SMTP.
-const tikkiMailStorePath = () => path.join(app.getPath('userData'), 'tikki-mail.json')
+// A function declaration, not a const: rewriteAllStoredSecrets (far above)
+// re-encodes this store together with the other three.
+function tikkiMailStoreIo() {
+  const storePath = path.join(app.getPath('userData'), 'tikki-mail.json')
+
+  return {
+    readStoreText: () => fs.readFileSync(storePath, 'utf8'),
+    writeStoreText: (text: string) => {
+      fs.mkdirSync(path.dirname(storePath), { recursive: true })
+      writeSecretFileAtomic(storePath, text, { encoding: 'utf8' })
+    }
+  }
+}
+
 const tikkiMail = new TikkiMailService({
   decrypt: decryptDesktopSecret,
   encrypt: value => encryptDesktopSecret(value),
   log: rememberLog,
-  readStoreText: () => fs.readFileSync(tikkiMailStorePath(), 'utf8'),
-  writeStoreText: (text: string) => {
-    fs.mkdirSync(path.dirname(tikkiMailStorePath()), { recursive: true })
-    fs.writeFileSync(tikkiMailStorePath(), text, { mode: 0o600 })
-  }
+  ...tikkiMailStoreIo()
 })
 
 ipcMain.handle('tikki:mail:status', () => tikkiMail.status())

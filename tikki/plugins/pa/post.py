@@ -3,25 +3,55 @@
 Die App hat ihren eigenen Mail-Client (Bereich Post, Electron). Tikkis Daueraufträge laufen
 aber im Hermes-Backend (Cronjobs), ohne App. Darum liest dieses Modul dasselbe Postfach direkt
 über IMAP/SMTP. Die Serverregeln sind dieselben wie in ``electron/tikki-mail.ts``:
-``name@tikki.team`` liegt auf ``mail.tikki.email``, andere Domains auf ``mail.<domain>``;
-Umgebungsvariablen ``TIKKI_MAIL_IMAP_HOST``/``_SMTP_HOST``/``_IMAP_PORT``/``_SMTP_PORT``
-übersteuern. Zugang: ``TIKKI_MAIL_ADDRESS`` und ``TIKKI_MAIL_PASSWORD`` in der ``.env``.
+``name@tikki.team`` liegt auf ``mail.tikki.email``, andere Domains auf ``mail.<domain>``.
+
+Der Zugang gehört dem Profil und wird bei jedem Aufruf dort gelesen (ein Gateway bedient viele
+Profile; ``os.environ`` trägt nur die Werte des Startprofils):
+
+- Das Passwort ist das Geheimnis ``TIKKI_MAIL_PASSWORD`` in der ``.env`` des Profils, gelesen
+  über Hermes' Secret-Scope (``agent.secret_scope.get_secret``).
+- Alles andere ist Einstellung in der ``config.yaml`` des Profils unter
+  ``plugins.entries.pa.settings`` (Felder in ``plugin.yaml``): ``mail_address``, die Empfänger,
+  an die ohne Menschen gesendet werden darf (``mail_freigabe``), und für fremde Server
+  ``mail_imap_host``/``mail_imap_port``/``mail_smtp_host``/``mail_smtp_port``.
+
+Eine Mail ist Fremdinhalt. Ihr Text erreicht das Modell nur gerahmt (``rahmen``), und was sie
+verlangt, ist nie ein Auftrag: Außerhalb eines Menschen-Turns (Dauerauftrag, Raum-Runde,
+delegierter Lauf) geht Post nur an freigegebene Empfänger; alles andere wird Entwurf, und der
+Mensch entscheidet. Jede gesendete Mail liegt als Kopie im Ordner „Gesendet“.
 """
 
 from __future__ import annotations
 
 import email
 import imaplib
-import os
 import re
 import smtplib
 import ssl
+import time
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from email.header import decode_header, make_header
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr, parsedate_to_datetime
 
+PLUGIN = "pa"
 TIKKI_MAIL_DOMAIN = "tikki.team"
+PASSWORT = "TIKKI_MAIL_PASSWORD"
+#: Einstellung → Name, unter dem sie früher in der ``.env`` des Profils stand (wird dort weiter gefunden).
+_FRUEHER_ENV = {
+    "mail_address": "TIKKI_MAIL_ADDRESS", "mail_imap_host": "TIKKI_MAIL_IMAP_HOST",
+    "mail_smtp_host": "TIKKI_MAIL_SMTP_HOST", "mail_imap_port": "TIKKI_MAIL_IMAP_PORT",
+    "mail_smtp_port": "TIKKI_MAIL_SMTP_PORT",
+}
+#: IMAP-Sonderordner: Kennzeichen nach RFC 6154, sonst die üblichen Namen (auch in IMAP-UTF-7).
+_SONDERORDNER = {
+    "gesendet": ("\\sent", ("sent", "gesendet", "sent items", "sent messages", "inbox.sent")),
+    "entwurf": ("\\drafts", ("drafts", "entw&apw-rfe", "entwürfe", "draft", "inbox.drafts")),
+}
+_LIST_ZEILE = re.compile(rb'^\((?P<kennzeichen>[^)]*)\)\s+(?:"[^"]*"|NIL)\s+(?P<name>.+)$')
+_UID = re.compile(r"[1-9][0-9]*")
+_RAHMEN_WORT = re.compile(r"fremdinhalt", re.IGNORECASE)
 
 # Automaten (Newsletter, Autoresponder, Bounces) werden nie beantwortet – sonst Antwortschleifen.
 # Dieselben Regeln wie Hermes' E-Mail-Adapter (plugins/platforms/email/adapter.py).

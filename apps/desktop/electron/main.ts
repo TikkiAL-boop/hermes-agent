@@ -500,7 +500,7 @@ import { createSshTeardownTracker } from './ssh-teardown'
 import { createStreamThrottle } from './stream-throttle'
 import { installSystemCaTrust } from './system-ca'
 import { registerTerminalIpc } from './terminal-ipc'
-import { TikkiMailService } from './tikki-mail'
+import { rewriteMailStoreSecret, TikkiMailService } from './tikki-mail'
 import { nativeOverlayWidth as computeNativeOverlayWidth, titleBarOverlayOptions } from './titlebar-overlay-width'
 import {
   backgroundMaterialFor,
@@ -8437,8 +8437,8 @@ function probeSecureTokenStorage(): boolean {
 
 /**
  * Rewrite every stored desktop secret (v1 connection.json token/headers +
- * per-profile overrides, v2 registry connections, native OAuth token store)
- * through `reencode`. Returns true when any store was rewritten. Shared by
+ * per-profile overrides, v2 registry connections, native OAuth token store,
+ * Tikki Post mailbox password) through `reencode`. Returns true when any store was rewritten. Shared by
  * the one-shot legacy migration and the Settings encryption toggle.
  */
 function rewriteAllStoredSecrets(shouldRewrite: (secret: any) => boolean, reencode: (secret: any) => any): boolean {
@@ -8498,6 +8498,11 @@ function rewriteAllStoredSecrets(shouldRewrite: (secret: any) => boolean, reenco
     }
   } catch {
     // Missing/corrupt native token store: nothing to rewrite.
+  }
+
+  // Tikki Post: the mailbox password (tikki-mail.ts).
+  if (rewriteMailStoreSecret(tikkiMailStoreIo(), shouldRewrite, reencode)) {
+    touched = true
   }
 
   return touched

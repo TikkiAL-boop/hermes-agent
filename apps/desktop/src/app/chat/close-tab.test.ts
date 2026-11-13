@@ -34,6 +34,7 @@ vi.mock('@/store/profile', () => ({
   setShowAllProfiles: () => {}
 }))
 
+import { $area } from '@/app/areas/store'
 import { $previewTabs, closeRightRail, openPreview, type PreviewTarget } from '@/store/preview'
 import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
 
@@ -161,6 +162,34 @@ describe('closeWorkspaceTab', () => {
 
     expect(closeActiveTab(vi.fn())).toBe(true)
     // The logs/terminal tab closed — main keeps its loaded chat.
+    expect(requestFreshSession).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Tikki: outside the Vorzimmer the chat tree is mounted but hidden. ⌘W there
+ * must not reach it — the person would lose a chat they cannot see.
+ */
+describe('closeActiveTab in a Tikki area', () => {
+  afterEach(() => $area.set('tikki'))
+
+  it('closes nothing of the hidden chat while mail is on screen', () => {
+    loadedMainOnly()
+    closeFocusedSessionTab.mockReturnValue(true)
+    $area.set('post')
+
+    expect(closeActiveTab(vi.fn())).toBe(false)
+    expect(closeFocusedSessionTab).not.toHaveBeenCalled()
+    expect(closeFocusedToolTab).not.toHaveBeenCalled()
+    expect(requestFreshSession).not.toHaveBeenCalled()
+  })
+
+  it('closes the terminal on screen in the Terminal area, not a chat tab behind it', () => {
+    loadedMainOnly()
+    $area.set('terminal')
+
+    expect(closeActiveTab(vi.fn())).toBe(true)
+    expect(closeActiveTerminal).toHaveBeenCalledTimes(1)
     expect(requestFreshSession).not.toHaveBeenCalled()
   })
 })

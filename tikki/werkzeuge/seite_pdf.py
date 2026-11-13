@@ -10,8 +10,26 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.graphics.shapes import Drawing, Rect, Circle, String, Line, Polygon, Wedge
 
-pdfmetrics.registerFont(TTFont("DV", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
-pdfmetrics.registerFont(TTFont("DVB", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"))
+def schriften(kandidaten=None) -> tuple[str, str]:
+    """(normal, fett) als TrueType-Dateien: DejaVu, wo es liegt (Linux, auf dem Mac nach
+    ``brew install font-dejavu``), sonst Arial des Macs. Fehlt alles, sagt der Fehler, was zu tun ist."""
+    zuhause = Path.home()
+    for normal, fett in kandidaten or (
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+        (f"{zuhause}/Library/Fonts/DejaVuSans.ttf", f"{zuhause}/Library/Fonts/DejaVuSans-Bold.ttf"),
+        ("/Library/Fonts/DejaVuSans.ttf", "/Library/Fonts/DejaVuSans-Bold.ttf"),
+        ("/System/Library/Fonts/Supplemental/Arial.ttf", "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+        ("/Library/Fonts/Arial.ttf", "/Library/Fonts/Arial Bold.ttf"),
+    ):
+        if Path(normal).is_file() and Path(fett).is_file():
+            return normal, fett
+    raise SystemExit("Keine Schrift gefunden (DejaVu Sans oder Arial). Auf dem Mac: brew install font-dejavu")
+
+
+_NORMAL, _FETT = schriften()
+pdfmetrics.registerFont(TTFont("DV", _NORMAL))
+pdfmetrics.registerFont(TTFont("DVB", _FETT))
 pdfmetrics.registerFontFamily("DV", normal="DV", bold="DVB", italic="DV", boldItalic="DVB")
 
 GELB = colors.HexColor("#F2C230")
@@ -143,9 +161,9 @@ def bauen():
     s.append(Paragraph("2 · Die sechs Bereiche der App (linke Leiste)", h2))
     s.append(Paragraph(
         "<b>Übersicht</b> – Raumübersicht mit Tikki: Begrüßung, Tagesbriefing (erledigte Aufträge, Post, Räume, die den Menschen brauchen, WhatsApp), "
-        "Karte „Daueraufträge“, Browserzeile. Sagt man „Plan mir …“, antwortet Tikki mit <i>RAUM:</i> und <i>ZIEL:</i>, und der Raum öffnet sich. "
+        "Karte „Daueraufträge“, Browserzeile. Sagt man „Plan mir …“, eröffnet Tikki den Raum mit ihrem Werkzeug; er erscheint in der Raumliste. "
         "<b>Suites</b> – die Räume (Abschnitt 3). <b>Browser</b> – eingebaut, klickt Cookie-Banner selbst weg. <b>Post</b> – eigener Mail-Client "
-        "für name@tikki.team. <b>Terminal</b> – Kommandozeile. <b>Admin</b> – Bots, Gedächtnis, Betrieb (Übungsläufe, Briefing-Automatik). "
+        "für name@tikki.team. <b>Terminal</b> – Kommandozeile. <b>Admin</b> – Bots, Gedächtnis, Betrieb. "
         "Design „Gelbes Glas“: gelbe Glasflächen, Raumbild in Zentralperspektive, kein Hermes-Branding sichtbar.", body))
 
     s.append(Paragraph("3 · Räume, Bots, Dauerbetrieb", h2))
@@ -154,10 +172,10 @@ def bauen():
         "(Grok 4.7 über das Cursor-Abo, Ausweich xAI), <b>Tikki</b> (bringt Wissen über den Menschen, Post, Aufträge) und <b>Deine KI</b> "
         "(persönliches Modell, später lokal, mit Sprache). Dazu holt der Raumleiter Rollen aus dem Katalog: Rechercheur, Prüfer, Schreiber, Frontend- und "
         "Backend-Entwickler, Sicherheitsbeauftragter, Datenanalyst, Organisator, API-Fachmann, Übersetzer, Wachhalter. Alle lesen alles mit; wer nichts "
-        "beizutragen hat, schweigt. Der Raumleiter führt mit festen Zeilen: <i>STAND:</i>, <i>AUFGABEN:</i> (To-do-Wand), <i>BRAUCHE:</i> (eine Entscheidung "
-        "des Menschen), <i>FERTIG:</i>. <b>Türen</b> tragen eine Nachricht in einen anderen Raum, <b>Verschmelzen</b> macht aus zwei Räumen einen mit "
-        "vereinter Besatzung. Räume mit <i>TAKT:</i> („täglich 06:00“) laufen als Dauerauftrag; der <b>Wachhalter</b> weckt alle 15 Minuten stille Räume; "
-        "<b>Übungsläufe</b> lassen denselben Auftrag parallel mit anderen Ansätzen laufen, das erste fertige Ergebnis gewinnt.", body))
+        "beizutragen hat, schweigt. Der Raumleiter führt wie ein Projektleiter, ohne feste Zeilen: braucht ein Mitglied eine Entscheidung des Menschen, "
+        "stellt es eine Rückfrage, und der Raum steht unter „Braucht dich“. <b>Türen</b> tragen eine Nachricht in einen anderen Raum, <b>Verschmelzen</b> "
+        "macht aus zwei Räumen einen mit vereinter Besatzung. Räume mit Takt („täglich 06:00“) laufen als Dauerauftrag; der <b>Wachhalter</b> schaut alle "
+        "15 Minuten nach liegengebliebenen Räumen.", body))
 
     s.append(Spacer(1, 3))
     zeile = Table([[zeichnung_raum(), zeichnung_technik(), zeichnung_installation()],
@@ -186,7 +204,7 @@ def bauen():
         "Ein Befehl: <i>~/.hermes/hermes-agent/tikki/installieren.sh</i> (Hermes-Kern, Tikki.app nach /Programme, Rollen, Plugins, Cronjobs, Schlüssel "
         "aus cvcv.txt, Gateway, Selbsttest ✓/⚠/✗). Aktualisieren: <i>git pull</i> und dasselbe Skript. Prüfen: <i>selbsttest.py</i>. Für einen zweiten "
         "Rechner baut der GitHub-Workflow „Tikki App (macOS Download)“ ein DMG unter Releases (unsigniert: beim ersten Start Rechtsklick → Öffnen). "
-        "Von der Kommandozeile: <i>raeume.py anlegen|senden|verlauf|verschmelzen|tuer</i>, <i>suite_takt.py takt|bericht</i>, <i>hermes pa briefing|post</i>.", links))
+        "Von der Kommandozeile: <i>raeume.py anlegen|senden|verlauf|verschmelzen</i>, <i>suite_takt.py bericht</i>, <i>hermes pa briefing|post</i>.", links))
 
     s.append(Paragraph("6 · Stand und offene Punkte", h2))
     s.append(Paragraph(

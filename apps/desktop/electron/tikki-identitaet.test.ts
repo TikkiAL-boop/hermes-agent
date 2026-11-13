@@ -19,3 +19,11 @@ test('runtime name, packaged file name and core lookup name agree', () => {
   assert.equal(config.productName, pkg.productName)
   assert.equal(config.executableName, pkg.productName)
 })
+
+// The DMG's volume name is the first thing Finder shows after the download;
+// it has to introduce the product whose icon sits in the window.
+test('the mounted DMG is named after the product', () => {
+  const config: { productName: string; dmg: { title: string } } = require('../electron-builder.config.cjs')
+
+  assert.ok(config.dmg.title.includes(config.productName), config.dmg.title)
+})

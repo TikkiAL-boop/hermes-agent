@@ -3,6 +3,8 @@
 ClawHub hat zehntausende Skills. Alle in jedes Profil zu installieren würde jeden Aufruf
 aufblähen und fremde Anweisungen ungeprüft verteilen. Stattdessen:
 
+    bibliothek              das Profil „openclaw“ anlegen und so einrichten, dass sein Pflicht-Skill
+                            nicht neben dem des Repos steht (sonst ist ``hermes-agent`` mehrdeutig)
     katalog                 den ganzen ClawHub-Katalog lokal ablegen (~/.tikki/openclaw-katalog.json)
     suchen <frage>          im lokalen Katalog suchen (ohne Katalog: live bei ClawHub)
     installieren <slug…>    in die gemeinsame Bibliothek (Profil „openclaw“) installieren –
@@ -82,16 +84,53 @@ def _hermes() -> str:
     return os.environ.get("TIKKI_HERMES") or "hermes"
 
 
-def bibliothek_sicherstellen() -> None:
+def bibliothek_sicherstellen() -> Path:
     """Das Profil „openclaw“ trägt die Bibliothek; ohne mitgelieferte Skills, ohne Alias."""
     from hermes_cli.profiles import get_profile_dir
 
-    if not get_profile_dir(BIBLIOTHEK).is_dir():
+    profil = get_profile_dir(BIBLIOTHEK)
+    if not profil.is_dir():
         subprocess.run(
             [_hermes(), "profile", "create", BIBLIOTHEK, "--no-alias", "--no-skills",
              "--description", "Tikki: OpenClaw-Skill-Bibliothek für alle Rollen"],
             check=True, capture_output=True, text=True,
         )
+    bibliothek_entdoppeln(profil)
+    return profil
+
+
+def bibliothek_entdoppeln(profil: Path, repo_skills: Path | None = None) -> list[str]:
+    """Die Bibliothek so einrichten, dass kein Skill doppelt bei den Rollen ankommt.
+
+    Auch ein Profil „ohne mitgelieferte Skills“ bekommt von Hermes den Pflicht-Skill ``hermes-agent``
+    kopiert. Die Rollen hängen aber die Bibliothek *und* ``<repo>/skills`` ein – zwei gleichnamige
+    Skills, und ``skill_view`` verweigert („Ambiguous skill name“). Darum zeigt die Bibliothek
+    selbst auf ``<repo>/skills``: Hermes' eigener Skill-Abgleich lässt die Kopie dann weg und
+    räumt eine vorhandene ab (``tools/skills_sync.py::_defer_to_external``). Rückgabe: die Skills,
+    die der Abgleich dem Repo überlassen hat.
+    """
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from hermes_yaml import roundtrip_yaml
+
+    repo_skills = repo_skills or Path(__file__).resolve().parents[2] / "skills"
+    datei, yaml = profil / "config.yaml", roundtrip_yaml()
+    cfg = (yaml.load(datei.read_text(encoding="utf-8")) if datei.is_file() else None) or {}
+    skills = cfg.setdefault("skills", {})
+    ordner = skills.get("external_dirs")
+    ordner = [ordner] if isinstance(ordner, str) else list(ordner) if isinstance(ordner, list) else []
+    if str(repo_skills) not in [str(o) for o in ordner]:
+        skills["external_dirs"] = [*ordner, str(repo_skills)]
+        tmp = datei.with_name(datei.name + ".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            yaml.dump(cfg, f)
+        os.replace(tmp, datei)
+    marke = set_hermes_home_override(str(profil))
+    try:
+        from tools.skills_sync import sync_skills
+
+        return list(sync_skills(quiet=True).get("shadowed_by_external") or [])
+    finally:
+        reset_hermes_home_override(marke)
 
 
 def installieren(slugs: list[str]) -> list[tuple[str, bool, str]]:
@@ -119,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="openclaw_skills", description=__doc__.split("\n\n")[0])
     unter = parser.add_subparsers(dest="befehl", required=True)
     unter.add_parser("katalog")
+    unter.add_parser("bibliothek")
     p_suchen = unter.add_parser("suchen")
     p_suchen.add_argument("frage")
     p_suchen.add_argument("--anzahl", type=int, default=10)
@@ -128,6 +168,9 @@ def main(argv: list[str] | None = None) -> int:
     p_beliebt.add_argument("anzahl", type=int)
     args = parser.parse_args(argv)
 
+    if args.befehl == "bibliothek":
+        print(f"Skill-Bibliothek: {bibliothek_sicherstellen()}")
+        return 0
     if args.befehl == "katalog":
         eintraege = katalog_laden()
         print(f"{len(eintraege)} Skills im Katalog: {katalog_speichern(eintraege)}")

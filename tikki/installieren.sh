@@ -9,25 +9,28 @@
 #   1. Hermes-Kern über den offiziellen Hermes-Installer (scripts/install.sh) auf diesem
 #      Checkout: Python, Abhängigkeiten (hash-geprüft), `hermes`-Befehl, Tikki-App gebaut
 #   2. Auf dem Mac: Tikki.app nach /Applications
-#   3. 13 Rollen (Profile, SOULs, Plugin gedaechtnis, Skill-Ordner, Cronjobs)
+#   3. Alle Rollen aus rollen/KATALOG.json (Profile, SOULs, Plugins, Skill-Ordner, Cronjobs)
 #   4. Vorzimmer = Profil tikki
 #   5. API-Schlüssel aus ~/Downloads/cv.cv.txt (oder --schluessel DATEI), Werte bleiben unsichtbar
 #   6. Abos prüfen (Claude, Codex, Grok, Gemini, NotebookLM) – ändert nichts
-#   7. Raumleiter und Wachhalter als Dienst, damit Takt und Rundgang Neustarts überleben
+#   7. EIN Host-Gateway als Dienst (aus dem Hauptprofil, für alle Rollen): fährt Räume, Takt,
+#      Rundgang und Daueraufträge und überlebt Neustarts
 #   8. Sprache: Hermes' Sprach-Extras (faster-whisper fürs Hören, Edge-TTS fürs Sprechen)
 #   9. Selbsttest (tikki/werkzeuge/selbsttest.py)
 #
 # Optionen:
 #   --schluessel DATEI  Schlüsseldatei (Standard: ~/Downloads/cv.cv.txt, falls vorhanden)
-#   --ohne-kern         Schritt 1 auslassen (Hermes samt `hermes`-Befehl ist schon installiert)
+#   --ohne-kern         Schritt 1 auslassen: kein Code-Update, kein Neubau von Kern und App
 #   --ohne-app          die Desktop-App nicht bauen (nur Kern und Rollen)
-#   --ohne-dienste      Raumleiter/Wachhalter nicht als Dienst installieren
+#   --ohne-dienste      das Gateway nicht als Dienst installieren
 #   --ohne-sprache      Sprach-Extras nicht installieren (Tikki tippt und liest mit der Systemstimme)
 #   --nur-pruefen       nichts installieren, nur den Selbsttest laufen lassen
 #
-# Erneut ausführen ist gefahrlos: jeder Schritt erkennt, was schon da ist. Schritt 1 holt den
-# neuesten Stand des Zweigs; danach startet dieses Skript sich selbst aus dem neuen Stand neu
-# (--ohne-kern), damit die Schritte 2–9 mit dem frischen Code laufen und nicht mit dem alten.
+# Erneut ausführen: jeder Schritt erkennt, was schon da ist. Schritt 1 holt den Stand von
+# origin/tikki-app und setzt den Checkout darauf; liegt lokal etwas, das dabei verloren ginge
+# (ungesicherte Dateien, Commits, die origin nicht kennt), bricht der Installer vorher ab.
+# Danach startet dieses Skript sich selbst aus dem neuen Stand neu (--ohne-kern), damit die
+# Schritte 2–9 mit dem frischen Code laufen und nicht mit dem alten.
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,7 +51,7 @@ while [ $# -gt 0 ]; do
     --ohne-dienste) DIENSTE=0 ;;
     --ohne-sprache) SPRACHE=0 ;;
     --nur-pruefen) NUR_PRUEFEN=1 ;;
-    -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -95,8 +98,22 @@ if [ "$(cd "$STANDARD" 2>/dev/null && pwd -P)" != "$(cd "$REPO" && pwd -P)" ]; t
   hinweis "Hermes nur für diesen Standardort. Empfohlen: dorthin klonen."
 fi
 
-# 1) Hermes-Kern über den offiziellen Installer. Er holt origin/tikki-app, legt lokale
-#    Änderungen als Stash ab (nichts geht verloren) und baut die App mit dem Namen Tikki.
+# 1) Hermes-Kern über den offiziellen Installer. Er holt origin/tikki-app, legt lokale Änderungen
+#    in einen Stash, den niemand zurückspielt, und setzt einen abweichenden Zweig hart auf origin
+#    zurück. Beides wäre hier Arbeit, die still verschwindet – also vorher prüfen und abbrechen.
+if [ "$KERN" = 1 ] && [ -z "${TIKKI_INSTALL_NEUSTART:-}" ]; then
+  if [ -n "$(git -C "$REPO" status --porcelain)" ]; then
+    git -C "$REPO" status --short | head -10 >&2
+    abbruch "Im Checkout liegen ungesicherte Änderungen. Erst sichern (git -C $REPO add -A && git -C $REPO commit) – oder ohne Code-Update weitermachen: tikki/installieren.sh --ohne-kern"
+  fi
+  if git -C "$REPO" fetch --quiet origin "$ZWEIG" 2>/dev/null; then
+    if ! git -C "$REPO" merge-base --is-ancestor HEAD "origin/$ZWEIG"; then
+      abbruch "Der Checkout hat Commits, die origin/$ZWEIG nicht kennt (z. B. ein Hermes-Merge, noch nicht gepusht). Erst veröffentlichen (git -C $REPO push origin $ZWEIG; bei Abweichung vorher git pull --no-rebase) – oder ohne Code-Update weitermachen: tikki/installieren.sh --ohne-kern"
+    fi
+  else
+    hinweis "origin nicht erreichbar – ob lokale Commits fehlen würden, ist ungeprüft"
+  fi
+fi
 schritt "1/9  Kern, Abhängigkeiten und App bauen (dauert beim ersten Mal 10–20 Minuten)"
 if [ "$KERN" = 1 ]; then
   INSTALL_ARGS=(--dir "$REPO" --branch "$ZWEIG" --non-interactive)
@@ -163,7 +180,9 @@ schritt "4/9  Vorzimmer = Profil tikki"
 schritt "5/9  API-Schlüssel"
 if [ -z "$SCHLUESSEL" ] && [ -f "$HOME/Downloads/cv.cv.txt" ]; then SCHLUESSEL="$HOME/Downloads/cv.cv.txt"; fi
 if [ -n "$SCHLUESSEL" ]; then
-  "$HIER/werkzeuge/schluessel-einlesen.sh" "$SCHLUESSEL"
+  # Eine Datei ohne erkennbare Schlüssel hält den Installer nicht auf; der Selbsttest nennt, was fehlt.
+  "$HIER/werkzeuge/schluessel-einlesen.sh" "$SCHLUESSEL" \
+    || hinweis "aus $SCHLUESSEL wurde nichts übernommen – Format: NAME=wert je Zeile; später: tikki/werkzeuge/schluessel-einlesen.sh DATEI"
 else
   hinweis "keine Schlüsseldatei gefunden (~/Downloads/cv.cv.txt) – später: tikki/werkzeuge/schluessel-einlesen.sh DATEI"
 fi

@@ -28,7 +28,7 @@ verantwortlich und prüft, was zurückkommt.
 
 - Gemini CLI installiert (`npm install -g @google/gemini-cli`) und einmal im Terminal mit
   dem Google-Konto angemeldet (`gemini`, dann „Login with Google“).
-- Prüfen mit `terminal`: `gemini --version`. Fehlt sie, meldet der Bot das mit `BRAUCHE:`.
+- Prüfen mit `terminal`: `gemini --version`. Fehlt sie, sagt der Bot das dem Menschen.
 
 ## How to Run
 

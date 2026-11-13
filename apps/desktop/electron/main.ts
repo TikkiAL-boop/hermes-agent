@@ -46,6 +46,7 @@ import {
 } from './api-transport'
 import { appIconCandidates, resolveAppIcon, shouldOverrideDockIcon } from './app-icon'
 import { stageAppInstallerFile } from './app-installer-file'
+import { classifyAppNavigation } from './app-navigation-policy'
 import { appVersionInfo, type AppVersionInfo, assertSourceUpdateChannel, packagedReleaseChannel } from './app-version'
 import { runAppInstallerChecker } from './appinstaller-checker'
 import { installApplicationMenuAfterFirstWindow } from './application-menu-startup'
@@ -500,7 +501,8 @@ import { createSshTeardownTracker } from './ssh-teardown'
 import { createStreamThrottle } from './stream-throttle'
 import { installSystemCaTrust } from './system-ca'
 import { registerTerminalIpc } from './terminal-ipc'
-import { TikkiMailService } from './tikki-mail'
+import { probeLocalHealth } from './tikki-local-health'
+import { rewriteMailStoreSecret, TikkiMailService } from './tikki-mail'
 import { nativeOverlayWidth as computeNativeOverlayWidth, titleBarOverlayOptions } from './titlebar-overlay-width'
 import {
   backgroundMaterialFor,
@@ -2677,7 +2679,7 @@ async function waitForUpdateToFinish() {
       rememberLog(`[updates] detached update finished with manual action (branch ${result.branch}): ${result.message}`)
       dialog.showMessageBox({
         type: 'warning',
-        title: 'Tikki update',
+        title: `${APP_NAME} update`,
         message: 'The update finished, but needs one more step',
         detail: result.message
       })
@@ -2693,8 +2695,8 @@ async function waitForUpdateToFinish() {
       void dialog
         .showMessageBox({
           type: 'error',
-          title: 'Tikki update',
-          message: "Hermes couldn't finish updating",
+          title: `${APP_NAME} update`,
+          message: `${APP_NAME} couldn't finish updating`,
           detail:
             "You're still on the previous version and can keep using it. Try the update again, or open the update log to report the problem.\n\n" +
             `Details: ${result.message}`,
@@ -4678,15 +4680,9 @@ function resolveWebDist() {
   return fallback
 }
 
-// Same resolution as resolveRendererIndex, but also hands back the missing
-// asset list already computed for the copy it chose. The primary-window path
-// needs BOTH, and re-deriving the list means walking the whole renderer
-// generation a second time: missingRendererAssets follows index.html's
-// modulepreload refs and then every chunk's inline __vite__mapDeps table, so
-// on a release build it reads ~28 MiB across ~160 files synchronously on the
-// main thread — measured ~49 ms per walk, twice before loadWindowUrl().
-// Callers that only need the path keep using resolveRendererIndex below.
-function resolveRendererIndexWithMissing(): { index: string; missing: string[] } {
+// Every file the renderer entry can be loaded from, preferred copy first. The
+// loaders below pick one of them; the navigation guard accepts all of them.
+function rendererIndexCandidates(): string[] {
   const asarIndex = path.join(APP_ROOT, 'dist', 'index.html')
   const webDistIndex = path.join(resolveWebDist(), 'index.html')
 
@@ -4700,7 +4696,19 @@ function resolveRendererIndexWithMissing(): { index: string; missing: string[] }
   // quick), so the ordering fix covers all of them. Dev is unchanged:
   // unpackedPathFor is a no-op outside an asar, so both candidates collapse
   // to APP_ROOT/dist and the original order is preserved.
-  const candidates = IS_PACKAGED ? [webDistIndex, asarIndex] : [asarIndex, webDistIndex]
+  return IS_PACKAGED ? [webDistIndex, asarIndex] : [asarIndex, webDistIndex]
+}
+
+// Same resolution as resolveRendererIndex, but also hands back the missing
+// asset list already computed for the copy it chose. The primary-window path
+// needs BOTH, and re-deriving the list means walking the whole renderer
+// generation a second time: missingRendererAssets follows index.html's
+// modulepreload refs and then every chunk's inline __vite__mapDeps table, so
+// on a release build it reads ~28 MiB across ~160 files synchronously on the
+// main thread — measured ~49 ms per walk, twice before loadWindowUrl().
+// Callers that only need the path keep using resolveRendererIndex below.
+function resolveRendererIndexWithMissing(): { index: string; missing: string[] } {
+  const candidates = rendererIndexCandidates()
   const present = presentRendererIndexes(candidates)
 
   // index.html and the hashed chunks it names are one generation. An update
@@ -8437,9 +8445,10 @@ function probeSecureTokenStorage(): boolean {
 
 /**
  * Rewrite every stored desktop secret (v1 connection.json token/headers +
- * per-profile overrides, v2 registry connections, native OAuth token store)
- * through `reencode`. Returns true when any store was rewritten. Shared by
- * the one-shot legacy migration and the Settings encryption toggle.
+ * per-profile overrides, v2 registry connections, native OAuth token store,
+ * Tikki Post mailbox password) through `reencode`. Returns true when any
+ * store was rewritten. Shared by the one-shot legacy migration and the
+ * Settings encryption toggle.
  */
 function rewriteAllStoredSecrets(shouldRewrite: (secret: any) => boolean, reencode: (secret: any) => any): boolean {
   let touched = false
@@ -8498,6 +8507,11 @@ function rewriteAllStoredSecrets(shouldRewrite: (secret: any) => boolean, reenco
     }
   } catch {
     // Missing/corrupt native token store: nothing to rewrite.
+  }
+
+  // Tikki Post: the mailbox password (tikki-mail.ts).
+  if (rewriteMailStoreSecret(tikkiMailStoreIo(), shouldRewrite, reencode)) {
+    touched = true
   }
 
   return touched
@@ -13489,12 +13503,22 @@ function wireCommonWindowHandlers(win, { zoom = true }: { zoom?: boolean } = {})
     createWindowOpenHandler(origin => rememberLog(`[window-open] denied: ${origin}`))
   )
   win.webContents.on('will-navigate', (event, url) => {
-    if ((DEV_SERVER && url.startsWith(DEV_SERVER)) || (!DEV_SERVER && url.startsWith('file:'))) {
+    const verdict = classifyAppNavigation(url, {
+      currentUrl: win.webContents.getURL(),
+      entryUrls: DEV_SERVER ? [DEV_SERVER] : rendererIndexCandidates().map(file => pathToFileURL(file).toString())
+    })
+
+    if (verdict === 'allow') {
       return
     }
 
     event.preventDefault()
-    void openExternalUrl(url)
+
+    if (verdict === 'external') {
+      void openExternalUrl(url)
+    } else {
+      rememberLog(`[navigation] denied in-app navigation to ${url}`)
+    }
   })
 }
 
@@ -15837,16 +15861,26 @@ ipcMain.handle('hermes:secret-storage:set', async (_event: any, on: any) => appl
 // The mail client's main-process half (tikki-mail.ts). Credentials go through
 // the same secret store as gateway tokens and never reach the renderer; every
 // call below is a plain request/response over IMAP or SMTP.
-const tikkiMailStorePath = () => path.join(app.getPath('userData'), 'tikki-mail.json')
+
+// The store file. A function declaration, not a const: rewriteAllStoredSecrets
+// (far above) re-encodes this store together with the other three.
+function tikkiMailStoreIo() {
+  const storePath = path.join(app.getPath('userData'), 'tikki-mail.json')
+
+  return {
+    readStoreText: () => fs.readFileSync(storePath, 'utf8'),
+    writeStoreText: (text: string) => {
+      fs.mkdirSync(path.dirname(storePath), { recursive: true })
+      writeSecretFileAtomic(storePath, text, { encoding: 'utf8' })
+    }
+  }
+}
+
 const tikkiMail = new TikkiMailService({
   decrypt: decryptDesktopSecret,
   encrypt: value => encryptDesktopSecret(value),
   log: rememberLog,
-  readStoreText: () => fs.readFileSync(tikkiMailStorePath(), 'utf8'),
-  writeStoreText: (text: string) => {
-    fs.mkdirSync(path.dirname(tikkiMailStorePath()), { recursive: true })
-    fs.writeFileSync(tikkiMailStorePath(), text, { mode: 0o600 })
-  }
+  ...tikkiMailStoreIo()
 })
 
 ipcMain.handle('tikki:mail:status', () => tikkiMail.status())
@@ -15860,6 +15894,9 @@ ipcMain.handle('tikki:mail:seen', (_event, mailbox, uid, seen) =>
 )
 ipcMain.handle('tikki:mail:remove', (_event, mailbox, uid) => tikkiMail.remove(String(mailbox), Number(uid)))
 ipcMain.handle('tikki:mail:send', (_event, input) => tikkiMail.send(input))
+
+// Tikki Admin: "is the local service up?" (tikki-local-health.ts).
+ipcMain.handle('tikki:local-health', (_event, port) => probeLocalHealth(port))
 
 // ── v2 connection registry IPC (multi-source) ───────────────────────────────
 // Storage-level CRUD for named agent sources. Routing/pooling consumption of

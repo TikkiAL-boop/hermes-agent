@@ -10,12 +10,17 @@ Verstandene Zeilenformen (Groß-/Kleinschreibung egal, Anführungszeichen egal):
 
     XAI_API_KEY=xai-…              CURSOR_API_KEY: key_…
     cursor  key_…                  anthropic: sk-ant-…
-    openai = sk-…                  gemini AIza…
+    openai = sk-…   XAI: xai-…     gemini AIza…
     honcho …                       wa bridge token …
+
+Ein wörtlicher Variablenname wird nur übernommen, wenn er auf ``_KEY``, ``_TOKEN``, ``_SECRET``
+oder ``_PASSWORD`` endet. Geschrieben wird in die ``.env`` des Hauptprofils und der Rollen aus dem
+Katalog; Geheimnisse, die einem Profil gehören (Postfach-Passwort, WhatsApp- und Bot-Token), nur
+ins Zielprofil.
 
 Aufruf (bevorzugt über Hermes, damit die Profilpfade stimmen):
 
-    hermes --run-module tikki.werkzeuge.schluessel <datei> [--nur-anzeigen] [--danach-loeschen]
+    hermes --run-module tikki.werkzeuge.schluessel <datei> [--nur-anzeigen] [--danach-loeschen] [--profil tikki]
 """
 
 from __future__ import annotations
@@ -63,18 +68,34 @@ FORMEN: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^(ghp_|github_pat_)"), "GITHUB_TOKEN"),
     (re.compile(r"^tvly-"), "TAVILY_API_KEY"),
     (re.compile(r"^fc-"), "FIRECRAWL_API_KEY"),
-    (re.compile(r"^key_"), "CURSOR_API_KEY"),
+    (re.compile(r"^(key_|crsr_)"), "CURSOR_API_KEY"),
     (re.compile(r"^sk-"), "OPENAI_API_KEY"),
 ]
 
+#: Ein wörtlich genannter Variablenname wird nur übernommen, wenn er wie ein Geheimnis heißt –
+#: nicht jedes ``GROSS=wert`` einer Notizdatei gehört in die .env aller Profile.
+GEHEIM_ENDEN = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD")
+#: Geheimnisse, die genau einem Profil gehören (ein Bot-Token darf nicht in zwei Profilen stehen,
+#: Postfach und WhatsApp sind die der Assistentin): sie gehen nur ins Zielprofil (``--profil``,
+#: Standard tikki). ``API_SERVER_KEY`` bleibt bei allen: jede Rolle braucht einen, um ihren
+#: HTTP-Dienst zu starten, und die Datei nennt nur einen.
+PROFILGEBUNDEN = frozenset({"TELEGRAM_BOT_TOKEN", "TIKKI_MAIL_PASSWORD", "WA_BRIDGE_TOKEN"})
+
 _ZEILE = re.compile(r"^\s*(?:export\s+)?([A-Za-z][\w .\-]*?)\s*(?:[:=]|\t| )\s*[\"']?([^\s\"']{8,})[\"']?\s*$")
 _NUR_WERT = re.compile(r"^\s*[\"']?([^\s\"']{16,})[\"']?\s*$")
+_VARIABLENNAME = re.compile(r"[A-Z][A-Z0-9_]*")
 
 
 def _variable(name: str) -> str | None:
-    n = name.strip().lower()
-    if re.fullmatch(r"[A-Z][A-Z0-9_]+", name.strip()):
-        return name.strip()
+    """Der Name vor dem Wert → Variable. Ein Anbietername gilt in jeder Schreibweise (``XAI``,
+    ``Cursor``, ``x.ai``); erst danach zählt ein wörtlicher Variablenname, und nur, wenn er wie ein
+    Geheimnis heißt; zuletzt ein Stichwort in freiem Text (``wa bridge token``)."""
+    roh = name.strip()
+    n = roh.lower()
+    if n in NAMEN:
+        return NAMEN[n]
+    if _VARIABLENNAME.fullmatch(roh):
+        return roh if roh.endswith(GEHEIM_ENDEN) else None
     for stichwort, variable in NAMEN.items():
         if stichwort in n:
             return variable
@@ -124,23 +145,24 @@ def env_schreiben(pfad: Path, werte: dict[str, str]) -> tuple[int, int]:
             neu += 1
     pfad.parent.mkdir(parents=True, exist_ok=True)
     tmp = pfad.with_suffix(pfad.suffix + ".tmp")
-    tmp.write_text("\n".join(zeilen).rstrip("\n") + "\n", encoding="utf-8")
-    os.chmod(tmp, 0o600)
+    # Von der ersten Sekunde an nur für den Besitzer lesbar – nicht erst nach dem Schreiben.
+    with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+        os.fchmod(f.fileno(), 0o600)
+        f.write("\n".join(zeilen).rstrip("\n") + "\n")
     os.replace(tmp, pfad)
-    os.chmod(pfad, 0o600)
     return neu, ersetzt
 
 
-def ziele() -> list[Path]:
-    """Die ``.env`` des Hauptprofils und jeder vorhandenen Rolle."""
+def ziele(profil: str = "tikki") -> list[tuple[Path, bool]]:
+    """``(.env, ist Zielprofil)`` für das Hauptprofil und jede eingerichtete Rolle aus dem Katalog.
+    Andere Ordner unter ``profiles/`` (die Skill-Bibliothek, gelöschte Profile) bekommen keine Schlüssel."""
     from hermes_cli.profiles import get_profile_dir
+    from tikki.werkzeuge.raeume import katalog
 
     haupt = get_profile_dir("default")
-    profile = haupt / "profiles"
-    pfade = [haupt / ".env"]
-    if profile.is_dir():
-        pfade += sorted(p / ".env" for p in profile.iterdir() if p.is_dir())
-    return pfade
+    rollen = sorted({e["hermes_profil"] for e in katalog()})
+    return [(haupt / ".env", profil == "default")] + [
+        (haupt / "profiles" / name / ".env", name == profil) for name in rollen if (haupt / "profiles" / name).is_dir()]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -148,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("datei")
     parser.add_argument("--nur-anzeigen", action="store_true", help="nur sagen, was erkannt wurde")
     parser.add_argument("--danach-loeschen", action="store_true", help="die Textdatei nach dem Übernehmen löschen")
+    parser.add_argument("--profil", default="tikki",
+                        help="Profil, dem die profilgebundenen Geheimnisse gehören (Postfach, Bot-Token; Standard: tikki)")
     args = parser.parse_args(argv)
 
     quelle = Path(args.datei).expanduser()
@@ -161,8 +185,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Erkannt ({len(werte)}): " + ", ".join(sorted(werte)))
     if args.nur_anzeigen:
         return 0
-    for pfad in ziele():
-        neu, ersetzt = env_schreiben(pfad, werte)
+    gebunden = sorted(set(werte) & PROFILGEBUNDEN)
+    if gebunden:
+        print(f"Nur ins Profil {args.profil}: " + ", ".join(gebunden))
+    for pfad, zielprofil in ziele(args.profil):
+        neu, ersetzt = env_schreiben(pfad, {k: v for k, v in werte.items() if zielprofil or k not in PROFILGEBUNDEN})
         print(f"  {pfad}: {neu} neu, {ersetzt} ersetzt")
     if args.danach_loeschen:
         quelle.unlink()

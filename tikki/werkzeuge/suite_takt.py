@@ -1,31 +1,26 @@
-"""Tikki – Dauerräume: Takt-Runden, Türen, Übungsläufe und Raumbericht auf gehosteten Räumen.
+"""Tikki – Raumbericht, und der Umzug der alten Raum-Takte auf Hermes-Zeitpläne.
 
-Die Räume selbst fährt Hermes' Gateway (``gateway/hosted_rooms.py``, siehe ``raeume.py``): nach
-jeder Nachricht des Menschen bekommt jedes angesprochene Mitglied den ungelesenen Teil des
-Gesprächs, höchstens drei Runden und zehn Antworten je Nachricht. Dieses Modul ist nur der Taktgeber
-dazu, ohne Modell, alle fünf Minuten aus einem Hermes-Cronjob: es liest die Raumprotokolle und
-stellt – immer an ``@raumleiter``, damit nicht jedes Mitglied der Reihe nach gefragt wird – drei
-Arten von Nachrichten ein:
+Die Räume fährt Hermes' Gateway (``gateway/hosted_rooms.py``, siehe ``raeume.py``). Dass ein Raum
+regelmäßig wieder aufgerufen wird, ist ein Hermes-Zeitplan wie jeder andere: Die App legt ihn an,
+wenn der Mensch beim Eröffnen einen Takt wählt (RPC ``cron.manage``), eine Rolle legt ihn mit ihrem
+Werkzeug ``cronjob`` an. Es gibt keinen eigenen Taktgeber mehr und kein Protokoll aus Zeilen, die ein
+Modell in seine Antwort schreiben müsste. Dieses Modul liest nur Zustand:
 
-- ``TAKT-RUNDE n``, wenn der Takt eines Raums fällig ist. Der Takt steht im Raum selbst: die letzte
-  Zeile ``TAKT: …`` (vom Menschen im Eröffnungstext oder vom Raumleiter bestätigt) gilt, ``TAKT: aus``
-  beendet ihn. Es gibt keine zweite Liste, die auseinanderlaufen könnte.
-- Türen: eine Zeile ``TÜR: <Raum> | <Text>`` des Raumleiters wird einmal in den genannten Raum
-  weitergereicht.
-- Übungsläufe: das erste fertige Übungsergebnis geht in den Hauptraum, und sind alle durch, die
-  Bitte ``LERNEN:``.
+    bericht [--json] [--db PFAD]   Lage aller Räume aus der Art ihrer Ereignisse (für den Rundgang
+                                   des Wachhalters); ohne --json folgt der Block „Ressourcen“ aus dem
+                                   Stand des MR-Bots und am Ende ``{"wakeAgent": false}``, wenn nirgends
+                                   etwas liegen geblieben ist – Hermes' Cron spart sich dann den Lauf
+    umziehen [--db PFAD]           einmalig je Raum: Räume, die noch nach dem alten Verfahren getaktet
+                                   waren (eine Zeile ``TAKT: …`` im Raum, die der frühere Taktgeber
+                                   alle fünf Minuten las), bekommen einen Hermes-Zeitplan im Profil, in
+                                   dem der Aufruf läuft. Die Räume und ihr Verlauf bleiben unberührt.
+    abloesen                       den Cronjob ``tikki-takt`` des früheren Taktgebers aus dem Profil
+                                   entfernen, in dem der Aufruf läuft
+    angleichen NAME AUFTRAG        den Auftrag eines vorhandenen Cronjobs dem Repo angleichen (der
+                                   Rundgang alter Einrichtungen trägt sonst weiter die alten Anweisungen)
 
-Nur der Zustand des Taktgebers (letzte Runde, zuletzt gelesene Zeile, Merker) liegt in
-``<Hermes-Wurzel>/tikki/takt.json`` unter Dateisperre, neben ``shared-state.db``.
-
-Unterbefehle:
-
-    takt    [--db PFAD]            fällige Runden, Türen und Übungsergebnisse einstellen
-                                   (Exit 1, wenn ein Raum eine Nachricht abgelehnt hat)
-    bericht [--json] [--db PFAD]   Stand aller Räume (für Wachhalter und Briefing); ohne --json
-                                   folgt der Block „Ressourcen“ aus dem Stand des MR-Bots und am
-                                   Ende ``{"wakeAgent": false}``, wenn kein Raum den Wachhalter
-                                   braucht – Hermes' Cron spart sich dann den Modelllauf
+Welche Räume schon umgezogen sind, steht in ``<Hermes-Wurzel>/tikki/takt.json`` (``_umgezogen``),
+neben dem, was der frühere Taktgeber dort hinterlassen hat; nichts davon wird gelöscht.
 """
 
 from __future__ import annotations
@@ -37,60 +32,23 @@ import os
 import re
 import sys
 import time
-from dataclasses import asdict, dataclass, field
-from datetime import datetime
 from pathlib import Path
 
-from gateway import hosted_room_discussion as discussion
-from gateway import hosted_rooms
 from tikki.werkzeuge import raeume
 
-#: Das Mitglied, dessen Zeilen (STAND, BRAUCHE, FERTIG, AUFGABEN, TÜR) Takt und Wände lesen.
-RAUMLEITER = "raumleiter"
-#: Womit ein Raum das Einstellen einer Nachricht ablehnt (aufgelöst, Budget voll, Autorität
-#: gewechselt, Text unzulässig). Ein solcher Raum kostet den anderen nicht ihren Tick.
-RAUM_FEHLER = (hosted_rooms.HostedRoomError, discussion.DiscussionPolicyError)
-#: Präfix der Fehlzeilen im Tick; ``main`` endet damit ungleich null.
-FEHLER = "Fehler: "
-#: Ein stiller Raum mit offenen Aufgaben braucht nach so vielen Minuten den Wachhalter.
+#: Ab so vielen Minuten ohne Antwort gilt eine Wortmeldung des Menschen als liegen geblieben.
 STILL_MIN = 30
-#: So viele Ereignisse vom Ende eines Raums werden gelesen; lange Räume halten ihren Anfang extra.
-FENSTER = 1500
-ANFANG = 40
+#: Der Cronjob des früheren Taktgebers (Profil ``raumleiter``).
+ALTER_JOB = "tikki-takt"
+
+# ─── Nur für den Umzug: die Takt-Angabe des alten Verfahrens ─────────────────
 
 _TAKT = re.compile(r"(?:^|\n)[ \t>*_]*TAKT:[ \t]*([^\n]+)", re.IGNORECASE)
-_BRAUCHE = re.compile(r"(?:^|\n)[ \t>*_]*BRAUCHE:[ \t]*([^\n]+)")
-_FERTIG = re.compile(r"(?:^|\n)[ \t>*_]*FERTIG:[ \t]*")
-_STAND = re.compile(r"(?:^|\n)[ \t>*_]*STAND:[ \t]*([^\n]+)")
-_ANSATZ = re.compile(r"(?:^|\n)[ \t>*_]*ANSATZ:[ \t]*([^\n]+)")
-#: ``AUFGABEN:`` darf fett stehen und einen Zusatz tragen; Punkte mit ``-`` oder ``*`` (wie die App).
-_AUFGABEN = re.compile(r"(?:^|\n)[ \t>*_#]*AUFGABEN:[^\n]*\n((?:[ \t]*[-*][ \t]*\[[ xX]\][^\n]*\n?)+)")
-_AUFGABE = re.compile(r"^[ \t]*[-*][ \t]*\[([ xX])\][ \t]*(.+?)[ \t]*$", re.MULTILINE)
-_TUER = re.compile(r"(?:^|\n)[ \t>*_]*TÜR:[ \t]*([^|\n]+?)[ \t]*\|[ \t]*([^\n]+)")
-#: Nachrichten, die das Backend in einen Raum stellt, sind keine Antwort des Menschen – auch wenn
-#: der Mensch ihnen seinen Namen voranstellt oder sie @raumleiter ansprechen.
-_SYSTEM = re.compile(
-    r"^(?:[^:\n@\[]{1,40}:[ \t]*)?(?:@raumleiter[ \t]*)?(?:TAKT-RUNDE|ÜBUNGSERGEBNIS|LERNEN:|WACHHALTER:|\[Tür)"
-)
-#: Übungsräume heißen ``<Projekt>-<nutzer>-<nr>@tikki.team``; der Hauptraum trägt nur den Projektnamen.
-UEBUNG_TITEL = re.compile(r"^(?P<basis>.+)-(?P<nutzer>[^-@\s]+)-(?P<nr>\d+)@tikki\.team$")
-
 _AUS = {"aus", "stopp", "stop", "keiner", "kein", "nein", "off", "none", "-"}
 _WOCHENTAGE = {
     "sonntags": 0, "montags": 1, "dienstags": 2, "mittwochs": 3,
     "donnerstags": 4, "freitags": 5, "samstags": 6,
 }
-
-
-# ─── Takt lesen ──────────────────────────────────────────────────────────────
-
-
-def takt_aus_text(text: str) -> str | None:
-    """Die letzte ``TAKT:``-Angabe eines Textes, ohne Markdown-Reste."""
-    treffer = _TAKT.findall(text or "")
-    if not treffer:
-        return None
-    return treffer[-1].strip().strip("*_`").strip()
 
 
 def _uhrzeit(text: str, standard: tuple[int, int]) -> tuple[int, int] | None:
@@ -150,141 +108,26 @@ def zeitplan(takt: str | None) -> str | None:
     return takt.strip() if plan.get("kind") in {"interval", "cron"} else None
 
 
-def naechste_runde(plan: str, letzte: str | None) -> datetime | None:
-    """Wann die nächste Runde fällig ist, gerechnet ab der letzten (Hermes' eigener Kalender)."""
-    from cron.jobs import compute_next_run, parse_schedule
+def alter_takt(raum: dict, db: Path) -> str | None:
+    """Der Takt, den ein Raum nach dem alten Verfahren zuletzt hatte, als Hermes-Zeitplan.
 
-    iso = compute_next_run(parse_schedule(plan), letzte)
-    return datetime.fromisoformat(iso) if iso else None
-
-
-# ─── Raum lesen ──────────────────────────────────────────────────────────────
-
-
-@dataclass
-class Tuer:
-    seq: int
-    ziel: str
-    text: str
-
-
-@dataclass
-class RaumStand:
-    id: str
-    titel: str
-    mitglieder: list[str] = field(default_factory=list)
-    letzte_aktivitaet: float | None = None
-    letzte_seq: int = 0
-    takt: str | None = None
-    plan: str | None = None
-    stand: str | None = None
-    brauche: str | None = None
-    fertig: bool = False
-    fertig_text: str | None = None
-    fertig_zeit: float | None = None
-    ansatz: str | None = None
-    aufgaben_offen: list[str] = field(default_factory=list)
-    aufgaben_erledigt: int = 0
-    nachrichten: int = 0
-    arbeitet: str | None = None
-    tueren: list[Tuer] = field(default_factory=list)
-
-    @property
-    def wartet_auf_mensch(self) -> bool:
-        return self.brauche is not None
-
-
-def ist_systemnachricht(text: str) -> bool:
-    return bool(_SYSTEM.match((text or "").lstrip()))
-
-
-def raum_stand(raum: dict, ereignisse: list[dict]) -> RaumStand:
-    """Was ein Raum gerade ist, nur aus seinem Protokoll: Takt, Aufgaben, offene Frage, fertig, Türen.
-
-    Gelesen werden die Zeilen des Raumleiters; die Berichtsformate der anderen Rollen (etwa das
-    ``STAND: <Datum>`` des Rechercheurs) sind keine Raumaussage. Eine Nachricht des Menschen
-    beantwortet die offene Frage und öffnet einen fertigen Raum wieder; Systemnachrichten nicht.
-    Die letzte Raumleiter-Nachricht gilt: ``BRAUCHE:`` bleibt offen, bis der Raumleiter wieder
-    ``STAND:``/``FERTIG:`` ohne ``BRAUCHE:`` schreibt oder der Mensch antwortet (so liest es auch
-    die App, ``suites/store.ts``).
+    Gelesen wird das ganze Protokoll, nicht ein Fenster: die letzte Angabe des Menschen oder des
+    Raumleiters gilt, und ein abgestellter Takt (``TAKT: aus``) bleibt abgestellt, egal wie lange
+    das her ist.
     """
-    stand = RaumStand(
-        id=raum["room_id"], titel=(raum.get("name") or "").strip() or raum["room_id"],
-        mitglieder=[m.get("handle") or m["member_id"] for m in raum.get("members", [])],
-        letzte_aktivitaet=raum.get("updated_at"), letzte_seq=int(raum.get("latest_seq") or 0),
-        arbeitet=raeume.wer_arbeitet(ereignisse),
+    letzte: str | None = None
+    for n in raeume.nachrichten(raeume.verlauf(raum["room_id"], hoechstens=10**9, db=db), raum):
+        if n["von"] in ("mensch", raeume.RAUMLEITER) and (treffer := _TAKT.findall(n["text"] or "")):
+            letzte = treffer[-1].strip().strip("*_`").strip()
+    return zeitplan(letzte)
+
+
+def runden_prompt(raum: dict) -> str:
+    """Was der Zeitplan eines Raums der Rolle aufträgt, in deren Profil er läuft."""
+    return (
+        f"Im Raum „{raum.get('name') or raum['room_id']}“ (Kennung {raum['room_id']}) ist die nächste "
+        "regelmäßige Runde dran. Schau dir den Stand des Raums an und stoße die Runde dort an."
     )
-    for e in ereignisse:
-        stand.letzte_aktivitaet = max(stand.letzte_aktivitaet or 0, float(e.get("created_at") or 0))
-        stand.letzte_seq = max(stand.letzte_seq, int(e["seq"]))
-    gesagt = raeume.nachrichten(ereignisse, raum)
-    stand.nachrichten = len(gesagt)
-    for n in gesagt:
-        text, von = n["text"], n["von"]
-        if von == "mensch" and ist_systemnachricht(text):
-            continue
-        if von not in ("mensch", RAUMLEITER):
-            continue
-        takt = takt_aus_text(text)
-        if takt is not None:
-            stand.takt = takt
-        if von == "mensch":
-            if stand.ansatz is None and (ansatz := _ANSATZ.findall(text)):
-                stand.ansatz = ansatz[-1].strip()
-            if text.strip():
-                stand.brauche = None
-                stand.fertig = False
-            continue
-        brauche = _BRAUCHE.findall(text)
-        if brauche:
-            stand.brauche = brauche[-1].strip()
-        elif _STAND.search(text) or _FERTIG.search(text):
-            stand.brauche = None
-        if treffer := _FERTIG.search(text):
-            stand.fertig = True
-            stand.fertig_text = text[treffer.start():].strip()[:3000]
-            stand.fertig_zeit = n["zeit"]
-        if zeile := _STAND.findall(text):
-            stand.stand = zeile[-1].strip()
-        if block := _AUFGABEN.search(text):
-            aufgaben = _AUFGABE.findall(block.group(1))
-            stand.aufgaben_offen = [a for kreuz, a in aufgaben if kreuz == " "]
-            stand.aufgaben_erledigt = sum(1 for kreuz, _ in aufgaben if kreuz != " ")
-        stand.tueren += [Tuer(n["seq"], ziel.strip(), inhalt.strip()) for ziel, inhalt in _TUER.findall(text)]
-    stand.plan = zeitplan(stand.takt)
-    return stand
-
-
-def ereignisse(raum: dict, db: Path) -> list[dict]:
-    """Das Protokoll eines Raums: ganz, oder bei langen Räumen Anfang (Takt, Ansatz) plus Ende."""
-    letzte = int(raum.get("latest_seq") or 0)
-    if letzte <= FENSTER:
-        return raeume.verlauf(raum["room_id"], hoechstens=FENSTER + 1, db=db)
-    anfang = raeume.verlauf(raum["room_id"], hoechstens=ANFANG, db=db)
-    return anfang + raeume.verlauf(raum["room_id"], seit=max(anfang[-1]["seq"], letzte - FENSTER), db=db)
-
-
-def alle_raeume(db: Path | None = None) -> list[RaumStand]:
-    """Alle Tikki-Räume mit ihrem Stand, jüngste zuerst. Ohne Speicher gibt es keine Räume."""
-    db = db or raeume.db_pfad()
-    if not db.is_file():
-        return []
-    return [raum_stand(r, ereignisse(r, db)) for r in raeume.liste(db=db)]
-
-
-def raum_finden(name: str, raum_liste: list[RaumStand]) -> RaumStand | None:
-    """Ein Raum nach dem Wort des Raumleiters: genauer Name, eindeutiger Namensanfang, dann Kennung."""
-    wort = name.strip()
-    for raum in raum_liste:
-        if raum.titel == wort:
-            return raum
-    anfang = [r for r in raum_liste if r.titel.lower().startswith(wort.lower())]
-    if len(anfang) == 1:
-        return anfang[0]
-    return next((r for r in raum_liste if r.id == wort), None)
-
-
-# ─── Zustand des Taktgebers ──────────────────────────────────────────────────
 
 
 def zustand_pfad(db: Path) -> Path:
@@ -293,11 +136,7 @@ def zustand_pfad(db: Path) -> Path:
 
 @contextlib.contextmanager
 def _zustand(db: Path):
-    """Der Zustand des Taktgebers, unter Dateisperre gelesen und geschrieben.
-
-    Geschrieben wird auch, wenn der Tick abbricht: was bis dahin eingestellt wurde, ist im Raum
-    und darf beim nächsten Lauf nicht noch einmal kommen.
-    """
+    """``takt.json`` unter Dateisperre lesen und schreiben; was schon darin steht, bleibt stehen."""
     import fcntl
 
     pfad = zustand_pfad(db)
@@ -308,248 +147,107 @@ def _zustand(db: Path):
             daten = json.loads(pfad.read_text(encoding="utf-8")) if pfad.exists() else {}
         except ValueError:
             daten = {}
-        try:
-            yield daten
-        finally:
+        vorher = json.dumps(daten, sort_keys=True)
+        yield daten
+        if json.dumps(daten, sort_keys=True) != vorher:
             tmp = pfad.with_suffix(".tmp")
             tmp.write_text(json.dumps(daten, ensure_ascii=False, indent=2), encoding="utf-8")
             os.replace(tmp, pfad)
 
 
-def _zustand_lesen(db: Path) -> dict:
-    try:
-        return json.loads(zustand_pfad(db).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+def _cron(**argumente) -> dict:
+    """Hermes' eigenes Cron-Werkzeug im Profil des Aufrufs."""
+    from tools.cronjob_tools import cronjob
+
+    return json.loads(cronjob(**argumente))
 
 
-def faellige(raum_liste: list[RaumStand], zustand: dict, jetzt: datetime) -> list[RaumStand]:
-    """Räume mit Takt, deren nächste Runde erreicht ist.
+def _jobs() -> list[dict]:
+    return list(_cron(action="list", include_disabled=True).get("jobs") or [])
 
-    Ein Raum, der zum ersten Mal einen Takt zeigt, beginnt mit dem Zeitpunkt, an dem er
-    gesehen wird: seine erste Runde ist die nächste Gelegenheit, nicht sofort.
+
+def umziehen(*, db: Path | None = None, anlegen=None, vorhandene=None) -> list[str]:
+    """Jeden Raum mit altem Takt einmal auf einen Hermes-Zeitplan umziehen. Rückgabe: je Raum eine Zeile.
+
+    Ein Raum zieht genau einmal um: Wer danach seinen Zeitplan in Hermes pausiert oder löscht,
+    bekommt ihn nicht wieder. Einen Zeitplan mit dem Namen des Raums (``raeume.ZEITPLAN_NAME``),
+    den es schon gibt, lässt der Umzug stehen.
     """
-    faellig = []
-    for raum in raum_liste:
-        if not raum.plan:
-            continue
-        eintrag = zustand.setdefault(raum.id, {})
-        if eintrag.get("plan") != raum.plan:
-            eintrag["plan"] = raum.plan
-            eintrag["letzte"] = jetzt.isoformat()
-            continue
-        naechste = naechste_runde(raum.plan, eintrag.get("letzte"))
-        if naechste is not None and naechste <= jetzt:
-            faellig.append(raum)
-    return faellig
-
-
-def runden_text(raum: RaumStand, nummer: int, jetzt: datetime) -> str:
-    return (
-        f"@raumleiter TAKT-RUNDE {nummer} · {jetzt.strftime('%d.%m.%Y %H:%M')}: Neue Runde nach Takt ({raum.takt}). "
-        "Prüfe, was seit der letzten Runde passiert ist, verteile die nächsten Aufgaben an die Mitglieder "
-        "(@slug), prüfe Ergebnisse und schließe mit STAND: und AUFGABEN:. "
-        "Dieser Raum läuft weiter; kein FERTIG, solange der Takt gilt."
-    )
-
-
-# ─── Türen ───────────────────────────────────────────────────────────────────
-
-
-def tueren_weiterreichen(raum_liste: list[RaumStand], zustand: dict, db: Path, jetzt: float) -> list[str]:
-    """Jede neue ``TÜR:``-Zeile eines Raumleiters einmal in den Zielraum stellen.
-
-    Was nicht zustellbar ist (unbekannter Raum, mehrdeutiger Anfang, der Raum selbst, ein Zielraum,
-    der die Nachricht ablehnt), bleibt im Zustand stehen, damit der Bericht es dem Wachhalter zeigt.
-    """
-    meldungen = []
-    for raum in raum_liste:
-        eintrag = zustand.setdefault(raum.id, {})
-        gesehen = int(eintrag.get("gesehen", 0))
-        for tuer in raum.tueren:
-            if tuer.seq <= gesehen:
-                continue
-            ziel = raum_finden(tuer.ziel, raum_liste)
-            grund = "kein solcher Raum" if ziel is None or ziel.id == raum.id else None
-            if grund is None:
-                try:
-                    raeume.tuer(raum.id, ziel.id, tuer.text, db=db, jetzt=jetzt)
-                    meldungen.append(f"Tür: {raum.titel} → {ziel.titel}")
-                    continue
-                except RAUM_FEHLER as e:
-                    grund = str(e)
-                    meldungen.append(f"{FEHLER}Tür {raum.titel} → {ziel.titel}: {e}")
-            else:
-                meldungen.append(f"Tür nicht zustellbar: {raum.titel} → „{tuer.ziel}“")
-            eintrag["unzustellbar"] = [*eintrag.get("unzustellbar", [])[-4:], {"ziel": tuer.ziel, "text": tuer.text[:200], "seq": tuer.seq, "grund": grund}]
-        eintrag["gesehen"] = max(gesehen, raum.letzte_seq)
-    return meldungen
-
-
-# ─── Übungsläufe ─────────────────────────────────────────────────────────────
-
-
-def uebungsgruppen(raum_liste: list[RaumStand]) -> dict[str, dict]:
-    """Hauptraum und Übungsräume je Projekt. Ohne Hauptraum gibt es keine Gruppe."""
-    haupt = {raum.titel: raum for raum in raum_liste if not UEBUNG_TITEL.match(raum.titel)}
-    gruppen: dict[str, dict] = {}
-    for raum in raum_liste:
-        m = UEBUNG_TITEL.match(raum.titel)
-        if m and m.group("basis") in haupt:
-            gruppe = gruppen.setdefault(m.group("basis"), {"haupt": haupt[m.group("basis")], "uebungen": []})
-            gruppe["uebungen"].append(raum)
-    return gruppen
-
-
-def _kurz(text: str | None, laenge: int = 1500) -> str:
-    text = (text or "").strip()
-    return text if len(text) <= laenge else text[: laenge - 1] + "…"
-
-
-def _nummer(raum: RaumStand) -> str:
-    m = UEBUNG_TITEL.match(raum.titel)
-    return m.group("nr") if m else "?"
-
-
-def uebungs_runden(raum_liste: list[RaumStand], zustand: dict, jetzt: float) -> list[tuple]:
-    """Nachrichten, die Übungsräume für ihren Hauptraum auslösen: (Hauptraum, Text, Grund, Merker).
-
-    Der Merker ``(projekt, feld, wert)`` wird erst gesetzt, wenn die Nachricht wirklich im Raum ist.
-
-    1. Der erste fertige Ansatz geht sofort an den Hauptraum, solange der selbst noch
-       nicht fertig ist: der Mensch bekommt das schnellste Ergebnis, nicht das eigene.
-    2. Sind alle fertig (oder der Hauptraum fertig und die Übungen seit einem Tag still),
-       vergleicht der Hauptraum einmal die Ansätze und schreibt ERFAHRUNG-Zeilen.
-    """
-    runden = []
-    uebung = zustand.get("_uebung", {})
-    for basis, gruppe in uebungsgruppen(raum_liste).items():
-        haupt: RaumStand = gruppe["haupt"]
-        merk = uebung.get(basis, {})
-        fertige = sorted(
-            (r for r in gruppe["uebungen"] if r.fertig),
-            key=lambda r: r.fertig_zeit or r.letzte_aktivitaet or 0,
-        )
-        if fertige and not haupt.fertig and not merk.get("weitergegeben"):
-            erster = fertige[0]
-            runden.append((haupt, (
-                f"@raumleiter ÜBUNGSERGEBNIS {_nummer(erster)}: Übungsraum „{erster.titel}“ "
-                f"(Ansatz: {erster.ansatz or 'unbekannt'}) ist zuerst fertig.\n"
-                f"{_kurz(erster.fertig_text)}\n"
-                + (f"STAND: {erster.stand}\n" if erster.stand else "")
-                + "\nPrüfe es gegen das Raumziel. Erfüllt es das Ziel, übernimm es als Ergebnis dieses "
-                "Raums und schließe mit FERTIG:; sonst arbeite weiter und nutze, was brauchbar ist."
-            ), f"erstes Ergebnis aus {erster.titel}", (basis, "weitergegeben", erster.id)))
-            continue
-        still = all(
-            r.fertig or (r.letzte_aktivitaet and jetzt - r.letzte_aktivitaet > 24 * 3600)
-            for r in gruppe["uebungen"]
-        )
-        if haupt.fertig and still and gruppe["uebungen"] and not merk.get("gelernt"):
-            ansaetze = "\n\n".join(
-                f"— {r.titel} (Ansatz: {r.ansatz or 'unbekannt'}, "
-                f"{'fertig' if r.fertig else 'nicht fertig geworden'}):\n{_kurz(r.fertig_text or r.stand, 700)}"
-                for r in gruppe["uebungen"]
-            )
-            runden.append((haupt, (
-                f"@raumleiter LERNEN: Alle Übungsläufe zu „{basis}“ sind durch.\n{ansaetze}\n\n"
-                "Vergleiche die Ansätze mit deinem eigenen: Was war schneller, was besser, was "
-                "billiger? Schreib drei bis fünf Zeilen, jede beginnend mit ERFAHRUNG:, die beim "
-                "nächsten ähnlichen Auftrag helfen. Kein neuer Auftrag, kein FERTIG."
-            ), "Erfahrungen aus den Übungsläufen", (basis, "gelernt", True)))
-    return runden
-
-
-# ─── Takt ────────────────────────────────────────────────────────────────────
-
-
-def _jetzt(jetzt: datetime | None) -> datetime:
-    if jetzt is not None:
-        return jetzt
-    from hermes_time import now
-
-    return now()
-
-
-def _einstellen(zustand: dict, raum: RaumStand, text: str, db: Path, stempel: float, meldungen: list[str]) -> bool:
-    """Eine Nachricht in einen Raum; ein Raum, der sie ablehnt, kostet die anderen nicht den Tick.
-
-    Der letzte Fehler steht im Zustand (``fehler``), damit der Bericht ihn dem Wachhalter zeigt,
-    und verschwindet, sobald der Raum wieder annimmt.
-    """
-    eintrag = zustand.setdefault(raum.id, {})
-    try:
-        raeume.senden(raum.id, text, db=db, jetzt=stempel)
-    except RAUM_FEHLER as e:
-        eintrag["fehler"] = f"{datetime.fromtimestamp(stempel).strftime('%d.%m. %H:%M')} {e}"
-        meldungen.append(f"{FEHLER}{raum.titel}: {e}")
-        return False
-    eintrag.pop("fehler", None)
-    return True
-
-
-def takt(*, db: Path | None = None, jetzt: datetime | None = None) -> list[str]:
-    """Ein Tick des Taktgebers. Rückgabe: je eingestellter Nachricht eine Zeile, Fehler mit ``FEHLER``."""
     db = db or raeume.db_pfad()
-    jetzt = _jetzt(jetzt)
-    stempel = jetzt.timestamp()
-    raum_liste = alle_raeume(db)
+    if not db.is_file():
+        return []
+    anlegen = anlegen or (lambda **job: _cron(action="create", deliver="local", **job))
     meldungen: list[str] = []
     with _zustand(db) as zustand:
-        meldungen += tueren_weiterreichen(raum_liste, zustand, db, stempel)
-        for haupt, text, grund, (projekt, feld, wert) in uebungs_runden(raum_liste, zustand, stempel):
-            if _einstellen(zustand, haupt, text, db, stempel, meldungen):
-                zustand.setdefault("_uebung", {}).setdefault(projekt, {})[feld] = wert
-                meldungen.append(f"{grund}: {haupt.titel}")
-        for raum in faellige(raum_liste, zustand, jetzt):
-            eintrag = zustand[raum.id]
-            nummer = int(eintrag.get("runden", 0)) + 1
-            if _einstellen(zustand, raum, runden_text(raum, nummer, jetzt), db, stempel, meldungen):
-                eintrag["letzte"], eintrag["runden"] = jetzt.isoformat(), nummer
-                meldungen.append(f"Takt-Runde {nummer} ({raum.takt}): {raum.titel}")
-        bekannt = {raum.id for raum in raum_liste}
-        for alt in [k for k in zustand if not k.startswith("_") and k not in bekannt]:
-            zustand.pop(alt, None)
+        umgezogen: list[str] = zustand.setdefault("_umgezogen", [])
+        offen = [r for r in raeume.liste(db=db) if r["room_id"] not in umgezogen]
+        if not offen:
+            return []
+        namen = {str(j.get("name") or "") for j in (vorhandene() if vorhandene else _jobs())}
+        for raum in offen:
+            plan = alter_takt(raum, db)
+            name = raeume.ZEITPLAN_NAME.format(room_id=raum["room_id"])
+            if plan and name not in namen:
+                ergebnis = anlegen(name=name, schedule=plan, prompt=runden_prompt(raum))
+                if isinstance(ergebnis, dict) and (ergebnis.get("error") or ergebnis.get("success") is False):
+                    meldungen.append(f"Fehler: {raum['name']}: {ergebnis.get('error') or ergebnis}")
+                    continue
+                meldungen.append(f"Zeitplan {plan}: {raum['name']}")
+            umgezogen.append(raum["room_id"])
     return meldungen
+
+
+def abloesen() -> list[str]:
+    """Den Cronjob des früheren Taktgebers im Profil des Aufrufs entfernen."""
+    entfernt = []
+    for job in _jobs():
+        if job.get("name") == ALTER_JOB and (kennung := job.get("job_id") or job.get("id")):
+            _cron(action="remove", job_id=kennung)
+            entfernt.append(f"Cronjob {ALTER_JOB} entfernt")
+    return entfernt
+
+
+def angleichen(name: str, auftrag: str) -> list[str]:
+    """Den Auftrag eines vorhandenen Cronjobs im Profil des Aufrufs dem Repo angleichen.
+
+    Ein Rundgang, der vor der Umstellung eingerichtet wurde, trägt noch die Anweisungen des alten
+    Verfahrens; wie die Seele folgt sein Auftrag dem Repo. Zeitplan, Skript und Zustand bleiben.
+    """
+    from cron.jobs import list_jobs
+
+    geaendert = []
+    for job in list_jobs(include_disabled=True):
+        if job.get("name") == name and (job.get("prompt") or "") != auftrag:
+            _cron(action="update", job_id=job["id"], prompt=auftrag)
+            geaendert.append(f"Cronjob {name}: Auftrag angeglichen")
+    return geaendert
 
 
 # ─── Bericht ─────────────────────────────────────────────────────────────────
 
 
 def bericht(*, db: Path | None = None, jetzt: float | None = None) -> list[dict]:
-    """Stand aller Räume, so kurz, dass ein Modell ihn in einem Blick liest."""
+    """Die Lage aller Räume, so kurz, dass ein Modell sie in einem Blick liest."""
     db = db or raeume.db_pfad()
+    if not db.is_file():
+        return []
     jetzt = jetzt or time.time()
-    zustand = _zustand_lesen(db)
     zeilen = []
-    for raum in alle_raeume(db):
-        daten = asdict(raum)
-        daten.pop("tueren", None)
-        eintrag = zustand.get(raum.id) or {}
-        daten["still_seit_min"] = int((jetzt - raum.letzte_aktivitaet) / 60) if raum.letzte_aktivitaet else None
-        daten["letzte_takt_runde"] = eintrag.get("letzte") if raum.plan else None
-        daten["takt_runden"] = int(eintrag.get("runden", 0))
-        daten["tueren_unzustellbar"] = eintrag.get("unzustellbar", [])
-        daten["fehler"] = eintrag.get("fehler")
-        zeilen.append(daten)
+    for raum in raeume.liste(db=db):
+        lage = raeume.lage(raum, db=db)
+        aktiv = lage.pop("letzte_aktivitaet")
+        lage["still_seit_min"] = int((jetzt - aktiv) / 60) if aktiv else None
+        zeilen.append(lage)
     return zeilen
 
 
 def weckbedarf(zeilen: list[dict]) -> bool:
     """Ob der Wachhalter (ein Modelllauf) gebraucht wird, oder ob der Bericht nur Ruhe meldet.
 
-    Gebraucht wird er, wenn ein Raum auf den Menschen wartet (``BRAUCHE:``), wenn ein Raum ohne
-    Takt bei offenen Aufgaben länger als ``STILL_MIN`` Minuten still ist und niemand arbeitet,
-    oder wenn ein Raum einen Fehler oder eine unzustellbare Tür meldet. Räume mit Takt überlässt
-    er dem Takt.
+    Gebraucht wird er, wenn in einem Raum eine Runde gescheitert ist, oder wenn eine Wortmeldung
+    des Menschen länger als ``STILL_MIN`` Minuten ohne Antwort ist und niemand daran arbeitet.
     """
-    return any(
-        z["brauche"]
-        or z["fehler"]
-        or z["tueren_unzustellbar"]
-        or (z["aufgaben_offen"] and not z["plan"] and not z["arbeitet"] and (z["still_seit_min"] or 0) > STILL_MIN)
-        for z in zeilen
-    )
+    return any(z["gescheitert"] or (z["unbeantwortet"] and (z["still_seit_min"] or 0) > STILL_MIN) for z in zeilen)
 
 
 #: Die letzte Ausgabezeile, bei der Hermes' Cron den Lauf ohne Modell beendet (``cron/scheduler_prompt.py``).
@@ -561,22 +259,13 @@ def _bericht_text(zeilen: list[dict]) -> str:
         return "Keine Räume."
     teile = [f"{len(zeilen)} Räume:"]
     for z in zeilen:
-        zustand = (
-            "wartet auf Mensch" if z["brauche"] else
-            "fertig" if z["fertig"] and not z["plan"] else
+        lage = (
             f"arbeitet (@{z['arbeitet']})" if z["arbeitet"] else
-            "aktiv"
+            f"Runde von @{z['gescheitert']} gescheitert" if z["gescheitert"] else
+            "Wortmeldung des Menschen ohne Antwort" if z["unbeantwortet"] else
+            "ruhig"
         )
-        teile.append(
-            f"- [{z['id']}] {z['titel']} · {zustand} · still seit {z['still_seit_min']} min"
-            + (f" · Takt {z['takt']}" if z["plan"] else "")
-            + (f" · offen: {'; '.join(z['aufgaben_offen'][:5])}" if z["aufgaben_offen"] else "")
-            + (f" · BRAUCHE: {z['brauche']}" if z["brauche"] else "")
-            + (f" · STAND: {z['stand']}" if z["stand"] else "")
-            + (f" · Tür nicht zustellbar: {', '.join('„' + t['ziel'] + '“' for t in z['tueren_unzustellbar'])}"
-               if z["tueren_unzustellbar"] else "")
-            + (f" · Fehler: {z['fehler']}" if z["fehler"] else "")
-        )
+        teile.append(f"- [{z['room_id']}] {z['name']} · {lage} · still seit {z['still_seit_min']} min")
     return "\n".join(teile)
 
 
@@ -591,18 +280,26 @@ def ressourcen_text() -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="suite_takt", description=__doc__.split("\n\n")[0])
     unter = parser.add_subparsers(dest="befehl", required=True)
-    p_takt = unter.add_parser("takt")
-    p_takt.add_argument("--db", type=Path)
     p_bericht = unter.add_parser("bericht")
     p_bericht.add_argument("--db", type=Path)
     p_bericht.add_argument("--json", action="store_true")
+    unter.add_parser("umziehen").add_argument("--db", type=Path)
+    unter.add_parser("abloesen")
+    p_angleichen = unter.add_parser("angleichen")
+    p_angleichen.add_argument("name")
+    p_angleichen.add_argument("auftrag")
     args = parser.parse_args(argv)
 
-    if args.befehl == "takt":
-        zeilen = takt(db=args.db)
-        for zeile in zeilen:
-            print(zeile)
-        return 1 if any(z.startswith(FEHLER) for z in zeilen) else 0
+    if args.befehl == "umziehen":
+        zeilen = umziehen(db=args.db)
+        print("\n".join(zeilen))
+        return 1 if any(z.startswith("Fehler: ") for z in zeilen) else 0
+    if args.befehl == "abloesen":
+        print("\n".join(abloesen()))
+        return 0
+    if args.befehl == "angleichen":
+        print("\n".join(angleichen(args.name, args.auftrag)))
+        return 0
     zeilen = bericht(db=args.db)
     if args.json:
         print(json.dumps(zeilen, ensure_ascii=False, indent=2))

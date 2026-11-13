@@ -7,24 +7,46 @@ interface AreaLabels {
   admin: {
     sections: Record<AdminSection, string>
     intro: Record<AdminSection, string>
-    roles: { save: string; saved: string; loading: string; missingProfile: string; houseRules: string; pick: string }
+    roles: {
+      save: string
+      saved: string
+      unsaved: string
+      discard: string
+      loading: string
+      loadError: string
+      retry: string
+      saveError: (profile: string) => string
+      clones: (namen: string) => string
+      missingProfile: string
+      houseRules: string
+      pick: string
+    }
     bots: {
       name: string
       task: string
       model: string
-      fallback: string
+      vorgabe: string
       port: string
       status: string
       atStart: string
       onDemand: string
       online: string
       offline: string
+      missing: string
       unknown: string
+      statusFehler: string
       setup: string
     }
     users: { name: string; address: string; role: string; admin: string; member: string; invite: string; note: string }
     nodes: { name: string; kind: string; ram: string; role: string; status: string; note: string }
-    gedaechtnis: { laeuft: string; aus: string; pruefe: string; erklaerung: string; starten: string }
+    gedaechtnis: {
+      laeuft: string
+      aus: string
+      pruefe: string
+      unbekannt: string
+      erklaerung: string
+      starten: string
+    }
     ressourcen: {
       titel: string
       erklaerung: string
@@ -48,15 +70,16 @@ interface AreaLabels {
       nichtsFrei: string
     }
     betrieb: {
-      uebungen: string
-      uebungenHinweis: string
-      kapazitaet: string
-      kapazitaetHinweis: string
       mensch: string
       menschHinweis: string
+      waToken: string
+      waTokenHinweis: string
+      waTokenPlatzhalter: string
+      waTokenErsetzen: string
+      waTokenSpeichern: string
+      waTokenEntfernen: string
+      waTokenStand: Record<'unbekannt' | 'gesetzt' | 'fehlt' | 'fehler', string>
       rundUmDieUhr: string
-      briefingAutomatik: string
-      briefingAutomatikHinweis: string
     }
   }
   areas: Record<Area, string>
@@ -65,6 +88,7 @@ interface AreaLabels {
     address: string
     addressHint: string
     attachments: string
+    bilderBlockiert: string
     cancel: string
     cc: string
     compose: string
@@ -89,6 +113,7 @@ interface AreaLabels {
     title: string
     to: string
     unread: string
+    wrote: (from: string) => string
   }
   rail: { label: string; hinweis: Record<Area, string> }
   vorzimmer: {
@@ -118,7 +143,7 @@ interface AreaLabels {
     neueSuiteHinweis: string
     einstellungen: string
     briefing: string
-    briefingLaeuft: string
+    briefingBitte: string
     vorlesen: string
     vorlesenAn: string
     vorlesenAus: string
@@ -147,9 +172,7 @@ interface AreaLabels {
     daten: string
     leereAusgabe: string
     leereDaten: string
-    leereTodos: string
     output: string
-    todoWand: string
     zurueck: string
     betreten: string
     erneut: string
@@ -177,10 +200,11 @@ interface AreaLabels {
     aufmerksamkeit: string
     allesRuhig: string
     wartetAufDich: string
-    fertigGemeldet: string
     brauchtDich: string
-    stand: string
+    /** A person in a room whom no one named. */
+    mensch: string
     takt: string
+    takte: Record<'stuendlich' | 'halbstuendlich' | 'taeglich' | 'werktags' | 'montags', string>
     taktEinmalig: string
     taktEigener: string
     taktPlatzhalter: string
@@ -188,9 +212,6 @@ interface AreaLabels {
     leiter: string
     leiterStandard: (modell: string) => string
     rollen: string
-    uebungenGeplant: (n: number) => string
-    uebungslaeufe: (n: number) => string
-    uebungslauf: (nr: number) => string
     keineNachrichten: string
     denkt: (name: string) => string
     schreiben: string
@@ -202,6 +223,14 @@ interface AreaLabels {
     freigabe: string
     freigabeEinmal: string
     freigabeAblehnen: string
+    rueckfrage: string
+    rueckfrageAntwort: string
+    rueckfrageSenden: string
+    rundeGescheitert: string
+    rundeNochmal: string
+    zeitplanPausiert: string
+    offeneFreigabe: string
+    offeneRueckfrage: string
     tuerNach: (name: string) => string
     tuerText: string
     tuerPlatzhalter: string
@@ -228,23 +257,29 @@ const de: AreaLabels = {
       system: 'System'
     },
     betrieb: {
-      uebungen: 'Übungsläufe je Auftrag',
-      uebungenHinweis:
-        'Jeder neue Auftrag läuft so oft: dein Raum plus Übungsräume mit anderen Modellen und Ansätzen. Das erste fertige Ergebnis bekommst du sofort, danach lernt der Raumleiter aus dem Vergleich. Übungsräume starten nur, wenn genug Kapazität frei ist. 1 = aus.',
-      kapazitaet: 'Gleichzeitige Räume',
-      kapazitaetHinweis:
-        'So viele Räume dürfen im ganzen Haus gleichzeitig arbeiten. Übungsläufe halten sich daran, dein Raum nie.',
       mensch: 'Name des Menschen',
-      menschHinweis: 'Steht in den Namen der Übungsräume: Projekt-name-2@tikki.team.',
-      briefingAutomatik: 'Briefing beim Ankommen',
-      briefingAutomatikHinweis: 'Tikki begrüßt dich mit dem Briefing, wenn das letzte länger als vier Stunden her ist.',
+      menschHinweis: 'Steht vor dem, was du in einem Raum sagst – so bleiben mehrere Menschen dort unterscheidbar.',
+      waToken: 'WhatsApp-Bridge-Token',
+      waTokenHinweis:
+        'Damit liest Tikki fürs Briefing neue WhatsApps. Das Token liegt beim Backend im Profil tikki, nicht in der App; angezeigt wird es nie.',
+      waTokenPlatzhalter: 'Token einfügen',
+      waTokenErsetzen: 'Neues Token einfügen',
+      waTokenSpeichern: 'Speichern',
+      waTokenEntfernen: 'Entfernen',
+      waTokenStand: {
+        unbekannt: 'wird geprüft …',
+        gesetzt: 'hinterlegt',
+        fehlt: 'nicht hinterlegt',
+        fehler: 'Nicht erreichbar – läuft das Backend und ist das Profil tikki eingerichtet?'
+      },
       rundUmDieUhr:
-        'Rund um die Uhr: Räume mit Takt laufen im Backend weiter, auch wenn die App zu ist; der Wachhalter geht alle 15 Minuten durch alle Räume. Beides richtet tikki/werkzeuge/rollen-einrichten.sh ein.'
+        'Rund um die Uhr: Räume mit Takt laufen als Dauerauftrag im Backend weiter, auch wenn die App zu ist. Der Wachhalter geht alle 15 Minuten durch alle Räume; ihn richtet tikki/werkzeuge/rollen-einrichten.sh ein.'
     },
     gedaechtnis: {
       laeuft: 'läuft auf diesem Rechner',
       aus: 'nicht erreichbar',
       pruefe: 'wird geprüft …',
+      unbekannt: 'Stand unbekannt',
       erklaerung:
         'Honcho ist Tikkis Gedächtnis und läuft als eigener Dienst auf diesem Rechner: ein Workspace für das System, ein Peer je Mensch, ein AI-Peer je Rolle, eine Sitzung je Suite. Alle Rollenprofile zeigen darauf.',
       starten: 'Starten im Terminal:'
@@ -280,13 +315,19 @@ const de: AreaLabels = {
       nutzer: 'Die Familie. Jeder sieht nur seine Räume, der Admin alle.',
       rechner: 'Die Rechnerflotte hinter Tikki. Grundlage für die Bot-Armee.',
       gedaechtnis: 'Was Tikki sich merkt: getrennt nach Nutzer, System und Projekt.',
-      betrieb: 'Wie die Räume arbeiten: Übungsläufe, Kapazität, Dauerbetrieb.',
+      betrieb: 'Wie die Räume arbeiten: dein Name im Raum, Dauerbetrieb.',
       system: 'Backend, Gateway, Verbindungen, Updates.'
     },
     roles: {
       save: 'Speichern',
       saved: 'Gespeichert',
+      unsaved: 'Ungespeicherte Änderungen',
+      discard: 'Verwerfen',
       loading: 'Lade …',
+      loadError: 'Die Regeln sind gerade nicht lesbar.',
+      retry: 'Erneut versuchen',
+      saveError: (profile: string) => `Nicht gespeichert für ${profile}:`,
+      clones: (namen: string) => `Speichern gilt auch für: ${namen}.`,
       missingProfile:
         'Profil ist auf diesem Backend noch nicht angelegt. Einrichten mit tikki/werkzeuge/rollen-einrichten.sh.',
       houseRules: 'Hausregeln (gelten für alle Rollen)',
@@ -296,14 +337,16 @@ const de: AreaLabels = {
       name: 'Rolle',
       task: 'Aufgabe',
       model: 'Modell',
-      fallback: 'Ausweich',
+      vorgabe: 'Vorgabe',
       port: 'Port',
       status: 'Status',
       atStart: 'ab Start im Raum',
       onDemand: 'nach Bedarf',
-      online: 'erreichbar',
+      online: 'läuft',
       offline: 'aus',
+      missing: 'nicht eingerichtet',
       unknown: 'unbekannt',
+      statusFehler: 'Der Stand der Rollen ist gerade nicht lesbar – läuft das Backend?',
       setup: 'Truppe einrichten: tikki/werkzeuge/rollen-einrichten.sh auf dem Tikki-Rechner ausführen.'
     },
     users: {
@@ -336,6 +379,8 @@ const de: AreaLabels = {
     address: 'Adresse',
     addressHint: 'Dein Postfach bei tikki.team, z. B. karin@tikki.team. Das Passwort bleibt auf diesem Rechner.',
     attachments: 'Anhänge',
+    bilderBlockiert:
+      'Bilder aus dem Netz werden nicht geladen – so erfährt der Absender nicht, dass du die Mail liest.',
     cancel: 'Abbrechen',
     cc: 'Kopie',
     compose: 'Schreiben',
@@ -359,7 +404,8 @@ const de: AreaLabels = {
     subject: 'Betreff',
     title: 'Post',
     to: 'An',
-    unread: 'ungelesen'
+    unread: 'ungelesen',
+    wrote: (from: string) => `${from} schrieb:`
   },
   rail: {
     label: 'Bereiche',
@@ -403,13 +449,15 @@ const de: AreaLabels = {
     neueSuiteHinweis: 'Platz für einen Auftrag',
     einstellungen: 'Einstellungen',
     briefing: 'Briefing',
-    briefingLaeuft: 'Sammle …',
+    briefingBitte: 'Gib mir bitte ein Briefing.',
     vorlesen: 'Antwort vorlesen',
     vorlesenAn: 'an',
     vorlesenAus: 'aus',
     keinChat: 'Kein Gespräch offen. Klick zuerst ins Eingabefeld.',
     update: 'Tikki-Update verfügbar',
-    updateText: (n, version) => `${n} neue Änderungen bei Hermes${version ? ` (Version ${version})` : ''}.`,
+    // Says what is true without the upstream's name: the brand watch would turn
+    // "bei Hermes" into "bei Tikki", and these changes are not Tikki's own.
+    updateText: (n, version) => `${n} neue Änderungen stehen bereit${version ? ` (Version ${version})` : ''}.`,
     updateBefehl: 'Übernehmen im Terminal:',
     updateAktuell: 'Tikki ist auf dem neuesten Stand.'
   },
@@ -438,9 +486,7 @@ const de: AreaLabels = {
     daten: 'Daten-Screen',
     leereAusgabe: 'Noch nichts fertig. Ergebnisse, Dateien und Links der Bots erscheinen hier.',
     leereDaten: 'Noch nichts hereingegeben. Dateien, Links und Ordner aus dem Gespräch erscheinen hier.',
-    leereTodos: 'Noch keine Aufgaben an der Wand. Der Raumleiter hängt sie auf, sobald er plant.',
     output: 'Output-Screen',
-    todoWand: 'To-do-Wand',
     zurueck: 'Zur Lobby',
     betreten: 'Betreten',
     erneut: 'Erneut versuchen',
@@ -455,7 +501,7 @@ const de: AreaLabels = {
     mitglieder: n => (n === 1 ? '1 am Tisch' : `${n} am Tisch`),
     neu: 'Neue Suite',
     raumdienstFehlt:
-      'Der Raumdienst läuft auf diesem Backend nicht. Das Hermes-Gateway neu starten (tikki/werkzeuge/rollen-einrichten.sh richtet es ein).',
+      'Der Raumdienst läuft auf diesem Backend nicht. Das Gateway neu starten (tikki/werkzeuge/rollen-einrichten.sh richtet es ein).',
     rollenFehlen: (profile: string) =>
       `Auf diesem Rechner fehlen die Rollen ${profile}. Einmal tikki/werkzeuge/rollen-einrichten.sh ausführen, dann klappt die Suite.`,
     verlauf: 'Verlauf',
@@ -469,20 +515,23 @@ const de: AreaLabels = {
     aufmerksamkeit: 'Benötigt deine Aufmerksamkeit',
     allesRuhig: 'Alles ruhig. Keine Suite wartet auf dich.',
     wartetAufDich: 'Wartet auf deine Antwort',
-    fertigGemeldet: 'Der Raumleiter meldet: fertig',
     brauchtDich: 'Braucht dich',
-    stand: 'Stand',
+    mensch: 'Mensch',
     takt: 'Takt',
-    taktEinmalig: 'Einmalig – fertig ist fertig',
+    takte: {
+      stuendlich: 'stündlich',
+      halbstuendlich: 'alle 30 Minuten',
+      taeglich: 'täglich 06:00',
+      werktags: 'werktags 08:00',
+      montags: 'montags 09:00'
+    },
+    taktEinmalig: 'Einmalig',
     taktEigener: 'Eigener Takt …',
-    taktPlatzhalter: 'z. B. alle 2 Stunden, montags 09:00, 0 7 * * *',
+    taktPlatzhalter: 'z. B. every 2h oder 0 7 * * *',
     dauerauftrag: 'Dauerauftrag',
     leiter: 'Raumleiter-Modell',
     leiterStandard: (modell: string) => `Standard (${modell})`,
     rollen: 'Bots von Anfang an am Tisch (Raumleiter und deine KI sitzen immer dort)',
-    uebungenGeplant: n => (n > 1 ? `Dazu ${n - 1} Übungsläufe mit anderen Ansätzen, wenn Kapazität frei ist.` : ''),
-    uebungslaeufe: n => (n === 1 ? '1 Übungslauf' : `${n} Übungsläufe`),
-    uebungslauf: nr => `Übungslauf ${nr}`,
     keineNachrichten: 'Noch nichts gesagt. Der Raumleiter meldet sich, sobald er geplant hat.',
     denkt: name => `${name} denkt …`,
     schreiben: 'In den Raum sprechen … (Enter sendet, @raumleiter weckt nur ihn)',
@@ -494,6 +543,14 @@ const de: AreaLabels = {
     freigabe: 'bittet um Freigabe',
     freigabeEinmal: 'Einmal erlauben',
     freigabeAblehnen: 'Ablehnen',
+    rueckfrage: 'Rückfrage',
+    rueckfrageAntwort: 'Deine Antwort',
+    rueckfrageSenden: 'Antworten',
+    rundeGescheitert: 'Eine Runde ist gescheitert',
+    rundeNochmal: 'Noch einmal versuchen',
+    zeitplanPausiert: 'pausiert',
+    offeneFreigabe: 'Freigabe offen',
+    offeneRueckfrage: 'Rückfrage offen',
     tuerNach: name => `Durch die Tür nach „${name}“`,
     tuerText: 'Nachricht an den anderen Raum',
     tuerPlatzhalter: 'Was soll der Raumleiter dort wissen oder tun?',
@@ -504,7 +561,7 @@ const de: AreaLabels = {
     verschmelzenHinweis:
       'Zwei Räume werden einer: alle Bots beider Räume an einem Tisch, der Stand beider als Auftakt. Die alten Räume werden aufgelöst.',
     verschmelzenMit: name => `Mit „${name}“ verschmelzen`,
-    zielPlatzhalter: 'Ein Satz: Was muss am Ende fertig sein?'
+    zielPlatzhalter: 'Worum geht es? Das wird deine erste Nachricht im Raum.'
   }
 }
 
@@ -529,13 +586,19 @@ const en: AreaLabels = {
       nutzer: 'The family. Everyone sees only their rooms, the admin sees all.',
       rechner: 'The machine fleet behind Tikki. Foundation for the bot army.',
       gedaechtnis: 'What Tikki remembers: separated by user, system and project.',
-      betrieb: 'How rooms work: practice runs, capacity, around-the-clock operation.',
+      betrieb: 'How rooms work: your name in a room, around-the-clock operation.',
       system: 'Backend, gateway, connections, updates.'
     },
     roles: {
       save: 'Save',
       saved: 'Saved',
+      unsaved: 'Unsaved changes',
+      discard: 'Discard',
       loading: 'Loading …',
+      loadError: 'The rules cannot be read right now.',
+      retry: 'Try again',
+      saveError: (profile: string) => `Not saved for ${profile}:`,
+      clones: (namen: string) => `Saving also applies to: ${namen}.`,
       missingProfile: 'Profile is not set up on this backend yet. Run tikki/werkzeuge/rollen-einrichten.sh.',
       houseRules: 'House rules (apply to every role)',
       pick: 'Pick a role'
@@ -544,14 +607,16 @@ const en: AreaLabels = {
       name: 'Role',
       task: 'Task',
       model: 'Model',
-      fallback: 'Fallback',
+      vorgabe: 'Default',
       port: 'Port',
       status: 'Status',
       atStart: 'in the room from the start',
       onDemand: 'on demand',
-      online: 'reachable',
+      online: 'running',
       offline: 'off',
+      missing: 'not set up',
       unknown: 'unknown',
+      statusFehler: 'The state of the roles cannot be read right now – is the backend running?',
       setup: 'Set up the troop: run tikki/werkzeuge/rollen-einrichten.sh on the Tikki machine.'
     },
     users: {
@@ -572,23 +637,29 @@ const en: AreaLabels = {
       note: 'Machines will register themselves later. Until then this is the planned fleet.'
     },
     betrieb: {
-      uebungen: 'Practice runs per order',
-      uebungenHinweis:
-        'Every new order runs this many times: your room plus practice rooms with other models and approaches. You get the first finished result right away; afterwards the room lead learns from the comparison. Practice rooms only start when there is capacity. 1 = off.',
-      kapazitaet: 'Rooms at the same time',
-      kapazitaetHinweis:
-        'How many rooms may work at once across the house. Practice runs respect it, your own room never waits.',
       mensch: 'Person name',
-      menschHinweis: 'Used in practice room names: project-name-2@tikki.team.',
-      briefingAutomatik: 'Briefing on arrival',
-      briefingAutomatikHinweis: 'Tikki greets you with the briefing when the last one is more than four hours old.',
+      menschHinweis: 'Goes in front of what you say in a room, so several people stay apart there.',
+      waToken: 'WhatsApp bridge token',
+      waTokenHinweis:
+        'Lets Tikki read new WhatsApp messages for the briefing. The token lives with the backend in the tikki profile, not in the app; it is never shown.',
+      waTokenPlatzhalter: 'Paste token',
+      waTokenErsetzen: 'Paste a new token',
+      waTokenSpeichern: 'Save',
+      waTokenEntfernen: 'Remove',
+      waTokenStand: {
+        unbekannt: 'checking …',
+        gesetzt: 'stored',
+        fehlt: 'not stored',
+        fehler: 'Not reachable – is the backend running and the tikki profile set up?'
+      },
       rundUmDieUhr:
-        'Around the clock: rooms with a schedule keep running on the backend even when the app is closed; the watchkeeper walks all rooms every 15 minutes. tikki/werkzeuge/rollen-einrichten.sh sets both up.'
+        'Around the clock: rooms with a schedule keep running on the backend as a standing order even when the app is closed. The watchkeeper walks all rooms every 15 minutes; tikki/werkzeuge/rollen-einrichten.sh sets it up.'
     },
     gedaechtnis: {
       laeuft: 'running on this machine',
       aus: 'not reachable',
       pruefe: 'checking …',
+      unbekannt: 'state unknown',
       erklaerung:
         "Honcho is Tikki's memory and runs as its own service on this machine: one workspace for the system, one peer per person, one AI peer per role, one session per suite. Every role profile points at it.",
       starten: 'Start it in the terminal:'
@@ -629,6 +700,7 @@ const en: AreaLabels = {
     address: 'Address',
     addressHint: 'Your tikki.team mailbox, e.g. karin@tikki.team. The password stays on this machine.',
     attachments: 'Attachments',
+    bilderBlockiert: 'Pictures from the net are not loaded – so the sender does not learn that you read the mail.',
     cancel: 'Cancel',
     cc: 'Cc',
     compose: 'Compose',
@@ -652,7 +724,8 @@ const en: AreaLabels = {
     subject: 'Subject',
     title: 'Mail',
     to: 'To',
-    unread: 'unread'
+    unread: 'unread',
+    wrote: (from: string) => `${from} wrote:`
   },
   rail: {
     label: 'Areas',
@@ -695,13 +768,13 @@ const en: AreaLabels = {
     neueSuiteHinweis: 'Room for an order',
     einstellungen: 'Settings',
     briefing: 'Briefing',
-    briefingLaeuft: 'Collecting …',
+    briefingBitte: 'Please give me a briefing.',
     vorlesen: 'Read replies aloud',
     vorlesenAn: 'on',
     vorlesenAus: 'off',
     keinChat: 'No conversation open. Click into the input first.',
     update: 'Tikki update available',
-    updateText: (n, version) => `${n} new changes in Hermes${version ? ` (version ${version})` : ''}.`,
+    updateText: (n, version) => `${n} new changes are available${version ? ` (version ${version})` : ''}.`,
     updateBefehl: 'Apply in the terminal:',
     updateAktuell: 'Tikki is up to date.'
   },
@@ -730,9 +803,7 @@ const en: AreaLabels = {
     daten: 'Data screen',
     leereAusgabe: 'Nothing finished yet. Results, files and links from the bots appear here.',
     leereDaten: 'Nothing handed in yet. Files, links and folders from the conversation appear here.',
-    leereTodos: 'No tasks on the wall yet. The room lead pins them up once it plans.',
     output: 'Output screen',
-    todoWand: 'To-do wall',
     zurueck: 'To the lobby',
     betreten: 'Enter',
     erneut: 'Try again',
@@ -747,7 +818,7 @@ const en: AreaLabels = {
     mitglieder: n => (n === 1 ? '1 at the table' : `${n} at the table`),
     neu: 'New suite',
     raumdienstFehlt:
-      'The room service is not running on this backend. Restart the Hermes gateway (tikki/werkzeuge/rollen-einrichten.sh sets it up).',
+      'The room service is not running on this backend. Restart the gateway (tikki/werkzeuge/rollen-einrichten.sh sets it up).',
     rollenFehlen: (profile: string) =>
       `The roles ${profile} are missing on this machine. Run tikki/werkzeuge/rollen-einrichten.sh once, then the suite opens.`,
     verlauf: 'History',
@@ -761,20 +832,23 @@ const en: AreaLabels = {
     aufmerksamkeit: 'Needs your attention',
     allesRuhig: 'All quiet. No suite is waiting for you.',
     wartetAufDich: 'Waiting for your answer',
-    fertigGemeldet: 'The room lead reports: done',
     brauchtDich: 'Needs you',
-    stand: 'Status',
+    mensch: 'Person',
     takt: 'Schedule',
-    taktEinmalig: 'Once – done is done',
+    takte: {
+      stuendlich: 'hourly',
+      halbstuendlich: 'every 30 minutes',
+      taeglich: 'daily 06:00',
+      werktags: 'weekdays 08:00',
+      montags: 'Mondays 09:00'
+    },
+    taktEinmalig: 'Once',
     taktEigener: 'Custom schedule …',
-    taktPlatzhalter: 'e.g. alle 2 Stunden, montags 09:00, 0 7 * * *',
+    taktPlatzhalter: 'e.g. every 2h or 0 7 * * *',
     dauerauftrag: 'Standing order',
     leiter: 'Room-lead model',
     leiterStandard: (modell: string) => `Default (${modell})`,
     rollen: 'Bots at the table from the start (the room lead and your AI always sit there)',
-    uebungenGeplant: n => (n > 1 ? `Plus ${n - 1} practice runs with other approaches when capacity allows.` : ''),
-    uebungslaeufe: n => (n === 1 ? '1 practice run' : `${n} practice runs`),
-    uebungslauf: nr => `Practice run ${nr}`,
     keineNachrichten: 'Nothing said yet. The room lead speaks up once it has planned.',
     denkt: name => `${name} is thinking …`,
     schreiben: 'Speak into the room … (Enter sends, @raumleiter wakes only the lead)',
@@ -786,6 +860,14 @@ const en: AreaLabels = {
     freigabe: 'asks for approval',
     freigabeEinmal: 'Allow once',
     freigabeAblehnen: 'Deny',
+    rueckfrage: 'Question',
+    rueckfrageAntwort: 'Your answer',
+    rueckfrageSenden: 'Answer',
+    rundeGescheitert: 'A turn failed',
+    rundeNochmal: 'Try again',
+    zeitplanPausiert: 'paused',
+    offeneFreigabe: 'Approval pending',
+    offeneRueckfrage: 'Question pending',
     tuerNach: name => `Through the door to “${name}”`,
     tuerText: 'Message to the other room',
     tuerPlatzhalter: 'What should the room lead over there know or do?',
@@ -796,7 +878,7 @@ const en: AreaLabels = {
     verschmelzenHinweis:
       'Two rooms become one: every bot of both rooms at one table, the state of both as the opening. The old rooms are disbanded.',
     verschmelzenMit: name => `Merge with “${name}”`,
-    zielPlatzhalter: 'One sentence: what has to be done in the end?'
+    zielPlatzhalter: 'What is it about? This becomes your first message in the room.'
   }
 }
 

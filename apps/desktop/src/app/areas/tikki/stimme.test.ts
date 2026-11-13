@@ -2,17 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { neuVorzulesen, type Sprecher, sprich, stimmeWaehlen, vorlesenStopp } from './stimme'
 
-const nachricht = (
-  seq: number,
-  von: string,
-  text: string,
-  extra: Partial<{ still: boolean; system: boolean }> = {}
-) => ({
+const nachricht = (seq: number, von: string, text: string, extra: Partial<{ still: boolean }> = {}) => ({
   seq,
   von,
   text,
   still: false,
-  system: false,
   ...extra
 })
 
@@ -27,23 +21,23 @@ describe('stimmeWaehlen', () => {
 
 describe('neuVorzulesen', () => {
   const log = [
-    nachricht(1, 'mensch', 'thorsten: @raumleiter RAUM: Urlaub'),
-    nachricht(2, 'raumleiter', 'STAND: Plane.'),
+    nachricht(1, 'mensch', 'Plant bitte den Urlaub.'),
+    nachricht(2, 'raumleiter', 'Ich plane.'),
     nachricht(3, 'rechercheur', '(pass)', { still: true }),
     nachricht(4, 'raumleiter', '(pass)', { still: true }),
-    nachricht(5, 'mensch', 'TAKT-RUNDE 3', { system: true }),
+    nachricht(5, 'mensch', 'Tikki: Die nächste Runde ist dran.'),
     nachricht(6, 'rechercheur', 'Drei Häuser gefunden.'),
-    nachricht(7, 'raumleiter', 'BRAUCHE: Dein Budget.'),
+    nachricht(7, 'raumleiter', 'Wie hoch ist dein Budget?'),
     nachricht(8, 'raumleiter', '   ')
   ]
 
-  it('reads only what the room lead said after the mark, never (pass), the person or the system', () => {
-    expect(neuVorzulesen(log, 1)).toEqual({ seq: 8, texte: ['STAND: Plane.', 'BRAUCHE: Dein Budget.'] })
+  it('reads only what the room lead said after the mark, never (pass) and never the person', () => {
+    expect(neuVorzulesen(log, 1)).toEqual({ seq: 8, texte: ['Ich plane.', 'Wie hoch ist dein Budget?'] })
   })
 
   it('reads nothing that was already there and moves the mark to the end', () => {
     expect(neuVorzulesen(log, 8)).toEqual({ seq: 8, texte: [] })
-    expect(neuVorzulesen(log, 6)).toEqual({ seq: 8, texte: ['BRAUCHE: Dein Budget.'] })
+    expect(neuVorzulesen(log, 6)).toEqual({ seq: 8, texte: ['Wie hoch ist dein Budget?'] })
     expect(neuVorzulesen([], 4)).toEqual({ seq: 4, texte: [] })
   })
 })

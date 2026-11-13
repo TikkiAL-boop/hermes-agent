@@ -5,11 +5,22 @@ import { I18nProvider } from '@/i18n'
 
 vi.mock('@/app/settings/memory/provider-config-panel', () => ({ ProviderConfigPanel: () => null }))
 
-const { GedaechtnisSection, HONCHO_URL } = await import('./gedaechtnis')
+const { GedaechtnisSection, HONCHO_PORT } = await import('./gedaechtnis')
+
+// The page itself can never tell: a cross-origin answer without CORS headers
+// reads as a failed request. Any attempt to ask from here fails the test.
+const seitenFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
+
+const bruecke = (tikkiLocalHealth?: (port: number) => Promise<boolean>) => {
+  vi.stubGlobal('fetch', seitenFetch)
+  Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { tikkiLocalHealth } })
+}
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  seitenFetch.mockClear()
+  Reflect.deleteProperty(window, 'hermesDesktop')
 })
 
 const mount = () =>
@@ -19,22 +30,34 @@ const mount = () =>
     </I18nProvider>
   )
 
+const karte = (container: HTMLElement, status: string) => container.querySelector(`[data-honcho-status="${status}"]`)
+
 describe('GedaechtnisSection', () => {
-  it('reports the local Honcho service as running when its health endpoint answers', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
-    vi.stubGlobal('fetch', fetchMock)
+  it('takes the answer from the main process, which is not bound by the page origin', async () => {
+    const probe = vi.fn().mockResolvedValue(true)
+    bruecke(probe)
     const { container } = mount()
 
-    await waitFor(() => expect(container.querySelector('[data-honcho-status="laeuft"]')).toBeTruthy())
-    expect(fetchMock.mock.calls[0][0]).toBe(`${HONCHO_URL}/health`)
-    expect(container.textContent).not.toContain('honcho.sh start')
+    await waitFor(() => expect(karte(container, 'laeuft')).toBeTruthy())
+    expect(probe).toHaveBeenCalledWith(HONCHO_PORT)
+    expect(seitenFetch).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-honcho-starthinweis]')).toBeNull()
   })
 
-  it('names the start command when the service is down', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')))
+  it('offers the way to start the service only when it is known to be down', async () => {
+    bruecke(vi.fn().mockResolvedValue(false))
     const { container } = mount()
 
-    await waitFor(() => expect(container.querySelector('[data-honcho-status="aus"]')).toBeTruthy())
-    expect(container.textContent).toContain('tikki/dienste/honcho/honcho.sh start')
+    await waitFor(() => expect(karte(container, 'aus')).toBeTruthy())
+    expect(container.querySelector('[data-honcho-starthinweis]')).toBeTruthy()
+  })
+
+  it('claims nothing when it cannot ask', async () => {
+    bruecke(undefined)
+    const { container } = mount()
+
+    await waitFor(() => expect(karte(container, 'unbekannt')).toBeTruthy())
+    expect(container.querySelector('[data-honcho-starthinweis]')).toBeNull()
+    expect(seitenFetch).not.toHaveBeenCalled()
   })
 })

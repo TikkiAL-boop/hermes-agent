@@ -1041,8 +1041,14 @@ def _installed_desktop_launch_target(desktop_dir: Path, packaged_executable: Pat
     rebuilt_hash = _app_asar_hash(packaged_executable.parents[2])
     for app in _installed_desktop_apps():
         if rebuilt_hash is not None and _app_asar_hash(app) == rebuilt_hash:
-            return app / "Contents" / "MacOS" / app.stem
+            return _installed_bundle_executable(app, packaged_executable)
     return packaged_executable
+
+
+def _installed_bundle_executable(app: Path, packaged_executable: Path) -> Path:
+    """Executable inside an installed bundle that holds the checkout build. The binary keeps the
+    rebuilt product's name; the bundle folder may still carry the name it was installed under."""
+    return app / "Contents" / "MacOS" / packaged_executable.name
 
 
 def _install_rebuilt_macos_bundles(

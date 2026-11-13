@@ -14,7 +14,8 @@
 # Verwendung:
 #   tikki/werkzeuge/abos-einrichten.sh            prüfen, was fehlt (ändert nichts)
 #   tikki/werkzeuge/abos-einrichten.sh --anmelden  fehlende Anmeldungen der Rollen-Modelle
-#                                                  nacheinander im Browser durchführen
+#                                                  nacheinander im Browser durchführen und den
+#                                                  Skill für Grok Build in die Bibliothek holen
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,17 +44,22 @@ echo "  · NotebookLM   ohne Kommandozeile: Bots nutzen den Browser mit dem ange
 
 echo
 echo "== Skills für die Abos (gemeinsame Bibliothek im Profil openclaw)"
+# Ohne --anmelden wird nur geprüft: kein Profil angelegt, kein Skill installiert.
 PROFILE="$("$HERMES_BIN" profile list 2>/dev/null || true)"
-if ! grep -qw "openclaw" <<< "$PROFILE"; then
-  "$HERMES_BIN" profile create openclaw --no-alias --no-skills \
-    --description "Tikki: OpenClaw-Skill-Bibliothek für alle Rollen" >/dev/null
-  echo "  Profil openclaw angelegt"
+SKILLS=""
+if grep -qw "openclaw" <<< "$PROFILE"; then
+  SKILLS="$("$HERMES_BIN" -p openclaw skills list 2>/dev/null || true)"
+elif [ "$ANMELDEN" = 1 ]; then
+  "$HERMES_BIN" --run-module tikki.werkzeuge.openclaw_skills bibliothek >/dev/null && echo "  Profil openclaw angelegt"
+else
+  echo "  ✗ Profil openclaw fehlt – tikki/werkzeuge/rollen-einrichten.sh legt es an"
 fi
-SKILLS="$("$HERMES_BIN" -p openclaw skills list 2>/dev/null || true)"
 if grep -q "grok" <<< "$SKILLS"; then
   echo "  ✓ grok (Grok Build)"
-else
+elif [ "$ANMELDEN" = 1 ]; then
   "$HERMES_BIN" -p openclaw skills install official/autonomous-ai-agents/grok --yes >/dev/null && echo "  ✓ grok installiert"
+else
+  echo "  ✗ grok (Grok Build) nicht installiert – mit --anmelden einrichten"
 fi
 echo "  ✓ claude-code, codex (aus dem Repo), gemini-cli, notebooklm, openclaw-skills (tikki/skills)"
 

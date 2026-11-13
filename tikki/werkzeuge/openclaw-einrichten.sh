@@ -19,12 +19,9 @@ HERMES_BIN="$(command -v hermes || true)"
 export TIKKI_HERMES="$HERMES_BIN"
 modul() { "$HERMES_BIN" --run-module tikki.werkzeuge.openclaw_skills "$@"; }
 
-PROFILE="$("$HERMES_BIN" profile list 2>/dev/null || true)"
-if ! grep -qw "openclaw" <<< "$PROFILE"; then
-  "$HERMES_BIN" profile create openclaw --no-alias --no-skills \
-    --description "Tikki: OpenClaw-Skill-Bibliothek für alle Rollen" >/dev/null
-  echo "Profil openclaw angelegt."
-fi
+# Profil openclaw anlegen, falls es fehlt, und so einrichten, dass sein Pflicht-Skill nicht neben
+# dem des Repos steht (sonst ist „hermes-agent“ für die Rollen mehrdeutig).
+modul bibliothek
 
 echo "Lade den ClawHub-Katalog (einige Minuten beim ersten Mal) …"
 modul katalog

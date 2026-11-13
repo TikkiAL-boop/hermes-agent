@@ -82,12 +82,32 @@ def test_raumleiter_klon_sitzt_als_raumleiter_mit_eigenem_profil(zuhause: Path) 
         raeume.besetzung([], raumleiter="rechercheur")
 
 
-def test_tuer_spricht_den_raumleiter_des_anderen_raums_an(zuhause: Path) -> None:
+def test_raeume_mit_verschiedenen_raumleiter_klonen_lassen_sich_verschmelzen(zuhause: Path) -> None:
+    """Beide Räume haben ein Mitglied ``raumleiter`` – mit verschiedenem Profil. Der Kern lehnt
+    doppelte Kennungen und @-Namen ab; der vereinte Raum behält den Raumleiter des ersten."""
     db = zuhause / "shared-state.db"
-    a = raeume.anlegen("Recherche", [], db=db, jetzt=1_790_000_000.0, gateway_id=GATEWAY)
-    b = raeume.anlegen("Website", [], db=db, jetzt=1_790_000_001.0, gateway_id=GATEWAY)
+    klon = raeume.raumleiter_klone()[0]
+    a = raeume.anlegen("Recherche", ["rechercheur"], db=db, jetzt=1_790_000_000.0, gateway_id=GATEWAY)
+    b = raeume.anlegen("Website", ["schreiber"], db=db, jetzt=1_790_000_001.0, gateway_id=GATEWAY, raumleiter=klon["slug"])
 
-    raeume.tuer(a["room_id"], b["room_id"], "Die Quellenliste liegt vor.", db=db, jetzt=1_790_000_002.0)
+    c = raeume.verschmelzen(a["room_id"], b["room_id"], db=db, jetzt=1_790_000_010.0)
 
-    text = raeume.nachrichten(raeume.verlauf(b["room_id"], db=db), b)[-1]["text"]
-    assert text.startswith("[Tür aus „Recherche“] @raumleiter")
+    for feld in ("member_id", "handle", "profile"):
+        werte = [m[feld] for m in c["members"]]
+        assert len(werte) == len(set(werte)), feld
+    assert {"rechercheur", "schreiber"} <= {m["member_id"] for m in c["members"]}
+    leiter = next(m for m in c["members"] if m["member_id"] == "raumleiter")
+    assert leiter["profile"] == "raumleiter"
+    assert {r["room_id"] for r in raeume.liste(db=db)} == {c["room_id"]}
+
+
+def test_wer_gesprochen_hat_steht_im_absender_des_ereignisses_nicht_nur_im_text(zuhause: Path) -> None:
+    """Die App erkennt eine Nachricht aus dem Werkzeug am Absender; ihr Wortlaut ist frei."""
+    db = zuhause / "shared-state.db"
+    raum = raeume.anlegen("Recherche", [], db=db, jetzt=1_790_000_000.0, gateway_id=GATEWAY)
+
+    raeume.senden(raum["room_id"], "Die Quellenliste liegt vor.", von="Tikki", db=db, jetzt=1_790_000_002.0)
+
+    ereignis = raeume.verlauf(raum["room_id"], db=db)[-1]
+    assert (ereignis["actor"]["id"], ereignis["actor"]["display_name"]) == (raeume.ABSENDER, "Tikki")
+    assert raeume.nachrichten([ereignis], raum)[0]["name"] == "Tikki"

@@ -276,6 +276,7 @@ export function findElectron(): string {
  */
 export async function launchDesktop(
   env: Record<string, string>,
+  electronArgs: readonly string[] = [],
 ): Promise<{ app: ElectronApplication; page: Page }> {
   assertDistBuilt()
 
@@ -289,6 +290,7 @@ export async function launchDesktop(
       DESKTOP_ROOT, // `electron .` — the `.` is the desktop package dir
       '--disable-gpu',
       '--no-sandbox',
+      ...electronArgs,
     ],
     env,
     cwd: DESKTOP_ROOT,
@@ -329,6 +331,8 @@ export interface MockBackendOptions {
   extraConfig?: string
   /** Override the mock model's context window for compression scenarios. */
   modelContextLength?: number
+  /** Extra Chromium/Electron switches, e.g. `--force-device-scale-factor=2` for a HiDPI run. */
+  electronArgs?: readonly string[]
 }
 
 /**
@@ -356,7 +360,7 @@ export async function setupMockBackend(options: MockBackendOptions = {}): Promis
 
   // 3. Build env + launch
   const env = buildAppEnv(sandbox)
-  const { app, page } = await launchDesktop(env)
+  const { app, page } = await launchDesktop(env, options.electronArgs)
 
   return {
     app,

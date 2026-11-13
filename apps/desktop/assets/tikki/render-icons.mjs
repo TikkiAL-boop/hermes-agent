@@ -1,8 +1,31 @@
+// Rendert die App-Icons (apps/desktop/assets/icon*.{png,icns,ico}) aus dem
+// Logo neben diesem Skript. Einmal-Werkzeug, läuft nicht im Bau:
+//
+//   npm install --no-save sharp@0.33.5 png2icons@2.0.1   (im Repo-Wurzelordner)
+//   node apps/desktop/assets/tikki/render-icons.mjs [zielordner]
+//
+// sharp und png2icons stehen absichtlich in keiner package.json: Die App
+// braucht sie nicht, und sharp zöge bei jeder Installation native Binärdateien
+// nach. Ohne Zielordner landen die Dateien in ./out-logo; von dort nach
+// apps/desktop/assets/ kopieren.
 import fs from 'node:fs'
-import sharp from 'sharp'
-import png2icons from 'png2icons'
-const out = 'out-logo'; fs.mkdirSync(out, { recursive: true })
-const { data, info } = await sharp('logo-original.png').raw().toBuffer({ resolveWithObject: true })
+import path from 'node:path'
+
+async function werkzeug(name) {
+  try {
+    return (await import(name)).default
+  } catch (fehler) {
+    console.error(`render-icons: "${name}" lässt sich nicht laden (${fehler.message}).`)
+    console.error('Einmalig im Repo-Wurzelordner: npm install --no-save sharp@0.33.5 png2icons@2.0.1')
+    process.exit(1)
+  }
+}
+
+const sharp = await werkzeug('sharp')
+const png2icons = await werkzeug('png2icons')
+const logo = path.join(import.meta.dirname, 'tikki-logo-original.png')
+const out = path.resolve(process.argv[2] ?? 'out-logo'); fs.mkdirSync(out, { recursive: true })
+const { data, info } = await sharp(logo).raw().toBuffer({ resolveWithObject: true })
 const W = info.width, H = info.height, C = info.channels
 const bg = [28, 28, 28]
 const diff = (x, y) => { const i = (y * W + x) * C; return Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) }
@@ -12,7 +35,7 @@ console.log('bbox', minX, minY, maxX, maxY)
 const side = Math.max(maxX - minX + 1, maxY - minY + 1)
 const cx = Math.round((minX + maxX) / 2), cy = Math.round((minY + maxY) / 2)
 const left = Math.max(0, cx - Math.floor(side / 2)), top = Math.max(0, cy - Math.floor(side / 2))
-const inner = await sharp('logo-original.png').extract({ left, top, width: Math.min(side, W - left), height: Math.min(side, H - top) }).resize(1024, 1024, { kernel: 'lanczos3' }).png().toBuffer()
+const inner = await sharp(logo).extract({ left, top, width: Math.min(side, W - left), height: Math.min(side, H - top) }).resize(1024, 1024, { kernel: 'lanczos3' }).png().toBuffer()
 // Runde Ecken als Maske (macOS-Radius ~22 %), damit die alte Rundung sauber ist
 const r = 226
 const mask = Buffer.from(`<svg width="1024" height="1024"><rect x="0" y="0" width="1024" height="1024" rx="${r}" fill="#fff"/></svg>`)

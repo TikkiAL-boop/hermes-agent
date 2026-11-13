@@ -164,7 +164,7 @@ export function createMinimizeToTray(options: Options) {
             { label: `Show ${app.name}`, click: restore },
             { type: 'separator' },
             // Do not bypass the ordinary active-work confirmation or teardown.
-            { label: 'Quit Hermes', click: () => app.quit() }
+            { label: `Quit ${app.name}`, click: () => app.quit() }
           ])
         )
 

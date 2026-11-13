@@ -294,21 +294,22 @@ def test_gui_brew_install_launches_installed_app_when_present(tmp_path, monkeypa
 
 @pytest.mark.parametrize("exists,platform", [(True, "darwin"), (False, "darwin"), (True, "linux")])
 def test_launch_installed_macos_desktop_app_gates_on_bundle_and_platform(tmp_path, monkeypatch, exists, platform):
-    from hermes_cli.desktop_identity import desktop_app_name
+    import hermes_cli.bundled_app as bundled_app
+    from hermes_cli.desktop_identity import desktop_app_names
 
     monkeypatch.setattr(main_desktop.sys, "platform", platform)
-    name = desktop_app_name()
-    exe = Path(f"/Applications/{name}.app/Contents/MacOS/{name}")
+    # Every probed candidate is answered here, never by the real filesystem: an app installed on the
+    # test machine must neither decide the outcome nor be launched.
+    exe, *others = (Path(f"/Applications/{name}.app/Contents/MacOS/{name}") for name in desktop_app_names())
     real_is_file = Path.is_file
-    monkeypatch.setattr(main_desktop.Path, "is_file", lambda self: exists if self == exe else real_is_file(self))
+    monkeypatch.setattr(
+        main_desktop.Path, "is_file",
+        lambda self: exists if self == exe else False if self in others else real_is_file(self))
     calls = []
-    if exists and platform == "darwin":
-        import hermes_cli.bundled_app as bundled_app
-        monkeypatch.setattr(bundled_app, "launch_detached", lambda argv, **kw: calls.append(argv) or 4321)
+    monkeypatch.setattr(bundled_app, "launch_detached", lambda argv, **kw: calls.append(argv) or 4321)
 
     assert main_desktop._launch_installed_macos_desktop_app() is (exists and platform == "darwin")
-    if exists and platform == "darwin":
-        assert calls == [[str(exe)]]
+    assert calls == ([[str(exe)]] if exists and platform == "darwin" else [])
 
 
 # ── Content-hash stamp tests ──────────────────────────────────────────

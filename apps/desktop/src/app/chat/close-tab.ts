@@ -1,3 +1,4 @@
+import { areaKeybind } from '@/app/areas/tastatur'
 import { mainChatOccupied } from '@/app/open-session'
 import { closeActiveTerminal } from '@/app/right-sidebar/terminal/terminals'
 import { $workspaceIsPage } from '@/app/routes'
@@ -67,6 +68,16 @@ export function closeWorkspaceTab(loadSessionIntoWorkspace?: (storedSessionId: s
  * with its own tab strip closes ITS tab instead of main's.
  */
 export function closeActiveTab(loadSessionIntoWorkspace?: (storedSessionId: string) => void): boolean {
+  // Tikki: outside the Vorzimmer the chat tree is hidden; ⌘W closes the tab of
+  // the area on screen, or nothing (see areas/tastatur.ts).
+  const areaClose = areaKeybind('view.closeTab')
+
+  if (areaClose !== undefined) {
+    areaClose?.()
+
+    return areaClose !== null
+  }
+
   // A remote bot screen borrows the terminal's keyboard ownership marker so bare keys reach it; ⌘W
   // there belongs to the remote desktop, never to a local terminal tab or the session tab behind it.
   if (isFocusWithin('[data-remote-screen]')) {

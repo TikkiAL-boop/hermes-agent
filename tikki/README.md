@@ -2,14 +2,15 @@
 
 Tikki ist der Familienassistent auf Basis von Hermes. Dieser Ordner enthält alles, was die
 fertige Bot-Truppe für Gruppenräume braucht: den Rollenkatalog, die Seelen (System-Prompts)
-der Rollen, eine Konfigurationsvorlage und zwei Skripte zum Einrichten und Prüfen.
-Der Hermes-Quellcode außerhalb von `tikki/` bleibt unverändert.
+der Rollen, eine Konfigurationsvorlage, die Tikki-Plugins und die Skripte zum Einrichten,
+Aktualisieren und Prüfen. Am Hermes-Kern ändert Tikki zwei kleine Stellen (App-Identität aus
+`productName`, Raumgröße); sie stehen in `HANDOVER.md`, Abschnitt 10.
 
 ## Was liegt hier
 
 | Pfad | Inhalt |
 |------|--------|
-| `rollen/KATALOG.json` | Die 12 Rollen: Name, Kurzbeschreibung, Modelle, Werkzeuge, Port, Profilname |
+| `rollen/KATALOG.json` | Alle Rollen (der Katalog ist die eine Quelle; Raumleiter-Klone erben vom Raumleiter): Name, Kurzbeschreibung, Modelle, Werkzeuge, Port, Profilname |
 | `rollen/<slug>/SOUL.md` | System-Prompt der jeweiligen Rolle (Deutsch, mit Hausregeln) |
 | `hermes/vorlage-rolle.yaml` | Vorlage für `config.yaml` eines Rollenprofils (echte Hermes-Schlüssel) |
 | `hermes/vorlage-honcho.json` | Vorlage für `honcho.json` je Profil: Workspace `tikki`, AI-Peer = Rolle, eine Honcho-Sitzung je Suite |
@@ -20,70 +21,77 @@ Der Hermes-Quellcode außerhalb von `tikki/` bleibt unverändert.
 
 ## Die Truppe
 
-- **Tikki** (Vorzimmer) – begrüßt, plaudert, beantwortet Mail-Fragen, macht aus Aufträgen Räume. Arbeitet nie selbst.
-- **Raumleiter** – sitzt ab Start in jedem Raum, plant, delegiert an bis zu 30 Bots, prüft, fasst zusammen, stoppt erst bei Ziel oder Entscheidung.
+- **Tikki** (Vorzimmer, persönliche Assistentin) – empfängt mit dem Briefing, erledigt Daueraufträge selbst (Post, Lernen, Nachrichtenlage), macht aus Projekten Räume.
+- **Raumleiter** – sitzt ab Start in jedem Raum, plant, verteilt Arbeit an die Mitglieder, prüft, fasst zusammen, stoppt erst bei Ziel oder Entscheidung. Vier Klone mit anderem Modell (`raumleiter-xai`, `-anthropic`, `-codex`, `-lokal`) lassen Räume parallel laufen.
+- **Deine KI** – die KI des Menschen, sitzt ab Start in jedem Raum.
+- **Wachhalter** – kein Raummitglied: schaut alle 15 Minuten nach Räumen, in denen etwas liegen geblieben ist.
 - **Arbeiter** (werden bei Bedarf geholt): Rechercheur, Prüfer, Schreiber, Frontend-Entwickler,
   Backend-Entwickler, Sicherheitsbeauftragter, Datenanalyst, Organisator, API-Fachmann, Übersetzer.
 - **MR** (Model Resources) – weiß, welche Schlüssel, Abos, lokalen Modelle und Raumleiter-Klone frei
   sind; nennt dem Raumleiter bei Ausfall die Alternative (`hermes pa ressourcen`).
 
-Jede Seele enthält dieselben Hausregeln: Deutsch, kurz, keine Technik-Werbung, Aufgaben zu Ende
-bringen, bei echtem Bedarf eine `BRAUCHE:`-Zeile mit Vorschlag, Ergebnisse im Raum-Chat.
+Eine Seele beschreibt nur die Rolle: wer sie ist, für wen sie arbeitet, worin sie gut ist, wie sie
+auftritt. Sie schreibt keinen Ablauf und keine Zeilen vor – alles Weitere tut die Rolle mit Hermes'
+eigenen Mitteln (Rückfrage `clarify`, Zeitplan `cronjob`, Delegation, Freigaben) und mit den
+Werkzeugen der Tikki-Plugins (`raum`, `post`, `briefing_sammeln` …), die das Modell selbst wählt.
+Die App liest dafür nie Text eines Modells, sondern den Zustand des Backends.
 
 ## Einrichten auf dem Mac
 
-Voraussetzung: Hermes ist installiert (`hermes` im PATH oder dieses Repo mit `.venv`). Die
-Konfiguration wird in der Hermes-Umgebung erzeugt und trägt den aktuellen Konfigurationsstand
-(`_config_version`), damit Hermes die Datei beim ersten Start nicht selbst umschreibt.
+Der eine Befehl ist `tikki/installieren.sh` (Kern, App, Rollen, Schlüssel, Gateway, Selbsttest).
+Die Schritte einzeln, wenn Hermes schon installiert ist (`hermes` im PATH):
 
 ```bash
-# 1. Schlüssel in die Umgebung (z. B. ~/.zshrc oder ein Passwortmanager, nie ins Repo)
-export XAI_API_KEY="…"
-export CURSOR_API_KEY="…"
-
-# 2. Ansehen, was passieren würde
+# 1. Ansehen, was passieren würde
 tikki/werkzeuge/rollen-einrichten.sh --dry-run
 
-# 3. Profile anlegen bzw. aktualisieren
+# 2. Profile anlegen bzw. aktualisieren (auch die Skill-Bibliothek im Profil openclaw)
 tikki/werkzeuge/rollen-einrichten.sh
 
-# 4. Pro Profil den Bearer-Schlüssel für den HTTP-Dienst setzen (Hermes verlangt ihn)
-#    -> ~/.hermes/profiles/<slug>/.env : API_SERVER_KEY=<eigener zufälliger Wert>
+# 3. Schlüssel aus einer Textdatei (NAME=wert je Zeile) in die .env der Profile – Werte werden nie
+#    angezeigt. Ein `export` in ~/.zshrc reicht nicht: der Gateway-Dienst erbt die Shell-Umgebung nicht.
+tikki/werkzeuge/schluessel-einlesen.sh ~/Downloads/cv.cv.txt
 
-# 5. Rollen starten (je ein Prozess, je ein Port)
-hermes -p tikki gateway
-hermes -p raumleiter gateway
-# … weitere Rollen bei Bedarf
+# 4. EIN Gateway für alle Rollen, aus dem Hauptprofil. Es fährt die Räume, die Cronjobs aller
+#    Profile (Takt, Rundgang, Ressourcen) und Tikkis Daueraufträge. Ein Gateway je Rolle gibt es
+#    nicht; Hermes lehnt `hermes -p <rolle> gateway install` ab.
+hermes -p default gateway install
 
-# 6. Prüfen
-tikki/werkzeuge/rollen-status.sh
+# 5. Prüfen
+tikki/installieren.sh --nur-pruefen
 ```
 
-Das Einrichten ist wiederholbar: vorhandene Profile werden nicht neu angelegt, `SOUL.md` und
-`config.yaml` werden nur geschrieben, wenn sie sich unterscheiden. `--nur <slug>` beschränkt
-den Lauf auf eine Rolle.
+Das Einrichten ist wiederholbar: vorhandene Profile werden nicht neu angelegt. `SOUL.md` folgt
+dem Repo, solange sie im Profil niemand geändert hat – Regeln, die in der App gepflegt wurden
+(Admin → Regeln), bleiben; `--seelen-zuruecksetzen` holt die Repo-Fassung zurück. Die
+`config.yaml` wird gemischt – was Katalog und Vorlage festlegen, kommt an; was
+im Profil geändert wurde (Hermes-Einstellungen, `hermes tools`, `hermes model`), bleibt. Die
+Modelle folgen dem Katalog, solange niemand im Profil ein anderes gewählt hat;
+`--modelle-zuruecksetzen` erzwingt den Katalog. `--nur <slug>` beschränkt den Lauf auf eine Rolle.
+Die Konfiguration wird in der Hermes-Umgebung erzeugt (`hermes --run-module`), die Profilwurzel
+nennt Hermes selbst (auch mit eigenem `HERMES_HOME`).
 
 ## Dauerbetrieb, Gedächtnis, Abos, Skills
 
 | Skript | Wofür |
 |---|---|
 | `installieren.sh` | Alles mit einem Befehl: Kern, App, Rollen, Schlüssel, Dienste, Sprach-Extras (`--ohne-sprache` lässt sie aus), danach Selbsttest |
-| `werkzeuge/selbsttest.py` | Prüft jede Schicht (Rollen, Plugin, Cronjobs, Schlüsselnamen, Anbieter, Sprache, App, Backend-Start) |
+| `werkzeuge/selbsttest.py` | Prüft jede Schicht (Rollen samt Stand gegen Katalog, Plugin, Cronjobs, Schlüsselnamen, Anbieter, Sprache, App, Backend-Start); Aufruf: `installieren.sh --nur-pruefen` |
 | `hermes/vorlage-rolle.yaml` → `voice`/`stt`/`tts` | Sprache: Tikki hört über faster-whisper (`hermes pm install --extra voice`) und spricht mit Edge-TTS (`--extra edge-tts`), in der App über Hermes' eigene Sprachpfade (HANDOVER 4.2c) |
-| `werkzeuge/raeume.py` | Räume auf Hermes' gehosteten Gruppenräumen: anlegen, senden, Verlauf, Tür, verschmelzen, auflösen |
-| `werkzeuge/suite_takt.py` | Taktgeber ohne Modell (Cronjob `tikki-takt`): `TAKT-RUNDE` an fällige Räume, Türen weiterreichen, Übungsergebnisse an den Hauptraum, Raumbericht für den Wachhalter |
-| `werkzeuge/schluessel-einlesen.sh` | Schlüssel aus einer Textdatei in alle Profile übernehmen, ohne sie anzuzeigen |
-| `werkzeuge/abos-einrichten.sh` | Claude-, Codex-, Grok-Abo als Modelle anmelden; Kommandozeilen der Abos prüfen |
+| `werkzeuge/raeume.py` | Räume auf Hermes' gehosteten Gruppenräumen: anlegen, senden, Verlauf, Lage (aus Ereignisarten), verschmelzen, auflösen. Das Plugin `plugins/raeume` gibt dasselbe den Rollen als Werkzeug `raum` |
+| `werkzeuge/suite_takt.py` | Raumbericht für den Wachhalter (`bericht`) und der einmalige Umzug alter Raum-Takte in Hermes-Cronjobs (`umziehen`, `abloesen`). Der Takt eines Raums ist ein Cronjob `Raumrunde <raum>` im Profil `tikki`; einen eigenen Taktgeber gibt es nicht mehr |
+| `werkzeuge/schluessel-einlesen.sh` | Schlüssel aus einer Textdatei in das Hauptprofil und die Rollenprofile übernehmen, ohne sie anzuzeigen; Postfach-Passwort, WhatsApp- und Bot-Token nur ins Profil `tikki` (`--profil`) |
+| `werkzeuge/abos-einrichten.sh` | Prüft Abo-Kommandozeilen, Skills und Anmeldungen (ändert nichts); `--anmelden` meldet Claude-, Codex-, Grok-Abo je Rolle an |
 | `werkzeuge/openclaw-einrichten.sh` | ClawHub-Katalog (OpenClaw) lokal, Skills auf Abruf in die Bibliothek `openclaw` |
 | `werkzeuge/handover-mappe.sh` | Legt die komplette Handover-Mappe (Dokumente, Code-Bundle, umzug.sh) als Ordner auf den Schreibtisch |
 | `UMZUG.md` + `werkzeuge/umzug.sh` | Komplettes Handover auf einen anderen Rechner: `umzug.sh packen` (Code-Bundle, Zustand, Schlüssel, Mappe) → `umzug.sh auspacken` |
-| `werkzeuge/tikki-update.sh` | Tikki aktualisieren (`hermes update --branch tikki-app`); nie ein nacktes `hermes update` |
-| `werkzeuge/hermes-aktualisieren.sh` | Neue Hermes-Version per Merge übernehmen, danach alle Tikki-Prüfungen |
+| `werkzeuge/tikki-update.sh` | Tikki aktualisieren: `hermes update --branch tikki-app`, danach Rollen nachziehen und Selbsttest; nie ein nacktes `hermes update` |
+| `werkzeuge/hermes-aktualisieren.sh` | Neue Hermes-Version per Merge übernehmen, alle Tikki-Prüfungen, dann Rollen nachziehen |
 | `dienste/honcho/honcho.sh` | Honcho als eigener Dienst (Docker) |
 | `dienste/tencentdb/tencentdb.sh` | TencentDB Agent Memory je Mensch und fürs System (Docker) |
-| `plugins/gedaechtnis/` | Spiegelt jede Runde in TencentDB und die RAG-Sammlung; Werkzeug `nachschlagen` |
-| `plugins/pa/` | Persönliche Assistenz: Postfach (`post`), Briefing (`briefing_sammeln`), lokale Modelle (`lokale_modelle`) aus dem Backend; `hermes pa status\|briefing\|post\|modelle\|ressourcen` |
-| `plugins/pa/ressourcen.py` | MR-Bot (Rolle `mr`, Port 8675): Werkzeug `ressourcen_stand` – Anbieter (Schlüsselnamen, erreichbar, Modelle), Abo-Kommandozeilen, lokale Server, Raumleiter-Klone, „Frei jetzt“; Stand in `~/.tikki/ressourcen.json`, stündlich per Cronjob `tikki-ressourcen`, im Wachhalter-Rundgang mitgelesen |
+| `plugins/gedaechtnis/` | Merkt nach jeder Runde Gespräche mit dem Menschen (TencentDB, RAG) und Wortmeldungen im Raum (Systemwissen, RAG); Daueraufträge nicht. Werkzeug `nachschlagen` |
+| `plugins/pa/` | Persönliche Assistenz aus dem Backend, ein Toolset je Werkzeug: `post` (Postfach; nur mit eingerichtetem Postfach), `briefing` (`briefing_sammeln`), `modelle` (`lokale_modelle`), `ressourcen` (`ressourcen_stand`); `hermes pa status\|briefing\|post\|postfach\|freigabe\|modelle\|ressourcen` |
+| `plugins/pa/ressourcen.py` | MR-Bot (Rolle `mr`, Port 8675): Werkzeug `ressourcen_stand` – Anbieter (Schlüsselnamen, erreichbar, Modelle), Abo-Kommandozeilen, lokale Server, Raumleiter-Klone, „Frei jetzt“ (geprüft im Profil des Klons); Stand in `~/.tikki/ressourcen.json`, stündlich per Cronjob `tikki-ressourcen`, im Wachhalter-Rundgang mitgelesen |
 | `skills/` | Tikki-Skills: `gemini-cli`, `notebooklm`, `openclaw-skills` |
 
 Reihenfolge und Einzelheiten: `HANDOVER.md`, Abschnitte 3 und 4.8–4.12.
@@ -105,7 +113,9 @@ eingetragen. **Die `base_url` dort ist vor dem ersten Einsatz zu prüfen.**
 
 ## Wo die Schlüssel hingehören
 
-Nur in Umgebungsvariablen oder in `~/.hermes/profiles/<slug>/.env` (liegt außerhalb des Repos):
+Nur in die `.env` der Profile (Hauptprofil und `profiles/<slug>/.env` unter der Hermes-Wurzel,
+außerhalb des Repos, Rechte 600) – `schluessel-einlesen.sh` schreibt sie dorthin. Ein Gateway
+bedient alle Profile; jedes liest seine Geheimnisse aus seiner eigenen `.env`.
 
 | Variable | Zweck |
 |----------|-------|
@@ -113,6 +123,24 @@ Nur in Umgebungsvariablen oder in `~/.hermes/profiles/<slug>/.env` (liegt außer
 | `CURSOR_API_KEY` | Anbieter `cursor` |
 | `API_SERVER_KEY` | Bearer-Schlüssel des HTTP-Dienstes, pro Profil |
 | `HONCHO_API_KEY` | Nur für Honcho in der Cloud; der lokale Tikki-Dienst braucht keinen |
+| `TIKKI_MAIL_PASSWORD` | Passwort des Postfachs, das Tikki im Backend liest (nur Profil `tikki`) |
+| `WA_BRIDGE_TOKEN` | Token der WhatsApp-Bridge fürs Briefing (nur Profil `tikki`) |
+
+Alles, was kein Geheimnis ist, steht in der `config.yaml` des Profils – etwa die Adresse des
+Postfachs und die Empfänger, an die Tikki ohne Menschen senden darf:
+
+```bash
+hermes -p tikki pa postfach tikki@tikki.team          # plugins.entries.pa.settings.mail_address
+hermes -p tikki pa freigabe --dazu @tikki.team         # … .mail_freigabe (Adresse oder @domain)
+hermes -p tikki pa status
+```
+
+An freigegebene Empfänger sendet das Werkzeug direkt. Für jeden anderen Empfänger fragt es über
+Hermes' Freigabe (`tools/approval.py`) den Menschen – einmal, für die Sitzung oder immer. Ist kein
+Mensch erreichbar (etwa im Dauerauftrag) oder sagt er Nein, bleibt die Mail als Entwurf mit Stern
+liegen. Das entscheidet das Werkzeug, kein Satz im Prompt; wer in Hermes die Freigaben ganz
+abschaltet (`approvals.mode: off`, yolo), schaltet auch diese ab. Jede gesendete Mail liegt als Kopie in „Gesendet“.
+Mailtext erreicht das Modell nur in Hermes' Rahmen für Fremdinhalte (`untrusted_tool_result`).
 
 Nie in Dateien in diesem Repo, nie im Chat, nie in Seelen. Der Sicherheitsbeauftragte und der
 API-Fachmann geben gefundene Schlüssel grundsätzlich nicht wieder.
@@ -141,5 +169,5 @@ aussieht. Höchstens vier Klicks pro Seite.
 
 ## Ports
 
-8650 (Tikki) bis 8661 (Übersetzer), je Rolle einer, nur auf `127.0.0.1`. Die Belegung steht
-im Katalog; `rollen-status.sh` liest sie von dort.
+Ab 8650 (Tikki), je Rolle einer, nur auf `127.0.0.1` (Klone 8671–8674, MR 8675). Die Belegung
+steht im Katalog; `rollen-status.sh` liest sie von dort.

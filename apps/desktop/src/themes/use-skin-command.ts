@@ -1,11 +1,14 @@
 import { useCallback } from 'react'
 
 import { useTheme } from './context'
+import { DEFAULT_SKIN_NAME } from './presets'
 
-// Retired skin names land on the canonical Nous skin so old muscle memory works.
+// Retired skin names land on the canonical Nous skin so old muscle memory works;
+// `default` is whatever this app's default is (the same name setTheme and
+// backend-sync resolve it to).
 const ALIASES: Record<string, string> = {
   ares: 'ember',
-  default: 'nous',
+  default: DEFAULT_SKIN_NAME,
   gold: 'nous',
   hermes: 'nous',
   'nous-light': 'nous'

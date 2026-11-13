@@ -7,17 +7,35 @@ import { cn } from '@/lib/utils'
 import { areaLabels } from '../labels'
 
 /** The Tikki Honcho service on this machine (tikki/dienste/honcho/honcho.sh). */
-export const HONCHO_URL = 'http://127.0.0.1:8000'
+export const HONCHO_PORT = 8000
 
 type Zustand = 'unbekannt' | 'laeuft' | 'aus'
 
-async function honchoErreichbar(url = HONCHO_URL): Promise<Zustand> {
-  try {
-    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2500) })
+const PUNKT: Record<Zustand | 'prueft', string> = {
+  aus: 'bg-destructive/70',
+  laeuft: 'bg-(--ui-accent)',
+  prueft: 'bg-(--ui-text-secondary)/30',
+  unbekannt: 'bg-(--ui-text-secondary)/30'
+}
 
-    return res.ok ? 'laeuft' : 'aus'
+const TEXT = { aus: 'aus', laeuft: 'laeuft', prueft: 'pruefe', unbekannt: 'unbekannt' } as const
+
+/**
+ * Asked through the main process: a page may not read another origin's answer
+ * (the service allows none), so a `fetch` from here would call a running
+ * service "down". Without the bridge nothing is known — and nothing claimed.
+ */
+async function honchoErreichbar(): Promise<Zustand> {
+  const probe = window.hermesDesktop?.tikkiLocalHealth
+
+  if (!probe) {
+    return 'unbekannt'
+  }
+
+  try {
+    return (await probe(HONCHO_PORT)) ? 'laeuft' : 'aus'
   } catch {
-    return 'aus'
+    return 'unbekannt'
   }
 }
 
@@ -26,7 +44,7 @@ async function honchoErreichbar(url = HONCHO_URL): Promise<Zustand> {
 export function GedaechtnisSection() {
   const { locale } = useI18n()
   const g = areaLabels(locale).admin.gedaechtnis
-  const [zustand, setZustand] = useState<Zustand>('unbekannt')
+  const [zustand, setZustand] = useState<Zustand | 'prueft'>('prueft')
 
   useEffect(() => {
     let stopped = false
@@ -55,26 +73,16 @@ export function GedaechtnisSection() {
         data-honcho-status={zustand}
       >
         <div className="flex items-center gap-2">
-          <span
-            aria-hidden
-            className={cn(
-              'size-2.5 shrink-0 rounded-full',
-              zustand === 'laeuft'
-                ? 'bg-(--ui-accent)'
-                : zustand === 'aus'
-                  ? 'bg-destructive/70'
-                  : 'bg-(--ui-text-secondary)/30'
-            )}
-          />
+          <span aria-hidden className={cn('size-2.5 shrink-0 rounded-full', PUNKT[zustand])} />
           <span className="text-sm font-semibold text-(--ui-text-primary)">Honcho</span>
           <span className="text-xs text-(--ui-text-secondary)" role="status">
-            {zustand === 'laeuft' ? g.laeuft : zustand === 'aus' ? g.aus : g.pruefe}
+            {g[TEXT[zustand]]}
           </span>
-          <span className="ml-auto font-mono text-[11px] text-(--ui-text-secondary)">{HONCHO_URL}</span>
+          <span className="ml-auto font-mono text-[11px] text-(--ui-text-secondary)">127.0.0.1:{HONCHO_PORT}</span>
         </div>
         <p className="mt-2 text-xs text-(--ui-text-secondary)">{g.erklaerung}</p>
         {zustand === 'aus' && (
-          <p className="mt-2 text-xs text-(--ui-text-primary)">
+          <p className="mt-2 text-xs text-(--ui-text-primary)" data-honcho-starthinweis="">
             {g.starten}{' '}
             <code className="rounded bg-(--ui-fill-quinary) px-1 py-0.5 font-mono">
               tikki/dienste/honcho/honcho.sh start

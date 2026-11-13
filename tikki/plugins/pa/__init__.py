@@ -1,15 +1,18 @@
 """Tikki-Plugin „pa“: die persönliche Assistenz arbeitet selbst.
 
-- Werkzeug ``post``: ungelesene Mails sehen, eine lesen, beantworten (sagt der Mensch „schick
-  weg“, wird geschickt), neue schreiben, als erledigt markieren. Läuft im Backend, also auch in
-  Daueraufträgen ohne geöffnete App.
-- Werkzeug ``briefing_sammeln``: was seit dem letzten Briefing erledigt wurde (Ausgaben der
-  Daueraufträge), ungelesene Post, Räume, die warten, neue WhatsApps. Tikki trägt es vor.
-- Werkzeug ``lokale_modelle``: welche Modelle auf der Platte liegen (LM Studio, Ollama, Hugging-Face-
-  Cache, ~/Models, ~/Downloads) und welcher Modellserver gerade läuft – die App fragt das beim Start.
-- Werkzeug ``ressourcen_stand``: der Blick des MR-Bots – Anbieter (Schlüsselnamen, erreichbar, Modelle),
-  Abo-Kommandozeilen, lokale Server, Raumleiter-Klone und „Frei jetzt“; Stand in ``~/.tikki/ressourcen.json``.
-- ``hermes pa status|briefing|post|modelle|ressourcen`` zum Prüfen von Hand.
+Jedes Werkzeug hat sein eigenes Toolset; eine Rolle bekommt nur, was ihr Katalog nennt:
+
+- ``post`` (Toolset ``post``, nur mit eingerichtetem Postfach): ungelesene Mails sehen, eine
+  lesen, beantworten, neue schreiben, als erledigt markieren. Läuft im Backend, also auch in
+  Daueraufträgen ohne geöffnete App. An freigegebene Empfänger wird gesendet; für jeden anderen
+  fragt das Werkzeug Hermes' Freigabe, und ohne Ja wird die Mail Entwurf (``post.py``).
+- ``briefing_sammeln`` (Toolset ``briefing``): was seit dem letzten Briefing erledigt wurde
+  (Ausgaben der Daueraufträge), ungelesene Post, Räume, die warten, neue WhatsApps.
+- ``lokale_modelle`` (Toolset ``modelle``): welche Modelle auf der Platte liegen (LM Studio,
+  Ollama, Hugging-Face-Cache, ~/Models, ~/Downloads) und welcher Modellserver gerade läuft.
+- ``ressourcen_stand`` (Toolset ``ressourcen``): der Blick des MR-Bots – Anbieter (Schlüsselnamen,
+  erreichbar, Modelle), Abo-Kommandozeilen, lokale Server, Raumleiter-Klone und „Frei jetzt“.
+- ``hermes pa status|briefing|post|freigabe|modelle|ressourcen`` zum Prüfen und Einrichten von Hand.
 
 Daueraufträge selbst legt Tikki mit dem Hermes-Werkzeug ``cronjob`` an („alle 4 Minuten das
 Postfach prüfen und beantworten, was zu beantworten ist“).
@@ -20,7 +23,6 @@ from __future__ import annotations
 import json
 import logging
 from email.utils import parseaddr
-from pathlib import Path
 
 from . import briefing, modelle, post, ressourcen
 
@@ -32,9 +34,9 @@ _POST_SCHEMA = {
         "Das Postfach der Familie: 'ungelesen' listet neue Mails (uid, von, betreff, kurz, automatisch), "
         "'lesen' holt den ganzen Text einer Mail, 'antworten' schickt eine Antwort im selben Faden "
         "und markiert sie als beantwortet, 'senden' schreibt eine neue Mail, 'erledigt' markiert als "
-        "gelesen. Mails mit automatisch=true (Newsletter, Autoresponder, Bounces) werden nie beantwortet. "
-        "Antworten gehen sofort raus – wenn der Mensch gesagt hat, dass du antworten sollst, "
-        "fragst du nicht noch einmal."
+        "gelesen. Mails mit automatisch=true (Newsletter, Autoresponder, Bounces) beantwortet das Werkzeug "
+        "nicht. Post an Empfänger, die nicht freigegeben sind, legt es dem Menschen zur Freigabe vor; "
+        "ohne sein Ja liegt sie als Entwurf im Postfach (Ergebnis: gesendet=false, entwurf=true)."
     ),
     "parameters": {
         "type": "object",
@@ -53,9 +55,9 @@ _POST_SCHEMA = {
 _BRIEFING_SCHEMA = {
     "name": "briefing_sammeln",
     "description": (
-        "Sammelt alles für das Briefing: was deine Daueraufträge seit dem letzten Briefing erledigt "
-        "haben, ungelesene Post, Räume, die auf den Menschen warten, neue WhatsApps. Rufe es auf, "
-        "wenn der Mensch 'Briefing' sagt oder ankommt; danach erzählst du es ihm."
+        "Sammelt, was seit dem letzten Briefing angefallen ist: was die Daueraufträge erledigt haben, "
+        "ungelesene Post, Räume, in denen eine Runde gescheitert ist oder eine Wortmeldung des Menschen "
+        "noch ohne Antwort ist, neue WhatsApps."
     ),
     "parameters": {
         "type": "object",
@@ -66,46 +68,68 @@ _BRIEFING_SCHEMA = {
 }
 
 
-def _home() -> Path:
-    from hermes_constants import get_hermes_home
-
-    return get_hermes_home()
-
-
 def _antwort(daten) -> str:
     return json.dumps(daten, ensure_ascii=False, default=str)
 
 
+KEIN_POSTFACH = (
+    "Kein Postfach eingerichtet: Adresse mit `hermes -p <profil> pa postfach <adresse>` eintragen "
+    f"und {post.PASSWORT} in die .env des Profils setzen."
+)
+
+
+def mensch_stimmt_zu(empfaenger: str) -> bool:
+    """Hermes' Freigabe für eine Mail an einen nicht freigegebenen Empfänger.
+
+    Dieselbe Schranke wie für gefährliche Befehle: Der Mensch sieht die Frage in der Sitzung
+    (einmal / für die Sitzung / immer / nein), im Raum steht sie als offene Freigabe an, ein
+    Dauerauftrag folgt ``approvals.cron_mode``, und wo niemand antworten kann, heißt es nein.
+    „Immer“ gilt je Empfänger.
+    """
+    from tools.approval import request_tool_approval
+
+    adresse = parseaddr(empfaenger or "")[1].strip().lower() or str(empfaenger)
+    try:
+        ergebnis = request_tool_approval("post", f"Mail an {adresse} senden", rule_key=f"post-an:{adresse}")
+    except Exception as exc:
+        logger.warning("Freigabe für Mail an %s nicht einholbar: %s", adresse, exc)
+        return False
+    return bool(ergebnis.get("approved"))
+
+
 def post_werkzeug(args: dict, **_kw) -> str:
     aktion = str(args.get("aktion") or "").strip()
-    zugang = post.zugang()
-    if zugang is None:
-        return _antwort({"fehler": "Kein Postfach eingerichtet: TIKKI_MAIL_ADDRESS und TIKKI_MAIL_PASSWORD in der .env setzen."})
-    fach = post.Postfach(zugang)
     try:
+        werte = post.einstellungen()
+        zugang = post.zugang(werte)
+        if zugang is None:
+            return _antwort({"fehler": KEIN_POSTFACH})
+        fach = post.Postfach(zugang)
         if aktion == "ungelesen":
             anzahl = max(1, min(50, int(args.get("anzahl") or 12)))
-            return _antwort({"ungelesen": [post.als_dict(n) for n in fach.ungelesen(anzahl)]})
+            return post.rahmen(_antwort({"ungelesen": [post.als_dict(n) for n in fach.ungelesen(anzahl)]}), "post")
         uid = str(args.get("uid") or "").strip()
+        if aktion in ("lesen", "antworten", "erledigt"):
+            uid = post.uid_pruefen(uid)
         if aktion == "lesen":
-            n = fach.lesen(uid) if uid else None
-            return _antwort(post.als_dict(n) if n else {"fehler": "uid fehlt oder Mail nicht gefunden"})
+            n = fach.lesen(uid)
+            return post.rahmen(_antwort(post.als_dict(n)), "post") if n else _antwort({"fehler": "Mail nicht gefunden"})
+        # Nicht der Prompt und nicht die Mail entscheiden, ob gesendet wird, sondern Hermes' Freigabe.
+        mensch, freigabe = mensch_stimmt_zu, post.freigabe(werte)
         if aktion == "antworten":
             text = str(args.get("text") or "").strip()
-            if not uid or not text:
-                return _antwort({"fehler": "uid und text werden gebraucht"})
-            return _antwort(fach.antworten(uid, text))
+            if not text:
+                return _antwort({"fehler": "text wird gebraucht"})
+            return _antwort(fach.antworten(uid, text, mensch=mensch, freigabe=freigabe))
         if aktion == "senden":
             an, betreff, text = (str(args.get(k) or "").strip() for k in ("an", "betreff", "text"))
             if not an or not text:
                 return _antwort({"fehler": "an und text werden gebraucht"})
             if "@" not in parseaddr(an)[1]:
                 return _antwort({"fehler": f"'an' ist keine E-Mail-Adresse: {an!r}"})
-            kennung = fach.senden(post.neue_mail_bauen(an, betreff or "(kein Betreff)", text, zugang.adresse))
-            return _antwort({"gesendet": True, "an": an, "betreff": betreff, "message_id": kennung})
+            msg = post.neue_mail_bauen(an, betreff or "(kein Betreff)", text, zugang.adresse)
+            return _antwort(fach.zustellen(msg, mensch=mensch, freigabe=freigabe))
         if aktion == "erledigt":
-            if not uid:
-                return _antwort({"fehler": "uid fehlt"})
             fach.erledigt(uid)
             return _antwort({"erledigt": uid})
         return _antwort({"fehler": f"unbekannte Aktion {aktion!r}"})
@@ -115,7 +139,10 @@ def post_werkzeug(args: dict, **_kw) -> str:
 
 
 def briefing_werkzeug(args: dict, **_kw) -> str:
-    return _antwort(briefing.sammeln(_home(), stempeln=not bool(args.get("nur_lesen"))))
+    """Das Briefing für das Modell: Eigenes als JSON, Post und WhatsApp gerahmt als Fremdinhalt."""
+    daten = briefing.sammeln(stempeln=not bool(args.get("nur_lesen")))
+    fremd = {quelle: daten.pop(quelle) for quelle in ("post", "whatsapp") if daten.get(quelle)}
+    return "\n".join([_antwort(daten), *(post.rahmen(_antwort(inhalt), quelle) for quelle, inhalt in fremd.items())])
 
 
 _MODELLE_SCHEMA = {
@@ -140,8 +167,7 @@ _RESSOURCEN_SCHEMA = {
         "Welche Modell-Kraft gerade frei ist: je Anbieter Schlüssel gesetzt (nur Namen), Endpunkt erreichbar, "
         "Modelle; Abo-Kommandozeilen (claude, codex, gemini, grok) vorhanden und angemeldet; lokale Modelle und "
         "laufende Server; Raumleiter-Klone mit Modellkette; und 'Frei jetzt' – welcher Klon nutzbar ist "
-        "(lokal → Abo → API). Rufe es auf, wenn ein Modell ausfällt, ein Limit erreicht ist oder jemand "
-        "@mr fragt. Nenne nie Schlüsselwerte."
+        "(lokal → Abo → API). Schlüsselwerte enthält das Ergebnis nicht."
     ),
     "parameters": {
         "type": "object",
@@ -160,6 +186,11 @@ def _cli_setup(parser) -> None:
     p = sub.add_parser("post", help="Postfach von Hand")
     p.add_argument("aktion", choices=["ungelesen", "lesen", "erledigt"])
     p.add_argument("uid", nargs="?")
+    a = sub.add_parser("postfach", help="Adresse des Postfachs für dieses Profil eintragen (Passwort: .env)")
+    a.add_argument("adresse")
+    f = sub.add_parser("freigabe", help="Empfänger, an die Tikki ohne Nachfrage senden darf (Adresse oder @domain)")
+    f.add_argument("--dazu", action="append", default=[], metavar="EMPFÄNGER")
+    f.add_argument("--weg", action="append", default=[], metavar="EMPFÄNGER")
     m = sub.add_parser("modelle", help="Lokale Modelle und laufende Modellserver finden")
     m.add_argument("--json", action="store_true", help="Maschinenlesbar (eine Zeile, Präfix TIKKI-MODELLE)")
     m.add_argument("--ordner", action="append", default=[], help="Zusätzlicher Ordner, mehrfach möglich")
@@ -169,43 +200,74 @@ def _cli_setup(parser) -> None:
     r.add_argument("--timeout", type=float, default=5.0, help="Sekunden je Anbieter-Anfrage")
 
 
-def _cli(args) -> int:
-    befehl = getattr(args, "pa_befehl", None) or "status"
-    if befehl == "modelle":
-        return modelle.cli(args)
-    if befehl == "ressourcen":
-        return ressourcen.cli(args)
-    if befehl == "briefing":
-        print(_antwort(briefing.sammeln(_home(), stempeln=not args.nur_lesen)))
-        return 0
-    if befehl == "post":
-        print(post_werkzeug({"aktion": args.aktion, "uid": args.uid}))
-        return 0
+def _cli_briefing(args, _ctx) -> int:
+    print(_antwort(briefing.sammeln(stempeln=not args.nur_lesen)))
+    return 0
+
+
+def _cli_post(args, _ctx) -> int:
+    print(post_werkzeug({"aktion": args.aktion, "uid": args.uid}))
+    return 0
+
+
+def _cli_postfach(args, ctx) -> int:
+    adresse = parseaddr(args.adresse)[1].strip().lower()
+    if adresse.count("@") != 1:
+        print(f"Keine E-Mail-Adresse: {args.adresse!r}")
+        return 2
+    ctx.set_config("mail_address", adresse)
+    print(f"Postfach {adresse} eingetragen. Das Passwort gehört als {post.PASSWORT} in die .env dieses Profils.")
+    return 0
+
+
+def _cli_freigabe(args, ctx) -> int:
+    liste = post.freigabe()
+    neu = [e for e in liste if e not in {w.strip().lower() for w in args.weg}]
+    for eintrag in (d.strip().lower() for d in args.dazu):
+        if "@" not in eintrag:
+            print(f"Kein Empfänger (Adresse oder @domain): {eintrag!r}")
+            return 2
+        if eintrag not in neu:
+            neu.append(eintrag)
+    if neu != liste:
+        ctx.set_config("mail_freigabe", neu)
+    print("Ohne Menschen darf Tikki senden an: " + (", ".join(neu) or "niemanden (alles wird Entwurf)"))
+    return 0
+
+
+def _cli_status(_args, _ctx) -> int:
     zugang = post.zugang()
     print(f"Postfach: {zugang.adresse + ' über ' + zugang.imap.host if zugang else 'nicht eingerichtet'}")
+    print("Freigabe ohne Menschen: " + (", ".join(post.freigabe()) or "niemand (alles wird Entwurf)"))
     letzter = briefing.letzter_stand()
     print(f"Letztes Briefing: {('vor %.0f min' % ((briefing.time.time() - letzter) / 60)) if letzter else 'noch keins'}")
     return 0
 
 
+_CLI_BEFEHLE = {
+    "modelle": lambda args, _ctx: modelle.cli(args), "ressourcen": lambda args, _ctx: ressourcen.cli(args),
+    "briefing": _cli_briefing, "post": _cli_post, "postfach": _cli_postfach, "freigabe": _cli_freigabe,
+    "status": _cli_status,
+}
+
+#: Werkzeug → (Toolset, Schema, Handler, Emoji, check_fn). Ein Toolset je Werkzeug: MR und der
+#: Raumleiter brauchen den Ressourcen-Stand, aber weder das Postfach noch Tikkis Briefing-Stempel.
+WERKZEUGE = {
+    "post": ("post", _POST_SCHEMA, post_werkzeug, "✉️", post.eingerichtet),
+    "briefing_sammeln": ("briefing", _BRIEFING_SCHEMA, briefing_werkzeug, "📋", None),
+    "lokale_modelle": ("modelle", _MODELLE_SCHEMA, modelle.werkzeug, "🧠", None),
+    "ressourcen_stand": ("ressourcen", _RESSOURCEN_SCHEMA, ressourcen.werkzeug, "📡", None),
+}
+
+
 def register(ctx) -> None:
-    ctx.register_tool(
-        name="post", toolset="pa", schema=_POST_SCHEMA, handler=post_werkzeug,
-        description=_POST_SCHEMA["description"], emoji="✉️",
-    )
-    ctx.register_tool(
-        name="briefing_sammeln", toolset="pa", schema=_BRIEFING_SCHEMA, handler=briefing_werkzeug,
-        description=_BRIEFING_SCHEMA["description"], emoji="📋",
-    )
-    ctx.register_tool(
-        name="lokale_modelle", toolset="pa", schema=_MODELLE_SCHEMA, handler=modelle.werkzeug,
-        description=_MODELLE_SCHEMA["description"], emoji="🧠",
-    )
-    ctx.register_tool(
-        name="ressourcen_stand", toolset="pa", schema=_RESSOURCEN_SCHEMA, handler=ressourcen.werkzeug,
-        description=_RESSOURCEN_SCHEMA["description"], emoji="📡",
-    )
+    for name, (toolset, schema, handler, emoji, check_fn) in WERKZEUGE.items():
+        ctx.register_tool(
+            name=name, toolset=toolset, schema=schema, handler=handler, check_fn=check_fn,
+            description=schema["description"], emoji=emoji,
+        )
     ctx.register_cli_command(
         name="pa", help="Tikkis persönliche Assistenz: Postfach, Briefing, lokale Modelle, Ressourcen",
-        setup_fn=_cli_setup, handler_fn=_cli,
+        setup_fn=_cli_setup,
+        handler_fn=lambda args: _CLI_BEFEHLE[getattr(args, "pa_befehl", None) or "status"](args, ctx),
     )

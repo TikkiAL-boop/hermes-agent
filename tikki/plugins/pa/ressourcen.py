@@ -8,7 +8,10 @@ Limit erreicht ist; der Wachhalter liest den letzten Stand im Rundgang. Gesammel
 - Abo-Kommandozeilen (claude, codex, gemini, grok): auf dem PATH, Version, Anmeldedatei vorhanden.
 - Lokale Modelle und laufende Server (``modelle.sammeln``).
 - Raumleiter und Klone mit ihrer Modellkette aus dem Katalog, und daraus **„Frei jetzt“**:
-  lokal, wenn ein Server läuft → Abo-Klon → API-Klon.
+  lokal → Abo-Klon → API-Klon. Geprüft wird im Profil des Klons, nicht im Profil des Fragenden:
+  ein Abo zählt, wenn es dort angemeldet ist (``abos-einrichten.sh`` meldet je Rolle an), und
+  „lokal“, wenn der Server aus ``providers.lokal.base_url`` des Klons antwortet und dessen
+  Modell-Kennung führt.
 
 Der Stand liegt in ``~/.tikki/ressourcen.json`` (``TIKKI_HOME`` übersteuert). Schlüsselwerte werden
 gelesen, um anzuklopfen, und erscheinen nirgends – weder im Stand noch in einer Ausgabe.
@@ -18,6 +21,7 @@ gelesen, um anzuklopfen, und erscheinen nirgends – weder im Stand noch in eine
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -25,6 +29,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from dataclasses import asdict
 from pathlib import Path
 
 from . import modelle
@@ -56,6 +61,17 @@ def _profile_wurzel() -> Path:
     from hermes_constants import get_default_hermes_root
 
     return get_default_hermes_root() / "profiles"
+
+
+def _eigene_geheimnisse() -> dict[str, str]:
+    """Die Geheimnisse des Profils, in dem der Aufruf läuft: sein Secret-Scope; die
+    Prozessumgebung nur, wenn der Prozess nicht viele Profile bedient (dort gehört sie dem
+    Startprofil)."""
+    from agent.secret_scope import current_secret_scope, is_multiplex_active
+
+    werte = {} if is_multiplex_active() else dict(os.environ)
+    werte.update(current_secret_scope() or {})
+    return werte
 
 
 def _env_werte(pfad: Path) -> dict[str, str]:
@@ -106,13 +122,38 @@ def anklopfen(basis: str, schluessel: str, timeout: float = 5.0) -> tuple[str, l
     return "", ids[:MODELLE_HOECHSTENS]
 
 
-def _abo_angemeldet(anbieter: str) -> bool | None:
+@contextlib.contextmanager
+def _im_profil(home: Path):
+    """Hermes-Home und Geheimnisse eines anderen Profils für die Dauer des Blocks – wie ein Turn
+    dort (``gateway/run.py::_profile_runtime_scope``), ohne ``os.environ`` anzufassen."""
+    from agent.secret_scope import build_profile_secret_scope, reset_secret_scope, set_secret_scope
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    home_marke = set_hermes_home_override(str(home))
+    geheim_marke = set_secret_scope(build_profile_secret_scope(home), profile_home=str(home))
+    try:
+        yield
+    finally:
+        reset_secret_scope(geheim_marke)
+        reset_hermes_home_override(home_marke)
+
+
+def _abo_angemeldet(anbieter: str, profil: Path) -> bool | None:
+    """Ob das Abo im Profil *profil* nutzbar ist. Anmeldungen liegen je Profil; None, wenn es das
+    Profil nicht gibt oder Hermes den Status nicht nennen kann."""
+    if not profil.is_dir():
+        return None
     try:
         from hermes_cli.auth import get_auth_status  # liest nur, erneuert nichts (#68004)
 
-        return bool(get_auth_status(anbieter).get("logged_in"))
+        with _im_profil(profil):
+            return bool(get_auth_status(anbieter).get("logged_in"))
     except Exception:
         return None
+
+
+def _kette(rolle: dict) -> list[str]:
+    return [rolle["modell"]["primary"], rolle["modell"]["fallback"], *rolle["modell"].get("weitere", [])]
 
 
 def anbieter_sammeln(katalog: list[dict], profile: Path, werte: dict[str, str], timeout: float = 5.0) -> list[dict]:
@@ -127,8 +168,11 @@ def anbieter_sammeln(katalog: list[dict], profile: Path, werte: dict[str, str], 
                 "basis": str(e.get("base_url") or e.get("api") or "").rstrip("/"),
                 "schluessel_namen": [n for n in [e.get("key_env") or e.get("api_key_env")] if n],
             })
-    gebraucht = {m.split("/", 1)[0] for r in katalog for m in
-                 (r["modell"]["primary"], r["modell"]["fallback"], *r["modell"].get("weitere", []))} - {LOKAL}
+    nutzer: dict[str, list[str]] = {}  # Anbieter → Profile, deren Kette ihn nennt
+    for r in katalog:
+        for m in _kette(r):
+            nutzer.setdefault(m.split("/", 1)[0], []).append(r["hermes_profil"])
+    gebraucht = set(nutzer) - {LOKAL}
     try:
         from hermes_cli.auth import PROVIDER_REGISTRY as eingebaut
     except Exception:
@@ -143,10 +187,13 @@ def anbieter_sammeln(katalog: list[dict], profile: Path, werte: dict[str, str], 
     stand = []
     for name, e in eintraege.items():
         gesetzt = [n for n in e["schluessel_namen"] if werte.get(n)]
+        # Abo: angemeldet in den Profilen, deren Kette es nennt – nicht im Profil des Fragenden.
+        angemeldet = [p for p in dict.fromkeys(nutzer.get(name, [])) if _abo_angemeldet(name, profile / p)] \
+            if weg(name) == "abo" else []
         eintrag = {
             "name": name, "weg": weg(name), "basis": e["basis"], "quelle": e["quelle"],
             "schluessel": gesetzt, "schluessel_fehlt": [n for n in e["schluessel_namen"] if n not in gesetzt],
-            "abo": _abo_angemeldet(name) if weg(name) == "abo" else None,
+            "abo": bool(angemeldet) if weg(name) == "abo" else None, "abo_profile": angemeldet,
             "erreichbar": None, "befund": "", "modelle": [],
         }
         if gesetzt and e["basis"]:
@@ -183,30 +230,47 @@ def abos_sammeln(home: Path | None = None, timeout: float = 5.0) -> list[dict]:
     return stand
 
 
-def klone_sammeln(katalog: list[dict]) -> list[dict]:
-    """Raumleiter und seine Klone mit der Modellkette aus dem Katalog."""
-    return [
-        {"slug": r["slug"], "name": r["name"], "profil": r["hermes_profil"],
-         "kette": [r["modell"]["primary"], r["modell"]["fallback"], *r["modell"].get("weitere", [])]}
-        for r in katalog if r["slug"] == "raumleiter" or r.get("klon_von") == "raumleiter"
-    ]
+def klone_sammeln(katalog: list[dict], profile: Path | None = None) -> list[dict]:
+    """Raumleiter und seine Klone mit der Modellkette aus dem Katalog. Mit *profile* steht dabei,
+    was nur das Profil des Klons weiß: ob das Abo seines Hauptmodells dort angemeldet ist, und
+    welchen Server ``providers.lokal.base_url`` dort nennt."""
+    klone = []
+    for r in katalog:
+        if r["slug"] != "raumleiter" and r.get("klon_von") != "raumleiter":
+            continue
+        klon = {"slug": r["slug"], "name": r["name"], "profil": r["hermes_profil"], "kette": _kette(r)}
+        anbieter = klon["kette"][0].split("/", 1)[0]
+        if profile is not None and weg(anbieter) == "abo":
+            klon["abo"] = _abo_angemeldet(anbieter, profile / r["hermes_profil"])
+        if profile is not None and anbieter == LOKAL:
+            lokal = (_config(profile / r["hermes_profil"]).get("providers") or {}).get(LOKAL)
+            lokal = lokal if isinstance(lokal, dict) else {}
+            klon["lokal_basis"] = str(lokal.get("base_url") or lokal.get("api") or "").rstrip("/")
+        klone.append(klon)
+    return klone
 
 
 def frei_jetzt(klone: list[dict], anbieter: list[dict], server: list[dict]) -> list[dict]:
-    """Welche Klone gerade nutzbar sind, nach ihrem Hauptmodell: lokal (Server läuft) → Abo → API."""
+    """Welche Klone gerade nutzbar sind, nach ihrem Hauptmodell: lokal → Abo → API.
+
+    Lokal zählt nur der Server des Klons mit dessen Modell-Kennung – ein Ollama auf einem anderen
+    Port macht ``lokal/tikki-gross`` nicht frei. Ein Abo zählt, wenn es im Profil des Klons
+    angemeldet ist.
+    """
     nach_name = {a["name"]: a for a in anbieter}
     frei = []
     for k in klone:
-        prov = k["kette"][0].split("/", 1)[0]
+        prov, _, modell = k["kette"][0].partition("/")
         a = nach_name.get(prov) or {}
         if prov == LOKAL:
-            if not server:
+            eigener = next((s for s in server if k.get("lokal_basis") and s["adresse"].rstrip("/") == k["lokal_basis"]), None)
+            if eigener is None or modell not in (eigener.get("modelle") or []):
                 continue
-            grund = "Server läuft: " + ", ".join(s["adresse"] for s in server[:2])
+            grund = f"Server läuft mit {modell}: {eigener['adresse']}"
         elif weg(prov) == "abo":
-            if not a.get("abo"):
+            if not k.get("abo"):
                 continue
-            grund = f"{prov}: Abo angemeldet"
+            grund = f"{prov}: Abo im Profil {k['profil']} angemeldet"
         elif a.get("erreichbar"):
             grund = f"{prov}: Schlüssel gesetzt, erreichbar"
         else:
@@ -224,13 +288,19 @@ def sammeln(*, katalog: list[dict] | None = None, profile: Path | None = None, u
 
         katalog = katalog_lesen()
     profile = profile or _profile_wurzel()
-    werte = dict(os.environ if umgebung is None else umgebung)
+    werte = dict(_eigene_geheimnisse() if umgebung is None else umgebung)
     for pfad in [profile.parent / ".env", *(profile / r["hermes_profil"] / ".env" for r in katalog)]:
         for name, wert in _env_werte(pfad).items():
             werte.setdefault(name, wert)
-    lokal = lokal if lokal is not None else modelle.sammeln(home=home, timeout=min(timeout, 1.0))
+    klone = klone_sammeln(katalog, profile)
+    if lokal is None:
+        lokal = modelle.sammeln(home=home, timeout=min(timeout, 1.0))
+        # Die Server der Klone stehen in deren Profil, nicht im Profil des Fragenden: mit anklopfen.
+        bekannt = {s["adresse"].rstrip("/") for s in lokal.get("server") or []}
+        fehlend = sorted({k["lokal_basis"] for k in klone if k.get("lokal_basis")} - bekannt)
+        lokal["server"] = [*(lokal.get("server") or []), *(
+            asdict(s) for s in modelle.server_suchen({}, min(timeout, 1.0), zusatz=fehlend))]
     anbieter = anbieter_sammeln(katalog, profile, werte, timeout)
-    klone = klone_sammeln(katalog)
     ergebnis = {
         "zeit": time.time(),
         "anbieter": anbieter,

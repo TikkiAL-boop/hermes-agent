@@ -26,7 +26,9 @@ from typing import Callable, Mapping, Optional
 # verbatim (Wayland app_id, CHROME_DESKTOP). GNOME links a window to a launcher by StartupWMClass
 # or by a `<app_id>.desktop` file name, so the entry has to carry the same id — under the old
 # "hermes.desktop" name a packaged launch matches neither rung and lands on the placeholder icon.
-APP_ID = "com.nousresearch.hermes"
+from hermes_cli.desktop_identity import desktop_app_id, desktop_app_ids
+
+APP_ID = desktop_app_id()
 DESKTOP_ENTRY_NAME = f"{APP_ID}.desktop"
 
 # Entry name written before the app-id rename; a successful install retires it so the menu does
@@ -626,6 +628,22 @@ def _remove_legacy_desktop_entry(applications_dir: Path) -> None:
         pass
 
 
+def _remove_renamed_app_id_entries(applications_dir: Path, exec_command: str) -> None:
+    """Delete this launcher's entry under an earlier app id (the product was renamed).
+
+    The window claims ``APP_ID`` now, so ``<earlier id>.desktop`` matches no window and lists the
+    app a second time. Only an entry that starts this same launcher is ours: a separately installed
+    build of the historical product keeps its own entry.
+    """
+    for app_id in desktop_app_ids()[1:]:
+        earlier = applications_dir / f"{app_id}.desktop"
+        try:
+            if f"Exec={exec_command}" in earlier.read_text(encoding="utf-8-sig").splitlines():
+                earlier.unlink()
+        except OSError:
+            pass
+
+
 def install_desktop_entry(project_root: Path) -> Optional[Path]:
     """Create or refresh the app-id entry, respecting the opt-out for existing entries.
 
@@ -651,7 +669,8 @@ def install_desktop_entry(project_root: Path) -> Optional[Path]:
     icon_value = str(icon) if icon.is_file() else "hermes"
     if icon.is_file() and _install_icon_to_hicolor(icon):
         icon_value = "hermes"
-    contents = render_desktop_entry(resolve_exec_command(project_root), icon_value)
+    exec_command = resolve_exec_command(project_root)
+    contents = render_desktop_entry(exec_command, icon_value)
 
     try:
         entry_path.parent.mkdir(parents=True, exist_ok=True)
@@ -676,6 +695,7 @@ def install_desktop_entry(project_root: Path) -> Optional[Path]:
     # still created.
     if manage_enabled:
         _remove_legacy_desktop_entry(entry_path.parent)
+        _remove_renamed_app_id_entries(entry_path.parent, exec_command)
     refresh_desktop_databases(entry_path.parent)
     return entry_path
 

@@ -40,8 +40,10 @@ import { cn } from '@/lib/utils'
 import { $gatewayState } from '@/store/session'
 
 import { KATALOG, rolle } from '../admin/katalog'
+import { $rollenStand, modellkette } from '../admin/rollen-stand'
 import { areaLabels } from '../labels'
 import { setArea } from '../store'
+import { $auftraege, ladeAuftraege, raumZeitplan } from '../tikki/auftraege'
 import {
   neuVorzulesen,
   setVorlesenAktiv,
@@ -52,12 +54,13 @@ import {
   vorlesenStopp
 } from '../tikki/stimme'
 
+import { ladeRueckfragen, type Rueckfrage, rueckfrageBeantworten } from './rueckfragen'
 import {
   $suiteEntsteht,
   $suites,
-  aufgabenWand,
+  $suitesFehler,
   auftragGeben,
-  brauchtAus,
+  brauchtDich,
   fehlertext,
   type Freigabe,
   freigeben,
@@ -68,23 +71,17 @@ import {
   type Nachricht,
   nachrichtAus,
   oeffneSuite,
+  type Offen,
   type RaumEreignis,
   RAUMLEITER,
-  standAus,
   type Suite,
-  tuerSenden,
+  suiteStand,
   verlasseSuite,
   verschmelzen,
-  werArbeitet
+  werArbeitet,
+  wiederholen
 } from './store'
-import {
-  type Ausgabe,
-  ausgabenAusNachrichten,
-  type Eingabe,
-  eingabenAusNachrichten,
-  taktAusNachrichten
-} from './suite-daten'
-import { uebungsTeil } from './uebung'
+import { type Ausgabe, ausgabenAusNachrichten, type Eingabe, eingabenAusNachrichten } from './suite-daten'
 
 /** The log is pulled: the gateway has no push for rooms. */
 const POLL_MS = 2000
@@ -109,24 +106,34 @@ const Leer = ({ text }: { text: string }) => (
   <p className="py-4 text-center text-xs text-(--ui-text-secondary)">{text}</p>
 )
 
+const NICHTS_OFFEN: Offen = { freigaben: [], rueckfragen: [], wiederholbar: [] }
+
 interface RaumLog {
+  /**
+   * Where the log's end was when the room had been read up to it; null until then. Everything up
+   * to this seq is history — however many stages it took to load — everything after it is new.
+   */
+  eingeholtBei: number | null
   events: RaumEreignis[]
   fehler: string | null
-  freigaben: Freigabe[]
   geladen: boolean
   nachladen: () => Promise<void>
+  /** What the backend reports as waiting for the person: approvals, questions, failed turns. */
+  offen: Offen
 }
 
 /**
  * The room's log, pulled every two seconds while the room is mounted: all
- * pages on the first read, then only what came after the cursor. Pending
- * approvals ride along from the driver status.
+ * pages on the first read, then only what came after the cursor. What waits
+ * for the person rides along as backend state (driver status, open questions).
  */
 function useRaumLog(suite: Suite): RaumLog {
   const [events, setEvents] = useState<RaumEreignis[]>([])
-  const [freigaben, setFreigaben] = useState<Freigabe[]>([])
+  const [offen, setOffen] = useState<Offen>(NICHTS_OFFEN)
   const [fehler, setFehler] = useState<string | null>(null)
   const [geladen, setGeladen] = useState(false)
+  // A long log arrives in stages; all of them are history, the one that reaches the end included.
+  const [eingeholtBei, setEingeholtBei] = useState<number | null>(null)
   // The replay cursor belongs to one room; a different room starts over at the beginning.
   const cursor = useRef({ id: suite.id, seq: 0 })
   const laeuft = useRef(false)
@@ -143,9 +150,10 @@ function useRaumLog(suite: Suite): RaumLog {
     laeuft.current = true
 
     try {
-      const [seite, stand] = await Promise.all([
+      const [seite, stand, rueckfragen] = await Promise.all([
         ladeVerlauf(suite.id, cursor.current.seq),
-        ladeStand(suite.id).catch(() => undefined)
+        ladeStand(suite.id).catch(() => undefined),
+        ladeRueckfragen()
       ])
 
       if (seite.events.length) {
@@ -157,13 +165,17 @@ function useRaumLog(suite: Suite): RaumLog {
         })
       }
 
-      setFreigaben(alt => {
-        const neu = (stand?.driver_status?.pending_actions ?? []).filter(a => a.kind === 'approval')
+      setOffen(alt => {
+        const neu = suiteStand({ id: suite.id }, stand?.driver_status, rueckfragen).offen
 
         return JSON.stringify(neu) === JSON.stringify(alt) ? alt : neu
       })
       setFehler(null)
       setGeladen(true)
+
+      if (seite.cursor >= seite.latestSeq) {
+        setEingeholtBei(alt => alt ?? seite.cursor)
+      }
     } catch (error) {
       setFehler(fehlertext(error))
     } finally {
@@ -173,14 +185,16 @@ function useRaumLog(suite: Suite): RaumLog {
 
   useEffect(() => {
     setEvents([])
+    setOffen(NICHTS_OFFEN)
     setGeladen(false)
+    setEingeholtBei(null)
     void nachladen()
     const timer = window.setInterval(() => void nachladen(), POLL_MS)
 
     return () => window.clearInterval(timer)
   }, [nachladen])
 
-  return { events, fehler, freigaben, geladen, nachladen }
+  return { eingeholtBei, events, fehler, geladen, nachladen, offen }
 }
 
 const alsChatMessages = (messages: readonly Nachricht[]): ChatMessage[] =>
@@ -192,44 +206,11 @@ const alsChatMessages = (messages: readonly Nachricht[]): ChatMessage[] =>
 
 const sprecherIcon = (von: string): string => (von === MENSCH ? '🧑' : (rolle(von)?.icon ?? '🤖'))
 
-/** The wall: the room lead's own task list, from its latest `AUFGABEN:` block. */
-function TodoWand({ messages }: { messages: readonly Nachricht[] }) {
-  const { locale } = useI18n()
-  const s = areaLabels(locale).suites
-  const aufgaben = useMemo(() => aufgabenWand(messages), [messages])
-  const offen = aufgaben.filter(a => !a.erledigt).length
-
-  return (
-    <Zone count={offen} title={s.todoWand}>
-      {aufgaben.length === 0 ? (
-        <Leer text={s.leereTodos} />
-      ) : (
-        <ul className="flex flex-col gap-1" data-suite-todos="">
-          {aufgaben.map((aufgabe, i) => (
-            <li
-              className={cn('flex items-start gap-2 text-sm', aufgabe.erledigt && 'text-(--ui-text-secondary)')}
-              key={`${i}:${aufgabe.text}`}
-            >
-              <span
-                aria-hidden
-                className={cn(
-                  'mt-1 size-3 shrink-0 rounded-sm border',
-                  aufgabe.erledigt ? 'border-(--ui-accent) bg-(--ui-accent)' : 'border-(--ui-text-secondary)/60'
-                )}
-              />
-              <span className="min-w-0 flex-1">{aufgabe.text}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Zone>
-  )
-}
-
 /** Who is sitting at the table: every member of the room, the one whose turn runs marked. */
 function AmTisch({ arbeitet, mitglieder }: { arbeitet?: string; mitglieder: readonly Mitglied[] }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
+  const stand = useStore($rollenStand)
 
   return (
     <Zone count={mitglieder.length} title={s.amTisch}>
@@ -254,7 +235,7 @@ function AmTisch({ arbeitet, mitglieder }: { arbeitet?: string; mitglieder: read
                   {live && <span className="text-[11px] font-normal text-(--ui-accent)">{s.arbeitet}</span>}
                 </div>
                 <div className="truncate text-xs text-(--ui-text-secondary)">
-                  {r ? `${r.modell.primary} · ${r.modell.fallback}` : m.profile}
+                  {r ? modellkette(r, stand) : m.profile}
                 </div>
               </div>
             </li>
@@ -346,59 +327,42 @@ function OutputScreen({ geladen, messages }: { geladen: boolean; messages: reado
   )
 }
 
-/** Badges in the room header: a standing schedule, which practice run this is, the room lead's stand. */
-function RaumMarken({
-  brauche,
-  messages,
-  stand,
-  suite
-}: {
-  brauche?: string
-  messages: readonly ChatMessage[]
-  stand?: string
-  suite: Suite
-}) {
+/**
+ * Badges in the room header, each one backend state: the room's Hermes schedule (from the cron
+ * list) and whether something waits for the person (approvals, questions, failed turns).
+ */
+function RaumMarken({ offen, suite }: { offen: Offen; suite: Suite }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
-  const takt = useMemo(() => taktAusNachrichten(messages), [messages])
-  const teil = uebungsTeil(suite.titel)
+  const zeitplan = raumZeitplan(useStore($auftraege), suite.id)
+
+  useEffect(() => {
+    void ladeAuftraege()
+  }, [suite.id])
 
   return (
     <>
-      {takt && (
+      {zeitplan && (
         <span
-          className="tikki-knopf gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-          data-suite-takt-marke={takt}
+          className={cn(
+            'tikki-knopf gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+            !zeitplan.aktiv && 'tikki-knopf-still'
+          )}
+          data-suite-takt-marke={zeitplan.plan}
         >
           <Clock aria-hidden className="size-3" />
-          {s.dauerauftrag} · {takt}
+          {s.dauerauftrag} · {zeitplan.plan}
+          {!zeitplan.aktiv && ` · ${s.zeitplanPausiert}`}
         </span>
       )}
-      {teil && (
-        <span className="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[11px] text-(--ui-text-secondary)">
-          {s.uebungslauf(teil.nr)}
+      {brauchtDich(offen) && (
+        <span
+          className="tikki-knopf rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+          data-braucht="true"
+          data-suite-brauche=""
+        >
+          {s.brauchtDich}
         </span>
-      )}
-      {brauche && (
-        <Tip label={brauche}>
-          <span
-            className="tikki-knopf max-w-56 truncate rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-            data-braucht="true"
-            data-suite-brauche=""
-          >
-            {s.brauchtDich} · {brauche}
-          </span>
-        </Tip>
-      )}
-      {!brauche && stand && (
-        <Tip label={stand}>
-          <span
-            className="max-w-56 truncate rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[11px] text-(--ui-text-secondary)"
-            data-suite-stand=""
-          >
-            {s.stand} · {stand}
-          </span>
-        </Tip>
       )}
     </>
   )
@@ -412,40 +376,154 @@ const freigabeText = (f: Freigabe): string => {
     .join(' · ')
 }
 
-/** A member asks to run something: the person says once or no, right here in the room. */
-function Freigaben({
-  freigaben,
-  nachladen,
-  suite
-}: {
-  freigaben: Freigabe[]
-  nachladen: () => Promise<void>
-  suite: Suite
-}) {
+/** A member's open question (`clarify`): the person picks a choice or types the answer, right here. */
+function RueckfrageKarte({ frage, nachladen }: { frage: Rueckfrage; nachladen: () => Promise<void> }) {
+  const { locale } = useI18n()
+  const s = areaLabels(locale).suites
+  const [antworten, setAntworten] = useState<Record<string, string>>({})
+  const [sendet, setSendet] = useState(false)
+  const [fehler, setFehler] = useState<string | null>(null)
+  // A single question is one part without an id; a batch brings its own parts.
+  const teile = frage.teile.length ? frage.teile : [{ auswahl: frage.auswahl, frage: frage.frage, id: '' }]
+  const vollstaendig = teile.every(t => (antworten[t.id] ?? '').trim())
+
+  const senden = async (werte: Record<string, string>) => {
+    if (sendet) {
+      return
+    }
+
+    setSendet(true)
+
+    try {
+      await rueckfrageBeantworten(frage, frage.teile.length ? werte : (werte[''] ?? ''))
+      setFehler(null)
+    } catch (error) {
+      setFehler(fehlertext(error))
+    } finally {
+      setSendet(false)
+      await nachladen()
+    }
+  }
+
+  return (
+    <li
+      className="tikki-glas tikki-glas-dicht flex flex-col gap-2 px-3 py-2 text-sm"
+      data-suite-rueckfrage={frage.anfrage}
+    >
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault()
+          void senden(antworten)
+        }}
+      >
+        {teile.map(teil => (
+          <div className="flex flex-col gap-1.5" key={teil.id}>
+            <span>
+              <b>{s.rueckfrage}</b> · {teil.frage}
+            </span>
+            {teil.auswahl.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {teil.auswahl.map(wahl => (
+                  <button
+                    aria-pressed={antworten[teil.id] === wahl}
+                    className={cn(
+                      'tikki-knopf px-2.5 py-1 text-xs disabled:opacity-60',
+                      antworten[teil.id] !== wahl && 'tikki-knopf-still'
+                    )}
+                    disabled={sendet}
+                    key={wahl}
+                    onClick={() =>
+                      teile.length === 1
+                        ? void senden({ [teil.id]: wahl })
+                        : setAntworten(alt => ({ ...alt, [teil.id]: wahl }))
+                    }
+                    type="button"
+                  >
+                    {wahl}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              aria-label={s.rueckfrageAntwort}
+              className="tikki-feld text-sm"
+              onChange={e => setAntworten(alt => ({ ...alt, [teil.id]: e.target.value }))}
+              placeholder={s.rueckfrageAntwort}
+              value={antworten[teil.id] ?? ''}
+            />
+          </div>
+        ))}
+        {fehler && (
+          <p className="text-xs text-destructive" role="alert">
+            {fehler}
+          </p>
+        )}
+        <button
+          className="tikki-knopf self-end px-2.5 py-1 text-xs font-semibold disabled:opacity-60"
+          disabled={sendet || !vollstaendig}
+          type="submit"
+        >
+          {s.rueckfrageSenden}
+        </button>
+      </form>
+    </li>
+  )
+}
+
+/**
+ * What waits for the person in this room, as the backend reports it: a member asks to run
+ * something (once or no), a member asks a question, a turn failed and can be started again.
+ */
+function Anliegen({ nachladen, offen, suite }: { nachladen: () => Promise<void>; offen: Offen; suite: Suite }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
   const [laeuft, setLaeuft] = useState<string | null>(null)
+  const { freigaben, rueckfragen, wiederholbar } = offen
 
-  if (freigaben.length === 0) {
+  if (!brauchtDich(offen)) {
     return null
   }
 
-  const antworten = async (f: Freigabe, choice: 'once' | 'deny') => {
-    const key = `${f.member_id}:${f.request_id}`
+  const ausfuehren = async (key: string, aktion: () => Promise<unknown>) => {
     setLaeuft(key)
 
     try {
-      await freigeben(suite, f, choice)
+      await aktion()
     } catch {
-      // The next poll shows whether the request is still pending.
+      // The next poll shows whether the matter is still open.
     } finally {
       setLaeuft(null)
       await nachladen()
     }
   }
 
+  const antworten = (f: Freigabe, choice: 'once' | 'deny') =>
+    ausfuehren(`${f.member_id}:${f.request_id}`, () => freigeben(suite, f, choice))
+
   return (
     <ul className="flex flex-col gap-2 border-b border-(--tikki-glas-rand) px-4 py-2" data-suite-freigaben="">
+      {rueckfragen.map(frage => (
+        <RueckfrageKarte frage={frage} key={frage.anfrage} nachladen={nachladen} />
+      ))}
+      {wiederholbar.map(aktion => (
+        <li
+          className="tikki-glas tikki-glas-dicht flex flex-wrap items-center gap-2 px-3 py-2 text-sm"
+          data-suite-wiederholen={aktion.task_id}
+          key={`retry:${aktion.task_id}`}
+        >
+          <AlertCircle aria-hidden className="size-4 shrink-0 text-destructive" />
+          <span className="min-w-0 flex-1 truncate">{s.rundeGescheitert}</span>
+          <button
+            className="tikki-knopf px-2.5 py-1 text-xs font-semibold disabled:opacity-60"
+            disabled={laeuft === `retry:${aktion.task_id}`}
+            onClick={() => void ausfuehren(`retry:${aktion.task_id}`, () => wiederholen(suite, aktion))}
+            type="button"
+          >
+            {s.rundeNochmal}
+          </button>
+        </li>
+      ))}
       {freigaben.map(f => {
         const key = `${f.member_id}:${f.request_id}`
         const name = suite.mitglieder.find(m => m.member_id === f.member_id)?.display_name ?? f.member_id ?? ''
@@ -534,7 +612,7 @@ function Tisch({
             </span>
             <div className={cn('min-w-0 max-w-[80%] flex-col gap-0.5', m.von === MENSCH ? 'flex items-end' : 'flex')}>
               <div className="flex items-baseline gap-2 text-[11px] text-(--ui-text-secondary)">
-                <span className="font-semibold text-(--ui-text-primary)">{m.name}</span>
+                <span className="font-semibold text-(--ui-text-primary)">{m.name || s.mensch}</span>
                 <span>{zeit(m.zeit, locale)}</span>
               </div>
               <div
@@ -679,17 +757,16 @@ function Sprechen({ nachladen, suite }: { nachladen: () => Promise<void>; suite:
 
 /**
  * The room: walls you can see (the background is the room itself), the round
- * table with the log in the middle, the to-do wall and who sits at the table
- * on the left, the data and output screens on the right. Everything here
- * belongs to this one room and nothing else.
+ * table with the log in the middle, who sits at the table on the left, the
+ * data and output screens on the right. Everything here belongs to this one
+ * room and nothing else.
  */
 export function SuiteRoom({ suite }: { suite: Suite }) {
   const { locale } = useI18n()
   const labels = areaLabels(locale)
   const s = labels.suites
   const v = labels.vorzimmer
-  const { events, fehler, freigaben, geladen, nachladen } = useRaumLog(suite)
-  const teil = uebungsTeil(suite.titel)
+  const { eingeholtBei, events, fehler, geladen, nachladen, offen } = useRaumLog(suite)
 
   const messages = useMemo(
     () => events.map(e => nachrichtAus(e, suite.mitglieder)).filter((m): m is Nachricht => m !== undefined && !m.still),
@@ -698,32 +775,25 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
 
   const chat = useMemo(() => alsChatMessages(messages), [messages])
   const arbeitet = useMemo(() => werArbeitet(events), [events])
-  const brauche = useMemo(() => brauchtAus(messages), [messages])
-  const stand = useMemo(() => standAus(messages), [messages])
   const [vorlesen, setVorlesen] = useState(() => vorlesenAktiv(VORLESEN_RAUM))
-  // Where reading stands in THIS room: the first load only sets the mark, so a
-  // room's history is never read back; from then on every new word of the lead is.
-  const gelesen = useRef<{ id: string; seq: number } | null>(null)
+  // Where reading stands in this room (the room is mounted per suite). It starts where the log's
+  // end was when the room had caught up, so a room's history is never read back — neither its
+  // first page nor the later stages of a long log; from then on every new word of the lead is.
+  const gelesen = useRef<number | null>(null)
 
   // eslint-disable-next-line no-restricted-syntax -- reading cursor advanced per poll, not an atom mirror
   useEffect(() => {
-    if (!geladen) {
+    if (eingeholtBei === null) {
       return
     }
 
-    if (gelesen.current?.id !== suite.id) {
-      gelesen.current = { id: suite.id, seq: messages.reduce((max, m) => Math.max(max, m.seq), 0) }
-
-      return
-    }
-
-    const { seq, texte } = neuVorzulesen(messages, gelesen.current.seq)
-    gelesen.current = { id: suite.id, seq }
+    const { seq, texte } = neuVorzulesen(messages, gelesen.current ?? eingeholtBei)
+    gelesen.current = seq
 
     if (vorlesen && texte.length > 0) {
       void sprich(texte.join('\n'))
     }
-  }, [geladen, messages, suite.id, vorlesen])
+  }, [eingeholtBei, messages, vorlesen])
 
   useEffect(() => () => vorlesenStopp(), [])
 
@@ -743,10 +813,8 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
         <button className="tikki-knopf tikki-knopf-still px-2.5 py-1 text-xs" onClick={verlasseSuite} type="button">
           ← {s.zurueck}
         </button>
-        <h1 className="min-w-0 truncate text-base font-semibold text-(--ui-text-primary)">
-          {teil ? teil.basis : suite.titel}
-        </h1>
-        <RaumMarken brauche={brauche} messages={chat} stand={stand} suite={suite} />
+        <h1 className="min-w-0 truncate text-base font-semibold text-(--ui-text-primary)">{suite.titel}</h1>
+        <RaumMarken offen={offen} suite={suite} />
         <Tueren aktuell={suite} />
         <Verschmelzen aktuell={suite} />
         <button
@@ -770,14 +838,13 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
       </header>
       <div className="tikki-buehne grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)_17rem] gap-6 px-6 pt-5 pb-6">
         <div className="tikki-wand tikki-wand-links flex min-h-0 flex-col gap-3">
-          <TodoWand messages={messages} />
           <AmTisch arbeitet={arbeitet} mitglieder={suite.mitglieder} />
         </div>
         <div
           className="tikki-glas tikki-glas-dicht tikki-tischplatte mx-4 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[2rem] border-(--tikki-gelb)/60 shadow-[0_0_56px_-8px_var(--tikki-glow-stark)]"
           data-suite-tisch-chat=""
         >
-          <Freigaben freigaben={freigaben} nachladen={nachladen} suite={suite} />
+          <Anliegen nachladen={nachladen} offen={offen} suite={suite} />
           <Tisch
             arbeitet={arbeitet}
             fehler={fehler}
@@ -797,7 +864,10 @@ export function SuiteRoom({ suite }: { suite: Suite }) {
   )
 }
 
-/** Doors to the other rooms: a word through the door reaches that room's lead; walking through keeps each room whole. */
+/**
+ * Doors to the other rooms: what the person types here is their own message in that room (it goes
+ * to its lead unless it addresses someone); walking through keeps each room whole.
+ */
 function Tueren({ aktuell }: { aktuell: Suite }) {
   const { locale } = useI18n()
   const labels = areaLabels(locale)
@@ -827,7 +897,7 @@ function Tueren({ aktuell }: { aktuell: Suite }) {
     setSendet(true)
 
     try {
-      await tuerSenden(aktuell, ziel, text)
+      await auftragGeben(ziel, text)
       setGesendet(ziel.titel)
       schliessen()
     } catch {
@@ -922,6 +992,8 @@ function Verschmelzen({ aktuell }: { aktuell: Suite }) {
   const entsteht = useStore($suiteEntsteht)
   const [offen, setOffen] = useState(false)
   const [wahl, setWahl] = useState<Suite | null>(null)
+  // Why the last attempt in THIS room did not happen; both rooms are still there then.
+  const [fehler, setFehler] = useState<string | null>(null)
   const andere = suites.filter(x => x.id !== aktuell.id)
 
   const los = async () => {
@@ -929,9 +1001,14 @@ function Verschmelzen({ aktuell }: { aktuell: Suite }) {
       return
     }
 
-    setOffen(false)
-    await verschmelzen(aktuell, wahl)
-    setWahl(null)
+    setFehler(null)
+
+    if (await verschmelzen(aktuell, wahl)) {
+      setOffen(false)
+      setWahl(null)
+    } else {
+      setFehler($suitesFehler.get())
+    }
   }
 
   return (
@@ -974,12 +1051,18 @@ function Verschmelzen({ aktuell }: { aktuell: Suite }) {
               ))}
             </ul>
           )}
+          {fehler && (
+            <p className="text-xs text-destructive" data-suite-verschmelzen-fehler="" role="alert">
+              {fehler}
+            </p>
+          )}
           <div className="flex items-center justify-end gap-2">
             <button
               className="tikki-knopf tikki-knopf-still px-2.5 py-1 text-xs"
               onClick={() => {
                 setOffen(false)
                 setWahl(null)
+                setFehler(null)
               }}
               type="button"
             >

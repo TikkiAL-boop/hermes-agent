@@ -2,13 +2,15 @@ import { useStore } from '@nanostores/react'
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '@/i18n'
-import { Armchair, Bell, CheckCircle2, Loader2, Plus, Search } from '@/lib/icons'
+import { Armchair, Bell, Loader2, Plus, Search } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
-import { $uebungslaeufe } from '../admin/betrieb-store'
 import { RAUMLEITER_KLONE, rolle, ROLLEN } from '../admin/katalog'
+import { $rollenStand, hauptmodell } from '../admin/rollen-stand'
 import { areaLabels } from '../labels'
+import { raumZeitplanAnlegen } from '../tikki/auftraege'
 
+import { $suiteFormular, EIGENER_TAKT, formularTakt, leereFormular, schreibeFormular } from './formular'
 import {
   $aktiveSuite,
   $neueSuiteOffen,
@@ -26,7 +28,6 @@ import {
   type Suite
 } from './store'
 import { SuiteRoom } from './suite-room'
-import { uebungsTeil } from './uebung'
 
 type SuiteLabels = ReturnType<typeof areaLabels>['suites']
 
@@ -37,38 +38,14 @@ const fehlerzeile = (fehler: string, s: SuiteLabels): string => {
   return raumdienstFehlt(fehler) ? s.raumdienstFehlt : rollen.length ? s.rollenFehlen(rollen.join(', ')) : fehler
 }
 
-/** Practice rooms hang under their project's room; a practice room without one stands alone. */
-export function verlaufGruppen(suites: readonly Suite[]): { suite: Suite; uebungen: Suite[] }[] {
-  const haupt = new Map(suites.filter(s => !uebungsTeil(s.titel)).map(s => [s.titel, s]))
-  const uebungen = new Map<string, Suite[]>()
-  const allein: Suite[] = []
-
-  for (const suite of suites) {
-    const teil = uebungsTeil(suite.titel)
-
-    if (!teil) {
-      continue
-    }
-
-    if (haupt.has(teil.basis)) {
-      uebungen.set(teil.basis, [...(uebungen.get(teil.basis) ?? []), suite])
-    } else {
-      allein.push(suite)
-    }
-  }
-
-  return suites
-    .filter(s => !uebungsTeil(s.titel) || allein.includes(s))
-    .map(suite => ({
-      suite,
-      uebungen: (uebungen.get(suite.titel) ?? []).sort(
-        (a, b) => (uebungsTeil(a.titel)?.nr ?? 0) - (uebungsTeil(b.titel)?.nr ?? 0)
-      )
-    }))
-}
-
-const TAKTE = ['stündlich', 'alle 30 Minuten', 'täglich 06:00', 'werktags 08:00', 'montags 09:00'] as const
-const EIGENER = '__eigener__'
+/** The rhythms the form offers, each with the Hermes schedule it stands for; the names are labels. */
+export const TAKTE: readonly { name: keyof SuiteLabels['takte']; plan: string }[] = [
+  { name: 'stuendlich', plan: 'every 1h' },
+  { name: 'halbstuendlich', plan: 'every 30m' },
+  { name: 'taeglich', plan: '0 6 * * *' },
+  { name: 'werktags', plan: '0 8 * * 1-5' },
+  { name: 'montags', plan: '0 9 * * 1' }
+]
 
 const raumleiter = rolle(RAUMLEITER)
 /** Roles the person may seat at the table from the start; the base crew is there anyway. */
@@ -77,10 +54,13 @@ const WAEHLBARE_ROLLEN = ROLLEN.filter(r => !r.im_raum_ab_start && r.slug !== 't
 function RaumleiterKarte() {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
+  const stand = useStore($rollenStand)
 
   if (!raumleiter) {
     return null
   }
+
+  const modell = hauptmodell(raumleiter, stand)
 
   return (
     <div className="tikki-glas p-4" data-suite-raumleiter="">
@@ -96,9 +76,16 @@ function RaumleiterKarte() {
       </div>
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
         <dt className="text-(--tikki-tinte-weich)">{s.hauptmodell}</dt>
-        <dd className="font-mono text-(--tikki-tinte)">{raumleiter.modell.primary}</dd>
-        <dt className="text-(--tikki-tinte-weich)">{s.ausweich}</dt>
-        <dd className="font-mono text-(--tikki-tinte)">{raumleiter.modell.fallback}</dd>
+        <dd className="font-mono text-(--tikki-tinte)" data-suite-raumleiter-modell="">
+          {modell}
+        </dd>
+        {/* The catalogue's fallback belongs to the catalogue's model; a profile switched to another has its own. */}
+        {modell === raumleiter.modell.primary && (
+          <>
+            <dt className="text-(--tikki-tinte-weich)">{s.ausweich}</dt>
+            <dd className="font-mono text-(--tikki-tinte)">{raumleiter.modell.fallback}</dd>
+          </>
+        )}
       </dl>
     </div>
   )
@@ -109,16 +96,11 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
   const entsteht = useStore($suiteEntsteht)
-  const uebungen = useStore($uebungslaeufe)
-  const [name, setName] = useState('')
-  const [ziel, setZiel] = useState('')
-  const [taktWahl, setTaktWahl] = useState('')
-  const [eigenerTakt, setEigenerTakt] = useState('')
-  const [rollen, setRollen] = useState<string[]>([])
-  const [leiter, setLeiter] = useState('')
+  const stand = useStore($rollenStand)
+  const formular = useStore($suiteFormular)
+  const { eigenerTakt, leiter, name, rollen, taktWahl, ziel } = formular
   const [verbindeName, setVerbindeName] = useState('')
   const [verbindeFehler, setVerbindeFehler] = useState(false)
-  const takt = taktWahl === EIGENER ? eigenerTakt.trim() : taktWahl
 
   const erstellen = async (event: FormEvent) => {
     event.preventDefault()
@@ -127,16 +109,21 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
       return
     }
 
-    await neueSuite(name, ziel, { rollen, takt: takt || undefined, raumleiter: leiter || undefined })
-    setName('')
-    setZiel('')
-    setTaktWahl('')
-    setEigenerTakt('')
-    setRollen([])
+    const suite = await neueSuite(name, ziel, {
+      rollen,
+      takt: formularTakt(formular),
+      raumleiter: leiter || undefined,
+      zeitplanAnlegen: raumZeitplanAnlegen
+    })
+
+    // Only what was opened is done with: after a failure the person tries again with what they wrote.
+    if (suite) {
+      leereFormular()
+    }
   }
 
   const rolleUmschalten = (slug: string) =>
-    setRollen(alt => (alt.includes(slug) ? alt.filter(x => x !== slug) : [...alt, slug]))
+    schreibeFormular({ rollen: rollen.includes(slug) ? rollen.filter(x => x !== slug) : [...rollen, slug] })
 
   const verbinden = (event: FormEvent) => {
     event.preventDefault()
@@ -169,7 +156,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
             aria-label={s.name}
             className="tikki-feld text-sm"
             disabled={Boolean(entsteht)}
-            onChange={e => setName(e.target.value)}
+            onChange={e => schreibeFormular({ name: e.target.value })}
             placeholder={s.namePlatzhalter}
             ref={nameFeld}
             required
@@ -179,7 +166,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
             aria-label={s.ziel}
             className="tikki-feld min-h-20 text-sm"
             disabled={Boolean(entsteht)}
-            onChange={e => setZiel(e.target.value)}
+            onChange={e => schreibeFormular({ ziel: e.target.value })}
             placeholder={s.zielPlatzhalter}
             value={ziel}
           />
@@ -189,22 +176,22 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
               className="tikki-feld py-1.5 text-sm"
               data-suite-takt=""
               disabled={Boolean(entsteht)}
-              onChange={e => setTaktWahl(e.target.value)}
+              onChange={e => schreibeFormular({ taktWahl: e.target.value })}
               value={taktWahl}
             >
               <option value="">{s.taktEinmalig}</option>
               {TAKTE.map(t => (
-                <option key={t} value={t}>
-                  {t}
+                <option key={t.plan} value={t.plan}>
+                  {s.takte[t.name]}
                 </option>
               ))}
-              <option value={EIGENER}>{s.taktEigener}</option>
+              <option value={EIGENER_TAKT}>{s.taktEigener}</option>
             </select>
-            {taktWahl === EIGENER && (
+            {taktWahl === EIGENER_TAKT && (
               <input
                 aria-label={s.taktEigener}
                 className="tikki-feld min-w-40 flex-1 py-1.5 text-sm"
-                onChange={e => setEigenerTakt(e.target.value)}
+                onChange={e => schreibeFormular({ eigenerTakt: e.target.value })}
                 placeholder={s.taktPlatzhalter}
                 value={eigenerTakt}
               />
@@ -218,13 +205,13 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
                 className="tikki-feld py-1.5 text-sm"
                 data-suite-leiter=""
                 disabled={Boolean(entsteht)}
-                onChange={e => setLeiter(e.target.value)}
+                onChange={e => schreibeFormular({ leiter: e.target.value })}
                 value={leiter}
               >
-                <option value="">{s.leiterStandard(raumleiter?.modell.primary ?? '')}</option>
+                <option value="">{s.leiterStandard(raumleiter ? hauptmodell(raumleiter, stand) : '')}</option>
                 {RAUMLEITER_KLONE.map(k => (
                   <option key={k.slug} value={k.slug}>
-                    {k.name} · {k.modell.primary}
+                    {k.name} · {hauptmodell(k, stand)}
                   </option>
                 ))}
               </select>
@@ -247,19 +234,11 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
               </button>
             ))}
           </fieldset>
-          {!takt && uebungen > 1 && (
-            <p className="text-[11px] text-(--tikki-tinte-weich)">{s.uebungenGeplant(uebungen)}</p>
-          )}
           <div className="mt-auto flex items-center justify-end gap-2">
             <button
               className="tikki-knopf tikki-knopf-still px-3 py-1.5 text-sm"
               disabled={Boolean(entsteht)}
-              onClick={() => {
-                setName('')
-                setZiel('')
-                setRollen([])
-                setLeiter('')
-              }}
+              onClick={leereFormular}
               type="button"
             >
               {s.abbrechen}
@@ -312,14 +291,27 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
   )
 }
 
-/** The second line of a room's tablet: what it needs, that it is done, who works, or who sits there. */
-export function suiteHinweis(suite: Suite, s: ReturnType<typeof areaLabels>['suites']): string {
-  if (suite.brauche) {
-    return suite.brauche
+/** Why a room needs the person, from what the backend reports as open; undefined when nothing is. */
+export function offenGrund(suite: Suite, s: SuiteLabels): string | undefined {
+  const offen = suite.offen
+
+  if (offen?.rueckfragen.length) {
+    return offen.rueckfragen[0]!.frage || s.offeneRueckfrage
   }
 
-  if (suite.fertig) {
-    return s.fertigGemeldet
+  if (offen?.freigaben.length) {
+    return s.offeneFreigabe
+  }
+
+  return offen?.wiederholbar.length ? s.rundeGescheitert : undefined
+}
+
+/** The second line of a room's tablet: what waits for the person, who works, or who sits there. */
+export function suiteHinweis(suite: Suite, s: SuiteLabels): string {
+  const grund = offenGrund(suite, s)
+
+  if (grund) {
+    return grund
   }
 
   if (suite.arbeitet) {
@@ -331,19 +323,9 @@ export function suiteHinweis(suite: Suite, s: ReturnType<typeof areaLabels>['sui
   return s.mitglieder(suite.mitglieder.length)
 }
 
-export function SuiteTafel({
-  braucht = false,
-  suite,
-  uebungen = []
-}: {
-  braucht?: boolean
-  suite: Suite
-  uebungen?: Suite[]
-}) {
+export function SuiteTafel({ braucht = false, suite }: { braucht?: boolean; suite: Suite }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
-  const [offen, setOffen] = useState(false)
-  const teil = uebungsTeil(suite.titel)
 
   return (
     <li className="flex flex-col gap-1">
@@ -356,47 +338,14 @@ export function SuiteTafel({
       >
         {braucht ? (
           <Bell aria-hidden className="size-5 shrink-0" stroke={2} />
-        ) : suite.fertig ? (
-          <CheckCircle2 aria-hidden className="size-5 shrink-0" stroke={1.9} />
         ) : (
           <Armchair aria-hidden className="size-5 shrink-0" stroke={1.9} />
         )}
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-[13px] font-semibold">
-            {teil ? `${teil.basis} · ${s.uebungslauf(teil.nr)}` : suite.titel}
-          </span>
+          <span className="truncate text-[13px] font-semibold">{suite.titel}</span>
           <span className="truncate text-[11px] opacity-75">{suiteHinweis(suite, s)}</span>
         </span>
       </button>
-      {uebungen.length > 0 && (
-        <div className="pl-3">
-          <button
-            aria-expanded={offen}
-            className="text-[11px] font-medium text-(--tikki-gelb-tief) hover:underline"
-            data-suite-uebungen={uebungen.length}
-            onClick={() => setOffen(o => !o)}
-            type="button"
-          >
-            {offen ? '−' : '+'} {s.uebungslaeufe(uebungen.length)}
-          </button>
-          {offen && (
-            <ul className="mt-1 flex flex-col gap-1">
-              {uebungen.map(u => (
-                <li key={u.id}>
-                  <button
-                    className="tikki-knopf tikki-knopf-still w-full px-2.5 py-1.5 text-left text-[12px]"
-                    data-suite-id={u.id}
-                    onClick={() => oeffneSuite(u)}
-                    type="button"
-                  >
-                    {s.uebungslauf(uebungsTeil(u.titel)?.nr ?? 0)}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
     </li>
   )
 }
@@ -408,11 +357,8 @@ function Aufmerksamkeit({ suites }: { suites: Suite[] }) {
   const wartend = useStore($suitesBrauchen)
 
   const karten = suites
-    .map(suite => ({
-      suite,
-      grund: wartend.includes(suite.id) ? (suite.brauche ?? s.wartetAufDich) : suite.fertig ? s.fertigGemeldet : null
-    }))
-    .filter((k): k is { suite: Suite; grund: string } => k.grund !== null)
+    .filter(suite => wartend.includes(suite.id))
+    .map(suite => ({ suite, grund: offenGrund(suite, s) ?? s.wartetAufDich }))
 
   return (
     <aside className="flex min-h-0 w-64 shrink-0 flex-col gap-2.5 overflow-y-auto pt-8" data-suites-aufmerksamkeit="">
@@ -476,7 +422,7 @@ function SuitesLobby() {
   const gefiltert = useMemo(() => {
     const q = suche.trim().toLowerCase()
 
-    return q ? suites.filter(x => x.titel.toLowerCase().includes(q) || x.brauche?.toLowerCase().includes(q)) : suites
+    return q ? suites.filter(x => x.titel.toLowerCase().includes(q)) : suites
   }, [suche, suites])
 
   return (
@@ -526,8 +472,8 @@ function SuitesLobby() {
           )}
           {suites.length > 0 && (
             <ul className={cn('flex flex-col gap-2', status === 'laedt' && 'opacity-70')}>
-              {verlaufGruppen(gefiltert).map(({ suite, uebungen }) => (
-                <SuiteTafel braucht={wartend.includes(suite.id)} key={suite.id} suite={suite} uebungen={uebungen} />
+              {gefiltert.map(suite => (
+                <SuiteTafel braucht={wartend.includes(suite.id)} key={suite.id} suite={suite} />
               ))}
             </ul>
           )}

@@ -666,6 +666,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     remove: (mailbox, uid) => ipcRenderer.invoke('tikki:mail:remove', mailbox, uid),
     send: input => ipcRenderer.invoke('tikki:mail:send', input)
   },
+  // Tikki Admin: whether a service on this machine answers `/health` (loopback only).
+  tikkiLocalHealth: port => ipcRenderer.invoke('tikki:local-health', port),
   themes: {
     fetchMarketplace: id => ipcRenderer.invoke('hermes:vscode-theme:fetch', id),
     searchMarketplace: query => ipcRenderer.invoke('hermes:vscode-theme:search', query)

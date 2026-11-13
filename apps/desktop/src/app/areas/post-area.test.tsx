@@ -110,9 +110,23 @@ describe('PostArea', () => {
     fireEvent.click(await screen.findByText('Einkauf'))
     await waitFor(() => expect(bridge.read).toHaveBeenCalledWith('INBOX', 7))
 
-    const body = await waitFor(() => document.querySelector('.mail-html') as HTMLElement)
-    expect(body.innerHTML).toContain('<b>Milch</b>')
-    expect(body.innerHTML).not.toContain('script')
+    // The mail's HTML is a document of its own, never part of the app's.
+    const frame = await waitFor(() => {
+      const found = document.querySelector('iframe[data-mail-html]')
+
+      expect(found).toBeTruthy()
+
+      return found as HTMLIFrameElement
+    })
+
+    const body = frame.getAttribute('srcdoc') ?? ''
+
+    expect(body).toContain('<b>Milch</b>')
+    expect(body).not.toContain('<script')
+    expect(body).not.toContain('alert(1)')
+    expect(frame.getAttribute('sandbox')).not.toBeNull()
+    expect(frame.getAttribute('sandbox')).not.toContain('allow-scripts')
+    expect(document.body.innerHTML.replace(frame.outerHTML, '')).not.toContain('Milch</b>')
 
     fireEvent.click(screen.getByRole('button', { name: 'Antworten' }))
     const subject = (await screen.findByLabelText('Betreff')) as HTMLInputElement
@@ -130,6 +144,55 @@ describe('PostArea', () => {
       to: 'karin@tikki.team'
     })
     expect($compose.get()).toBeNull()
+  })
+
+  it('still has the mail being written after the person looked at another area', async () => {
+    const bridge = installBridge()
+    bridge.status.mockResolvedValue({ address: 'thorsten@tikki.team', signedIn: true })
+
+    const erste = render(ui())
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Schreiben' }))
+    fireEvent.change(await screen.findByLabelText('An'), { target: { value: 'karin@tikki.team' } })
+    fireEvent.change(screen.getByLabelText('Betreff'), { target: { value: 'Wochenende' } })
+    fireEvent.change(document.querySelector('textarea')!, { target: { value: 'Liebe Karin, ich wollte' } })
+
+    // The shell unmounts Post while another area is on screen.
+    erste.unmount()
+    render(ui())
+
+    expect(((await screen.findByLabelText('An')) as HTMLInputElement).value).toBe('karin@tikki.team')
+    expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe('Wochenende')
+    expect(document.querySelector('textarea')!.value).toBe('Liebe Karin, ich wollte')
+  })
+
+  it('starts an empty mail when the person presses "write" in the middle of a reply', async () => {
+    const bridge = installBridge()
+    bridge.status.mockResolvedValue({ address: 'thorsten@tikki.team', signedIn: true })
+    render(ui())
+
+    fireEvent.click(await screen.findByText('Einkauf'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Antworten' }))
+    expect(((await screen.findByLabelText('Betreff')) as HTMLInputElement).value).toBe('Re: Einkauf')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schreiben' }))
+
+    // Not the reply's recipient and quote under a "new message" heading.
+    await waitFor(() => expect((screen.getByLabelText('Betreff') as HTMLInputElement).value).toBe(''))
+    expect((screen.getByLabelText('An') as HTMLInputElement).value).toBe('')
+    expect(document.querySelector('textarea')!.value).toBe('')
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('An'), { target: { value: 'zoe@tikki.team' } })
+      fireEvent.change(screen.getByLabelText('Betreff'), { target: { value: 'Neu' } })
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Senden' }))
+    })
+    await waitFor(() => expect(bridge.send).toHaveBeenCalled())
+    // A new mail answers nothing.
+    expect(bridge.send.mock.calls[0][0].inReplyTo).toBeUndefined()
+    expect(bridge.send.mock.calls[0][0]).toMatchObject({ subject: 'Neu', to: 'zoe@tikki.team' })
   })
 
   it('shows the cleaned error from main when sign-in fails', async () => {

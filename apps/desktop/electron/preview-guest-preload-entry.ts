@@ -19,9 +19,16 @@
 // banners on its own (preview-guest-cookie-consent.ts). That, too, is DOM
 // only — it clicks buttons the page rendered, and nothing else. The same
 // webview also shows Hermes' agent preview (dev servers, local files), so the
-// auto-click is gated on the page's URL: never on local or `file:` pages.
+// auto-click is gated on the page's URL: never on `file:` pages, this machine
+// or the home network.
 
-import { consentAllowedFor, type ConsentElement, installCookieConsentAutoAccept } from './preview-guest-cookie-consent'
+import {
+  ancestorAttrsOf,
+  consentAllowedFor,
+  type ConsentElement,
+  installCookieConsentAutoAccept,
+  MAX_ANCESTOR_DEPTH
+} from './preview-guest-cookie-consent'
 import { installGuestExternalHandoff } from './preview-guest-preload'
 
 const electron = require('electron') as {
@@ -52,25 +59,25 @@ function attrSoup(node: Element): string {
 }
 
 function ancestorSoup(node: Element): string {
-  const parts: string[] = []
+  const chain: { tag: string; attrs: string }[] = []
   let current: Node | null = node.parentNode
-  let depth = 0
 
-  while (current && depth < 12) {
+  while (current && chain.length < MAX_ANCESTOR_DEPTH) {
     if (current instanceof ShadowRoot) {
       current = current.host
+
       continue
     }
 
-    if (current instanceof Element) {
-      parts.push(attrSoup(current))
+    if (!(current instanceof Element)) {
+      break
     }
 
+    chain.push({ attrs: attrSoup(current), tag: current.tagName })
     current = current.parentNode
-    depth += 1
   }
 
-  return parts.join(' ')
+  return ancestorAttrsOf(chain)
 }
 
 function describe(node: Element): ConsentElement {
@@ -86,6 +93,7 @@ function describe(node: Element): ConsentElement {
 /** querySelectorAll across the document and every open shadow root. */
 function deepQuery(selector: string): Element[] {
   const out: Element[] = []
+
   const walk = (root: Document | ShadowRoot) => {
     let found: NodeListOf<Element>
 
@@ -109,6 +117,28 @@ function deepQuery(selector: string): Element[] {
   return out
 }
 
+// The click budget lives in the origin's sessionStorage: one count per origin
+// and tab that survives reloads, and gone with the tab. Storage can be denied
+// (sandboxed frame, blocked site data); the budget then falls back to one per
+// page load, which is what the rules do without a store.
+const CLICK_BUDGET_KEY = 'tikki.consent.clicks'
+
+function readConsentClicks(): number {
+  try {
+    return Number(window.sessionStorage.getItem(CLICK_BUDGET_KEY)) || 0
+  } catch {
+    return 0
+  }
+}
+
+function writeConsentClicks(count: number) {
+  try {
+    window.sessionStorage.setItem(CLICK_BUDGET_KEY, String(count))
+  } catch {
+    // No storage on this page: the in-memory count still caps this load.
+  }
+}
+
 function startConsent() {
   installCookieConsentAutoAccept({
     buttons: () => deepQuery('button, [role="button"], input[type="submit"], input[type="button"], a').map(describe),
@@ -117,7 +147,9 @@ function startConsent() {
       observer.observe(document.documentElement, { childList: true, subtree: true })
     },
     query: selector => deepQuery(selector).map(describe),
-    schedule: (callback, delayMs) => window.setTimeout(callback, delayMs)
+    readClicks: readConsentClicks,
+    schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    writeClicks: writeConsentClicks
   })
 }
 

@@ -8,8 +8,8 @@
 # (siehe cli-config.yaml.example, hermes_cli/config_defaults.py,
 # website/docs/user-guide/features/api-server.md, website/docs/integrations/providers.md).
 #
-# Keine Schlüssel oder Passwörter in dieser Datei. Alle Geheimnisse kommen
-# ausschließlich aus Umgebungsvariablen (XAI_API_KEY, CURSOR_API_KEY, API_SERVER_KEY).
+# Keine Schlüssel oder Passwörter in dieser Datei. Alle Geheimnisse stehen
+# ausschließlich in der .env des Profils (XAI_API_KEY, CURSOR_API_KEY, API_SERVER_KEY).
 # ---------------------------------------------------------------------------
 
 # Hauptmodell der Rolle. Wird pro Rolle ersetzt (modell.primary aus dem Katalog:
@@ -70,12 +70,15 @@ bot_mode:
 approvals:
   mode: "smart"
 
-# Werkzeuge pro Oberfläche. Wird pro Rolle mit "werkzeuge" aus dem Katalog gefüllt.
-# Eine leere Liste bedeutet: keine Werkzeuge (z. B. Tikki im Vorzimmer).
-# Gültige Namen: toolsets.py (terminal, file, web, browser, delegation, todo, cronjob, …).
+# Werkzeuge pro Oberfläche. Wird pro Rolle mit "werkzeuge" aus dem Katalog gefüllt – dieselbe
+# Liste für den HTTP-Dienst und die Raum-Runden (api_server), Terminal und App (cli) und die
+# Daueraufträge der Rolle (cron).
+# Gültige Namen: toolsets.py (terminal, file, web, browser, delegation, todo, cronjob, …) und die
+# Toolsets der Tikki-Plugins (post, briefing, modelle, ressourcen, gedaechtnis, raeume).
 platform_toolsets:
   api_server: []
   cli: []
+  cron: []
 
 # OpenAI-kompatibler HTTP-Dienst dieser Rolle. Der Port kommt aus dem Katalog.
 # Der Bearer-Schlüssel wird NICHT hier gesetzt, sondern als API_SERVER_KEY in
@@ -104,13 +107,16 @@ delegation:
 memory:
   provider: "honcho"
 
-# Tikki-Plugins (Hermes lädt Plugins nur, wenn sie hier stehen). „gedaechtnis“ spiegelt
-# jede Runde in TencentDB und die Wissenssammlung des Menschen und gibt das Werkzeug
-# „nachschlagen“ (tikki/plugins/gedaechtnis/, von rollen-einrichten.sh verlinkt).
+# Tikki-Plugins (Hermes lädt Plugins nur, wenn sie hier stehen; rollen-einrichten.sh verlinkt
+# sie). „gedaechtnis“ merkt Gespräche und Raum-Wortmeldungen und gibt das Werkzeug
+# „nachschlagen“; „pa“ gibt Postfach, Briefing, Modellsuche und Ressourcen-Stand; „raeume“ gibt
+# das Werkzeug „raum“ (Räume auflisten, eröffnen, hineinsprechen) – welche Rolle welches
+# Werkzeug bekommt, entscheidet allein ihr Katalogeintrag.
 plugins:
   enabled:
     - "gedaechtnis"
     - "pa"
+    - "raeume"
 
 # Sprache (Hermes-Schlüssel aus hermes_cli/config_defaults.py: voice, stt, tts). Die App hört
 # über das Mikrofon des Rechners, auf dem sie läuft, und schickt die Aufnahme an das Backend

@@ -1,121 +1,61 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { $activeGatewayRoute } from '@/store/gateway'
-import { $gatewayState } from '@/store/session'
+import type { ChatMessage } from '@/lib/chat-messages'
+import { createClientSessionState } from '@/lib/chat-runtime'
+import { $activeSessionId } from '@/store/session'
+import { $sessionStates } from '@/store/session-states'
 
-import { PA_PROFIL } from './auftraege'
-import {
-  BRIEFING_VERZUG_MS,
-  briefingFaellig,
-  briefingGemerkt,
-  briefingText,
-  chatsAusAntwort,
-  letztesBriefing,
-  startBriefingAutomatik
-} from './briefing'
+const { sprich } = vi.hoisted(() => ({ sprich: vi.fn().mockResolvedValue('stumm') }))
 
-describe('briefingText', () => {
-  it('names every source, says which one is missing, and asks Tikki to speak it', () => {
-    const text = briefingText({
-      chats: null,
-      datum: new Date('2026-09-29T06:00:00'),
-      mails: [{ von: 'Schule', betreff: 'Elternabend', datum: '2026-09-28T18:00:00Z' }],
-      wartend: [{ id: 'a', titel: 'App' }],
-      zuletzt: [{ id: 'b', titel: 'Urlaub Ostsee' }]
-    })
+vi.mock('./stimme', () => ({ sprich, VORLESEN_UEBERSICHT: 'test.vorlesen', vorlesenAktiv: () => true }))
 
-    expect(text.startsWith('BRIEFING ')).toBe(true)
-    expect(text).toContain('briefing_sammeln')
-    expect(text).toContain('POST: 1 ungelesen')
-    expect(text).toContain('- Schule: Elternabend (2026-09-28)')
-    expect(text).toContain('WHATSAPP: WA-Bridge nicht erreichbar')
-    expect(text).toContain('SUITEN, DIE AUF MICH WARTEN: App')
-    expect(text).toContain('ZULETZT BESUCHT: Urlaub Ostsee')
-    expect(text).toMatch(/Assistentin am Morgen/)
-  })
+const { startVorleser } = await import('./briefing')
 
-  it('reads a quiet morning as quiet', () => {
-    const text = briefingText({ chats: [], datum: new Date(), mails: [], wartend: [], zuletzt: [] })
+const antwort = (id: string, text: string): ChatMessage =>
+  ({ id, parts: [{ text, type: 'text' }], role: 'assistant' }) as ChatMessage
 
-    expect(text).toContain('POST: keine ungelesenen Mails.')
-    expect(text).toContain('WHATSAPP: nichts Neues.')
-    expect(text).toContain('SUITEN: keine wartet auf mich.')
-  })
+const sitzung = (busy: boolean, text: string) => ({
+  ...createClientSessionState(null, [antwort(`m-${text}`, text)]),
+  busy
 })
 
-describe('chatsAusAntwort', () => {
-  it('takes the bridge list in either shape, unread first, and drops silent chats', () => {
-    const chats = chatsAusAntwort({
-      chats: [
-        { name: 'Anna', lastMessage: 'Bis später', unread: 0 },
-        { name: 'Papa', lastMessage: 'Ruf mal an', unread: 2 },
-        { name: 'Leer', lastMessage: '', unread: 0 }
-      ]
-    })
+let stop: () => void
 
-    expect(chats).toEqual([
-      { name: 'Papa', letzte: 'Ruf mal an' },
-      { name: 'Anna', letzte: 'Bis später' }
-    ])
-    expect(chatsAusAntwort([{ chat: 'Karin', last: 'ok', unreadCount: 1 }])).toEqual([{ name: 'Karin', letzte: 'ok' }])
-  })
+beforeEach(() => {
+  $sessionStates.set({})
+  $activeSessionId.set(null)
+  sprich.mockClear()
+  stop = startVorleser()
 })
 
-describe('briefingFaellig', () => {
-  it('greets on arrival only when it is on and the last one is old enough', () => {
-    const h = 60 * 60 * 1000
-
-    expect(briefingFaellig(0, 10 * h, true)).toBe(true)
-    expect(briefingFaellig(9 * h, 10 * h, true)).toBe(false)
-    expect(briefingFaellig(5 * h, 10 * h, true)).toBe(true)
-    expect(briefingFaellig(0, 10 * h, false)).toBe(false)
-  })
+afterEach(() => {
+  stop()
+  $sessionStates.set({})
+  $activeSessionId.set(null)
 })
 
-describe('startBriefingAutomatik', () => {
-  let stop = () => {}
+describe('startVorleser', () => {
+  it('speaks the reply of the chat on screen when its turn finishes', () => {
+    $activeSessionId.set('a')
+    $sessionStates.set({ a: sitzung(true, 'Guten') })
+    $sessionStates.set({ a: sitzung(false, 'Guten Morgen') })
 
-  beforeEach(() => {
-    vi.useFakeTimers()
-    localStorage.clear()
-    $gatewayState.set('idle')
+    expect(sprich.mock.calls).toEqual([['Guten Morgen']])
   })
 
-  afterEach(() => {
-    stop()
-    $gatewayState.set('idle')
-    $activeGatewayRoute.set('default')
-    localStorage.clear()
-    vi.useRealTimers()
-  })
+  it('does not read an old reply when the person switches to a quiet chat mid-answer', () => {
+    // A is still answering; the person looks at B, which finished long ago.
+    $activeSessionId.set('a')
+    $sessionStates.set({ a: sitzung(true, 'Ich su'), b: sitzung(false, 'Alte Antwort von gestern') })
+    $activeSessionId.set('b')
+    $sessionStates.set({ a: sitzung(true, 'Ich suche'), b: sitzung(false, 'Alte Antwort von gestern') })
 
-  // Mirrors the Vorzimmer: a delivered briefing stamps the time.
-  const ausloeser = () =>
-    vi.fn(() => {
-      briefingGemerkt()
-    })
+    expect(sprich).not.toHaveBeenCalled()
 
-  it("hands the briefing to Tikki once the gateway opens on Tikki's profile", () => {
-    const ausloesen = ausloeser()
-    $activeGatewayRoute.set(PA_PROFIL)
-    stop = startBriefingAutomatik(ausloesen)
+    // B's own next turn is still read when it finishes.
+    $sessionStates.set({ a: sitzung(true, 'Ich suche'), b: sitzung(true, 'Neu') })
+    $sessionStates.set({ a: sitzung(true, 'Ich suche'), b: sitzung(false, 'Neue Antwort') })
 
-    $gatewayState.set('open')
-    vi.advanceTimersByTime(BRIEFING_VERZUG_MS)
-
-    expect(ausloesen).toHaveBeenCalledTimes(1)
-    expect(letztesBriefing()).toBeGreaterThan(0)
-  })
-
-  it("stays silent in another profile's chat and leaves the briefing due", () => {
-    const ausloesen = ausloeser()
-    $activeGatewayRoute.set('raumleiter')
-    stop = startBriefingAutomatik(ausloesen)
-
-    $gatewayState.set('open')
-    vi.advanceTimersByTime(BRIEFING_VERZUG_MS * 2)
-
-    expect(ausloesen).not.toHaveBeenCalled()
-    expect(letztesBriefing()).toBe(0)
+    expect(sprich.mock.calls).toEqual([['Neue Antwort']])
   })
 })

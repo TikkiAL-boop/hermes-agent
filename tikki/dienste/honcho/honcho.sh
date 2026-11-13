@@ -18,6 +18,7 @@
 #   Ohne Embedding-Endpunkt: EMBED_MESSAGES=false (Honcho läuft, Volltext statt Vektorsuche).
 #   TIKKI_DIENSTE               Ablage der Dienste (Standard: ~/.tikki/dienste).
 set -euo pipefail
+umask 077   # die .env des Dienstes trägt Schlüssel
 
 HONCHO_REPO="https://github.com/plastic-labs/honcho.git"
 HONCHO_SHA="79cb31645f4efdef626d1bd9316a648adb5da89b"   # v3.2.1
@@ -42,14 +43,20 @@ holen() {
   [ -f "$ZIEL/.env" ] || cp "$ZIEL/.env.template" "$ZIEL/.env"
 }
 
-# Schlüssel in .env setzen oder ersetzen (eine Zeile je Schlüssel).
+# Schlüssel in .env setzen oder ersetzen (eine Zeile je Schlüssel). Nur mit Bordmitteln der Shell:
+# der Wert steht so nie in der Prozessliste (wie bei sed als Argument), und Zeichen wie | oder &
+# im Wert zerbrechen keinen Ausdruck.
 setze() {
-  local key="$1" wert="$2" datei="$ZIEL/.env"
-  if grep -q "^${key}=" "$datei"; then
-    sed -i.bak "s|^${key}=.*|${key}=${wert}|" "$datei" && rm -f "$datei.bak"
-  else
-    printf '%s=%s\n' "$key" "$wert" >> "$datei"
-  fi
+  local key="$1" wert="$2" datei="$ZIEL/.env" tmp zeile gefunden=0
+  tmp="$(mktemp "$datei.XXXXXX")"
+  while IFS= read -r zeile || [ -n "$zeile" ]; do
+    case "$zeile" in
+      "$key="*) printf '%s=%s\n' "$key" "$wert"; gefunden=1 ;;
+      *) printf '%s\n' "$zeile" ;;
+    esac
+  done < "$datei" > "$tmp"
+  if [ "$gefunden" = 0 ]; then printf '%s=%s\n' "$key" "$wert" >> "$tmp"; fi
+  mv -f "$tmp" "$datei"
 }
 
 umgebung() {
@@ -71,7 +78,9 @@ umgebung() {
     setze EMBED_MESSAGES true
     setze EMBEDDING_MODEL_CONFIG__TRANSPORT openai
     setze EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL "$TIKKI_EMBEDDING_BASE_URL"
-    [ -n "${TIKKI_EMBEDDING_MODEL:-}" ] && setze EMBEDDING_MODEL_CONFIG__MODEL "$TIKKI_EMBEDDING_MODEL"
+    if [ -n "${TIKKI_EMBEDDING_MODEL:-}" ]; then setze EMBEDDING_MODEL_CONFIG__MODEL "$TIKKI_EMBEDDING_MODEL"; fi
+    # Ein geschützter Embedding-Endpunkt antwortet ohne seinen Schlüssel mit 401.
+    if [ -n "${TIKKI_EMBEDDING_API_KEY:-}" ]; then setze EMBEDDING_MODEL_CONFIG__OVERRIDES__API_KEY "$TIKKI_EMBEDDING_API_KEY"; fi
   else
     # xAI bietet keine Embeddings; ohne eigenen Endpunkt läuft Honcho ohne Vektorsuche.
     setze EMBED_MESSAGES false

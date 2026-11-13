@@ -57,18 +57,31 @@ def test_honcho_config_names_the_role_as_ai_peer_in_the_shared_workspace(tmp_pat
     assert not rollen_config.honcho_schreiben(str(VORLAGE_HONCHO), "raumleiter", str(ziel))
 
 
-def test_room_lead_carries_every_bot_toolset_and_its_soul_names_them():
+def test_room_lead_carries_every_bot_toolset():
     """Hermes gives a delegated child only toolsets its parent has: a bot the room lead
     cannot equip is a bot without web, browser or terminal."""
     rollen = {r["slug"]: r for r in _rollen()}
-    soul = (TIKKI / "rollen" / "raumleiter" / "SOUL.md").read_text(encoding="utf-8")
     raumleiter = set(rollen["raumleiter"]["werkzeuge"])
 
     for slug, rolle in rollen.items():
         if slug in {"tikki", "raumleiter", "wachhalter"} or rolle.get("klon_von"):
             continue
         assert set(rolle["werkzeuge"]) <= raumleiter, slug
-        assert f"- `{slug}`: {', '.join(rolle['werkzeuge'])}" in soul, slug
+
+
+def test_whoever_talks_to_the_human_can_ask_and_whoever_runs_rooms_can_reach_them(tmp_path):
+    """Rückfragen und Räume sind Hermes-Werkzeuge, keine Zeilen in der Antwort: Die Rollen, die mit
+    dem Menschen sprechen oder Räume führen, tragen sie auf jeder Oberfläche, auch im Dauerauftrag."""
+    from ruamel.yaml import YAML
+
+    for slug, noetig in (("tikki", {"clarify", "raeume", "cronjob"}), ("raumleiter", {"clarify", "raeume", "delegation"}),
+                         ("wachhalter", {"raeume"})):
+        ziel = tmp_path / f"{slug}.yaml"
+        rollen_config.schreiben(str(KATALOG), str(VORLAGE), slug, str(ziel))
+        cfg = YAML().load(ziel.read_text(encoding="utf-8"))
+        for oberflaeche in ("cli", "api_server", "cron"):
+            assert noetig <= set(cfg["platform_toolsets"][oberflaeche]), (slug, oberflaeche)
+        assert "raeume" in cfg["plugins"]["enabled"]
 
 
 def test_skill_roles_see_tikki_skills_every_builtin_hermes_skill_and_the_openclaw_library(tmp_path):
@@ -88,23 +101,68 @@ def test_skill_roles_see_tikki_skills_every_builtin_hermes_skill_and_the_opencla
     assert not any(Path(o).is_relative_to(TIKKI.parent / "skills") for o in ordner[2:])
 
 
-@pytest.mark.parametrize("rolle", _rollen(), ids=lambda r: r["slug"])
-@pytest.mark.parametrize("plattform", ["api_server", "cli"])
-def test_plugin_toolsets_reach_only_the_roles_that_list_them(tmp_path, monkeypatch, rolle, plattform):
-    """Hermes treats a plugin toolset absent from ``known_plugin_toolsets`` as "new" and enables it
-    everywhere; the role's catalog ``werkzeuge`` must be the only thing that decides."""
+def test_rerun_keeps_what_was_changed_in_the_profile_and_still_delivers_catalog_changes(tmp_path):
+    """Settings made in Hermes (TTS voice, a Telegram platform, an MCP server, a toolset toggled
+    with ``hermes tools``) survive the next installer run; a catalog change the user did not touch
+    (a toolset the role gains or loses, a corrected model id) still arrives."""
     from ruamel.yaml import YAML
-    import hermes_cli.tools_config as tools_config
+    from hermes_cli.config import atomic_config_write
+    from hermes_yaml import roundtrip_yaml
 
-    plugin_toolsets = {"pa", "gedaechtnis"}
-    monkeypatch.setattr(tools_config, "_get_plugin_toolset_keys", lambda: set(plugin_toolsets))
-    ziel = tmp_path / "profiles" / rolle["hermes_profil"] / "config.yaml"
+    katalog = tmp_path / "rollen" / "KATALOG.json"
+    katalog.parent.mkdir()
+    eintraege = json.loads(KATALOG.read_text(encoding="utf-8"))
+    katalog.write_text(json.dumps(eintraege), encoding="utf-8")
+    ziel = tmp_path / "profiles" / "rechercheur" / "config.yaml"
     ziel.parent.mkdir(parents=True)
-    rollen_config.schreiben(str(KATALOG), str(VORLAGE), rolle["slug"], str(ziel))
-    cfg = YAML(typ="safe").load(ziel.read_text(encoding="utf-8"))
+    assert rollen_config.schreiben(str(katalog), str(VORLAGE), "rechercheur", str(ziel))
 
-    aktiv = set(tools_config._get_platform_tools(cfg, plattform)) & plugin_toolsets
-    assert aktiv == set(rolle["werkzeuge"]) & plugin_toolsets
+    stand = roundtrip_yaml().load(ziel.read_text(encoding="utf-8"))
+    stand["tts"]["edge"]["voice"] = "de-DE-ConradNeural"
+    stand["approvals"]["mode"] = "manual"
+    stand["platforms"]["telegram"] = {"enabled": True}
+    stand["mcp_servers"] = {"notizen": {"command": "notizen-mcp"}}
+    stand["platform_toolsets"]["cli"] = [*stand["platform_toolsets"]["cli"], "todo"]
+    atomic_config_write(ziel, stand)
+
+    rolle = next(e for e in eintraege if e["slug"] == "rechercheur")
+    rolle["werkzeuge"] = [w for w in rolle["werkzeuge"] if w != "browser"] + ["terminal"]
+    rolle["modell"]["primary"] = "xai/grok-korrigiert"
+    katalog.write_text(json.dumps(eintraege), encoding="utf-8")
+    assert rollen_config.schreiben(str(katalog), str(VORLAGE), "rechercheur", str(ziel))
+
+    cfg = YAML(typ="safe").load(ziel.read_text(encoding="utf-8"))
+    assert cfg["tts"]["edge"]["voice"] == "de-DE-ConradNeural" and cfg["approvals"]["mode"] == "manual"
+    assert cfg["platforms"]["telegram"] == {"enabled": True} and cfg["mcp_servers"] == {"notizen": {"command": "notizen-mcp"}}
+    assert set(cfg["platform_toolsets"]["cli"]) == set(rolle["werkzeuge"]) | {"todo"}
+    assert set(cfg["platform_toolsets"]["cron"]) == set(rolle["werkzeuge"])
+    assert cfg["model"]["provider"] + "/" + cfg["model"]["default"] == "xai/grok-korrigiert"
+    assert not rollen_config.schreiben(str(katalog), str(VORLAGE), "rechercheur", str(ziel))
+
+
+def test_profile_from_before_the_stamp_takes_the_new_toolsets_and_keeps_foreign_settings(tmp_path):
+    """A profile written before the merge stamp existed: what catalog and template define wins once
+    (as every run did before), everything else in the file is the user's and stays."""
+    from ruamel.yaml import YAML
+
+    ziel = tmp_path / "profiles" / "tikki" / "config.yaml"
+    ziel.parent.mkdir(parents=True)
+    ziel.write_text(
+        "model:\n  provider: xai\n  default: selbst-gewaehlt\n"
+        "platform_toolsets:\n  api_server: [gedaechtnis, pa, web]\n  cli: [gedaechtnis, pa, web]\n"
+        "known_plugin_toolsets:\n  cli: [gedaechtnis, pa]\n"
+        "mcp_servers:\n  notizen:\n    command: notizen-mcp\n", encoding="utf-8")
+
+    assert rollen_config.schreiben(str(KATALOG), str(VORLAGE), "tikki", str(ziel))
+
+    cfg = YAML(typ="safe").load(ziel.read_text(encoding="utf-8"))
+    rolle = next(r for r in _rollen() if r["slug"] == "tikki")
+    for oberflaeche in rollen_config.OBERFLAECHEN:
+        assert set(cfg["platform_toolsets"][oberflaeche]) == set(rolle["werkzeuge"]), oberflaeche
+        assert set(cfg["known_plugin_toolsets"][oberflaeche]) == set(rollen_config.PLUGIN_TOOLSETS), oberflaeche
+    assert cfg["mcp_servers"] == {"notizen": {"command": "notizen-mcp"}}
+    assert cfg["model"]["default"] == "selbst-gewaehlt"
+    assert cfg["platforms"]["api_server"]["extra"]["port"] == rolle["port"]
 
 
 def test_rerun_keeps_the_model_hermes_wrote_and_hermes_indentation(tmp_path, monkeypatch):
@@ -138,3 +196,52 @@ def test_rerun_keeps_the_model_hermes_wrote_and_hermes_indentation(tmp_path, mon
     rolle = next(r for r in _rollen() if r["slug"] == "raumleiter")
     assert cfg["model"]["provider"] + "/" + cfg["model"]["default"] == rolle["modell"]["primary"]
     assert "context_length" not in cfg["model"]
+
+
+def test_rules_edited_in_the_profile_survive_the_next_setup_run(tmp_path):
+    """Admin → Regeln writes the profile's SOUL.md. A later installer or update run must not put
+    the repo version back over it; an untouched profile keeps following the repo."""
+    quelle = tmp_path / "repo-SOUL.md"
+    profil = tmp_path / "profiles" / "raumleiter"
+    profil.mkdir(parents=True)
+    ziel = profil / "SOUL.md"
+    ziel.write_text("Hermes placeholder\n", encoding="utf-8")  # what `hermes profile create` leaves
+
+    quelle.write_text("Regeln v1\n", encoding="utf-8")
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "geschrieben"
+    assert ziel.read_text(encoding="utf-8") == "Regeln v1\n"
+
+    quelle.write_text("Regeln v2\n", encoding="utf-8")  # the repo moves on, nobody touched the profile
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "geschrieben"
+    assert ziel.read_text(encoding="utf-8") == "Regeln v2\n"
+
+    ziel.write_text("Regeln v2\nUnd: duze mich.\n", encoding="utf-8")  # the person edits in the app
+    quelle.write_text("Regeln v3\n", encoding="utf-8")
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "behalten"
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "behalten"  # …and on every later run
+    assert ziel.read_text(encoding="utf-8") == "Regeln v2\nUnd: duze mich.\n"
+
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel), zuruecksetzen=True) == "geschrieben"
+    assert ziel.read_text(encoding="utf-8") == "Regeln v3\n"
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "unverändert"
+
+
+def test_config_and_rules_keep_their_own_half_of_the_stamp(tmp_path):
+    """One stamp file remembers both what Tikki last wrote as config and as SOUL; writing one
+    must not forget the other, or the next run would take a kept edit for an untouched file."""
+    quelle = tmp_path / "repo-SOUL.md"
+    quelle.write_text("Regeln v1\n", encoding="utf-8")
+    profil = tmp_path / "profiles" / "raumleiter"
+    profil.mkdir(parents=True)
+    seele, config = profil / "SOUL.md", profil / "config.yaml"
+
+    rollen_config.seele_einrichten(str(quelle), str(seele))
+    rollen_config.schreiben(str(KATALOG), str(VORLAGE), "raumleiter", str(config))
+    seele.write_text("Meine Regeln\n", encoding="utf-8")
+    quelle.write_text("Regeln v2\n", encoding="utf-8")
+
+    assert rollen_config.seele_einrichten(str(quelle), str(seele)) == "behalten"
+    assert not rollen_config.schreiben(str(KATALOG), str(VORLAGE), "raumleiter", str(config))
+    assert not rollen_config.veraltet(str(KATALOG), str(VORLAGE), "raumleiter", str(config))
+    assert rollen_config.seele_einrichten(str(quelle), str(seele)) == "behalten"
+    assert seele.read_text(encoding="utf-8") == "Meine Regeln\n"

@@ -22,28 +22,21 @@ import { notify } from '@/store/notifications'
 import { $currentModel, $gatewayState } from '@/store/session'
 
 import { rolle } from '../admin/katalog'
-import { oeffneImBrowser } from '../browser-area'
+import { $rollenStand, ladeRollenStand, modellkette } from '../admin/rollen-stand'
+import { oeffneImBrowser } from '../browser-tabs'
 import { areaLabels } from '../labels'
 import { setArea } from '../store'
 import { $neueSuiteOffen, $suites, $suitesBrauchen, ladeSuites, oeffneSuite, type Suite } from '../suites/store'
-import { SuiteTafel, verlaufGruppen } from '../suites/suites-area'
+import { offenGrund, SuiteTafel } from '../suites/suites-area'
 
 import { $auftraege, $auftraegeStatus, type Auftrag, ladeAuftraege } from './auftraege'
-import {
-  briefingAbgeben,
-  briefingGemerkt,
-  briefingText,
-  neueWhatsApps,
-  startBriefingAutomatik,
-  startVorleser,
-  ungeleseneMails
-} from './briefing'
+import { briefingErbitten, startVorleser } from './briefing'
 import { $modellsuche, $modellsucheStatus, ladeModellsuche, modellZeile } from './modelle'
 import { setVorlesenAktiv, VORLESEN_UEBERSICHT, vorlesenAktiv, vorlesenStopp } from './stimme'
 import { $updateStand, startUpdateWaechter } from './update-waechter'
 
 const tikki = rolle('tikki')
-const AUFTRAEGE_ALLE_MS = 60_000
+const AUFFRISCHEN_ALLE_MS = 60_000
 
 function Karte({ children, icon: Icon, titel }: { children: ReactNode; icon: typeof Bell; titel: string }) {
   return (
@@ -203,12 +196,12 @@ function Raumwand({ suites, wartend }: { suites: Suite[]; wartend: readonly stri
   const gefiltert = useMemo(() => {
     const q = suche.trim().toLowerCase()
 
-    return q ? suites.filter(x => x.titel.toLowerCase().includes(q) || x.brauche?.toLowerCase().includes(q)) : suites
+    return q ? suites.filter(x => x.titel.toLowerCase().includes(q)) : suites
   }, [suche, suites])
 
   const braucht = (suite: Suite) => wartend.includes(suite.id)
 
-  const gruppen = verlaufGruppen(gefiltert).sort((a, b) => Number(braucht(b.suite)) - Number(braucht(a.suite)))
+  const gruppen = [...gefiltert].sort((a, b) => Number(braucht(b)) - Number(braucht(a)))
 
   return (
     <aside
@@ -230,8 +223,8 @@ function Raumwand({ suites, wartend }: { suites: Suite[]; wartend: readonly stri
           <p className="tikki-glas px-3 py-6 text-center text-[12px] text-(--tikki-tinte-weich)">{s.leer}</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {gruppen.map(({ suite, uebungen }) => (
-              <SuiteTafel braucht={braucht(suite)} key={suite.id} suite={suite} uebungen={uebungen} />
+            {gruppen.map(suite => (
+              <SuiteTafel braucht={braucht(suite)} key={suite.id} suite={suite} />
             ))}
           </ul>
         )}
@@ -279,8 +272,8 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   const auftraegeStatus = useStore($auftraegeStatus)
   const modellsuche = useStore($modellsuche)
   const modellsucheStatus = useStore($modellsucheStatus)
+  const rollenStand = useStore($rollenStand)
   const [vorlesen, setVorlesen] = useState(() => vorlesenAktiv(VORLESEN_UEBERSICHT))
-  const [sammle, setSammle] = useState(false)
 
   // The lists are the backend's truth: read them once the gateway is open, and again whenever it reopens.
   useEffect(
@@ -289,6 +282,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
         if (state === 'open') {
           void ladeSuites()
           void ladeAuftraege()
+          void ladeRollenStand()
 
           // Once per start: which models lie on the backend machine and which server answers.
           if ($modellsucheStatus.get() === 'leer') {
@@ -298,12 +292,15 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
       }),
     []
   )
+  // Rooms change without the app (Tikki opens one with her tool, a member asks, a turn fails):
+  // the room list and what needs the person are re-read on the same beat as the standing orders.
   useEffect(() => {
     const timer = window.setInterval(() => {
       if ($gatewayState.get() === 'open') {
         void ladeAuftraege()
+        void ladeSuites()
       }
-    }, AUFTRAEGE_ALLE_MS)
+    }, AUFFRISCHEN_ALLE_MS)
 
     return () => window.clearInterval(timer)
   }, [])
@@ -313,24 +310,12 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   const braucht = suites.filter(s => wartend.includes(s.id))
   const zuletzt = suites.slice(0, 3)
 
-  const briefing = async () => {
-    setSammle(true)
-
-    try {
-      const [mails, chats] = await Promise.all([ungeleseneMails(), neueWhatsApps()])
-      const text = briefingText({ chats, datum: new Date(), mails, wartend: braucht, zuletzt })
-
-      if (briefingAbgeben(text)) {
-        briefingGemerkt()
-      } else {
-        notify({ kind: 'warning', message: v.keinChat })
-      }
-    } finally {
-      setSammle(false)
+  // The person's own request, sent because they pressed the button — never on a timer.
+  const briefing = () => {
+    if (!briefingErbitten(v.briefingBitte)) {
+      notify({ kind: 'warning', message: v.keinChat })
     }
   }
-
-  useEffect(() => startBriefingAutomatik(briefing), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const vorlesenUmschalten = () => {
     const an = !vorlesen
@@ -344,7 +329,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
 
   return (
     <div className="tikki-boden @container/vorzimmer flex min-h-0 min-w-0 flex-1 flex-col" data-vorzimmer="">
-      <header className="flex items-center gap-4 px-5 pt-4 pr-40 pb-3">
+      <header className="tikki-fenstergriff flex items-center gap-4 px-5 pt-4 pr-40 pb-3">
         <span className="tikki-wortmarke shrink-0">
           <b>tikki</b>
           <span>{v.titel}</span>
@@ -367,18 +352,13 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
         <aside className="tikki-wand tikki-wand-rechts flex min-h-0 flex-col gap-3 overflow-y-auto pr-0.5 @max-[72rem]/vorzimmer:hidden">
           <div className="flex gap-2">
             <button
-              className="tikki-knopf flex-1 px-3 py-2 text-[13px] font-semibold disabled:opacity-70"
+              className="tikki-knopf flex-1 px-3 py-2 text-[13px] font-semibold"
               data-vorzimmer-briefing=""
-              disabled={sammle}
-              onClick={() => void briefing()}
+              onClick={briefing}
               type="button"
             >
-              {sammle ? (
-                <Loader2 aria-hidden className="size-4 animate-spin" />
-              ) : (
-                <Bell aria-hidden className="size-4" stroke={2} />
-              )}
-              {sammle ? v.briefingLaeuft : v.briefing}
+              <Bell aria-hidden className="size-4" stroke={2} />
+              {v.briefing}
             </button>
             <button
               aria-label={`${v.vorlesen}: ${vorlesen ? v.vorlesenAn : v.vorlesenAus}`}
@@ -437,7 +417,11 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
             ) : (
               <div className="flex flex-col gap-1.5">
                 {braucht.map(s => (
-                  <SuiteKnopf hinweis={s.brauche ?? labels.suites.wartetAufDich} key={s.id} suite={s} />
+                  <SuiteKnopf
+                    hinweis={offenGrund(s, labels.suites) ?? labels.suites.wartetAufDich}
+                    key={s.id}
+                    suite={s}
+                  />
                 ))}
               </div>
             )}
@@ -462,8 +446,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
             )}
             {tikki && (
               <p className="text-[12px] text-(--tikki-tinte-weich)">
-                {v.imVorzimmer}: <span className="font-mono">{tikki.modell.primary}</span> ·{' '}
-                <span className="font-mono">{tikki.modell.fallback}</span>
+                {v.imVorzimmer}: <span className="font-mono">{modellkette(tikki, rollenStand)}</span>
               </p>
             )}
           </Karte>

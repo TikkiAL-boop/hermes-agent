@@ -7,20 +7,21 @@ des Menschen bekommt jedes Mitglied, das angesprochen ist – ohne @ alle –, d
 Gesprächs und antwortet oder sagt „(pass)“. So lesen alle mit, und der Raum läuft auch ohne App.
 
 Dieses Modul ist der Klient dafür, ohne Netz: Räume anlegen (mit Grundbesatzung aus dem Katalog),
-Nachrichten als Mensch einstellen (Takt, Türen), Verlauf lesen, umbenennen, auflösen, zwei Räume
-verschmelzen. Die App spricht dieselben Dinge über die RPCs ``groups.*`` an.
+Nachrichten einstellen, Verlauf und Lage lesen, umbenennen, auflösen, zwei Räume verschmelzen. Die App
+spricht dieselben Dinge über die RPCs ``groups.*`` an, die Rollen über das Werkzeug ``raum``
+(``tikki/plugins/raeume``). Was ein Raum gerade tut, steht in der Art seiner Ereignisse (wer spricht,
+welche Runde läuft oder gescheitert ist) – nie in Wörtern, die ein Modell in seine Antwort schreibt.
 
 Grenzen des Kerns, die hier gelten: Mitgliedernamen (``handle``) ohne @all/@everyone, Raum-Kennungen
 ``^[A-Za-z0-9][A-Za-z0-9._:-]*$`` (kein @, darum heißt der Raum nur im Anzeigenamen
 „Projekt-mensch@tikki.team“), höchstens ``MAX_DISCUSSION_MEMBERS`` Mitglieder (Tikki: 128), je
 Mensch-Nachricht höchstens 3 Runden und 10 veröffentlichte Antworten. Eine Nachricht ohne @ fragt
-jedes Mitglied der Reihe nach – Takt und Türen sprechen deshalb immer @raumleiter an.
+jedes Mitglied der Reihe nach.
 
     hermes --run-module tikki.werkzeuge.raeume anlegen "Urlaub Ostsee" --rollen rechercheur schreiber
     hermes --run-module tikki.werkzeuge.raeume senden <raum> "…" [--von Thorsten]
     hermes --run-module tikki.werkzeuge.raeume verlauf <raum> | stand <raum> | liste
     hermes --run-module tikki.werkzeuge.raeume verschmelzen <raum-a> <raum-b> [--name …]
-    hermes --run-module tikki.werkzeuge.raeume tuer <von> <nach> "…"
     hermes --run-module tikki.werkzeuge.raeume aufloesen <raum>
 """
 
@@ -42,8 +43,16 @@ TIKKI = Path(__file__).resolve().parents[1]
 KATALOG = TIKKI / "rollen" / "KATALOG.json"
 #: Alle Tikki-Räume tragen dieses Präfix in der Raum-Kennung; so bleiben fremde Räume außen vor.
 PRAEFIX = "tikki-"
-#: Ein Raum ist ein Gespräch: ein Faden für Mensch, Takt und Türen.
+#: Ein Raum ist ein Gespräch: ein Faden für alle.
 HAUPTFADEN = "haupt"
+#: Wer eine Nachricht eingestellt hat, steht im Absender des Ereignisses: ``desktop`` ist der Mensch in
+#: der App (das setzt ``groups.send``), ``tikki`` alles, was in seinem Auftrag kommt (Werkzeug ``raum``,
+#: Kommandozeile) – mit dem Namen dessen, der spricht, als ``display_name``.
+ABSENDER = "tikki"
+#: So heißt der Hermes-Zeitplan, der einen Raum regelmäßig wieder aufruft; die App findet ihn daran.
+ZEITPLAN_NAME = "Raumrunde {room_id}"
+#: Wie weit zurück die Lage eines Raums gelesen wird: sie hängt nur am Ende des Protokolls.
+LAGE_EREIGNISSE = 200
 RAUMLEITER = "raumleiter"
 #: Wie viele der letzten Nachrichten ein verschmolzener Raum aus jedem Vorgänger mitbekommt.
 VERSCHMELZEN_NACHRICHTEN = 12
@@ -179,7 +188,8 @@ def nachrichten(ereignisse: list[dict], raum: dict | None = None) -> list[dict]:
     aus = []
     for e in ereignisse:
         if e["kind"] == "message.user":
-            aus.append({"seq": e["seq"], "von": "mensch", "name": "Mensch", "text": e["payload"]["text"], "zeit": e["created_at"]})
+            name = (e.get("actor") or {}).get("display_name") or "Mensch"
+            aus.append({"seq": e["seq"], "von": "mensch", "name": name, "text": e["payload"]["text"], "zeit": e["created_at"]})
         elif e["kind"] == "message.member":
             kennung = e["payload"].get("member_id") or e["actor"].get("id") or "?"
             aus.append({"seq": e["seq"], "von": kennung, "name": namen.get(kennung, kennung), "text": e["payload"]["text"], "zeit": e["created_at"]})
@@ -195,6 +205,50 @@ def wer_arbeitet(ereignisse: list[dict]) -> str | None:
         elif e["kind"] in ("turn.settled", "turn.failed", "turn.cancelled", "turn.deferred"):
             offen = None
     return offen
+
+
+def lage(raum: dict, *, db: Path | None = None) -> dict:
+    """Was im Raum gerade ist, aus der Art seiner letzten Ereignisse – nie aus ihrem Wortlaut:
+    wer arbeitet, wessen Runde zuletzt gescheitert ist, ob die letzte Wortmeldung des Menschen
+    noch ohne Antwort ist, und wann zuletzt etwas gesagt wurde."""
+    letzte = int(raum.get("latest_seq") or 0)
+    return lage_aus(raum, verlauf(raum["room_id"], seit=max(0, letzte - LAGE_EREIGNISSE), db=db))
+
+
+def lage_aus(raum: dict, ereignisse: list[dict]) -> dict:
+    """Die Lage eines Raums aus dem Ende seines Protokolls (siehe ``lage``)."""
+    gescheitert: str | None = None
+    offen = False
+    aktiv: float | None = None
+    for e in ereignisse:
+        if e["kind"] == "message.user":
+            offen, gescheitert, aktiv = True, None, e["created_at"]
+        elif e["kind"] == "message.member":
+            offen, gescheitert, aktiv = False, None, e["created_at"]
+        elif e["kind"] == "turn.failed":
+            gescheitert = (e.get("payload") or {}).get("member_id") or (e.get("actor") or {}).get("id") or "?"
+        elif e["kind"] == "turn.started":
+            gescheitert = None
+    arbeitet = wer_arbeitet(ereignisse)
+    return {
+        "room_id": raum["room_id"], "name": raum.get("name") or raum["room_id"],
+        "mitglieder": [m["handle"] for m in raum.get("members", [])],
+        "arbeitet": arbeitet, "gescheitert": None if arbeitet else gescheitert,
+        "unbeantwortet": offen and not arbeitet,
+        "letzte_aktivitaet": aktiv or raum.get("updated_at"),
+    }
+
+
+def finden(wort: str, *, db: Path | None = None) -> dict:
+    """Ein Raum nach Kennung, genauem Namen oder eindeutigem Namensanfang."""
+    wort = (wort or "").strip()
+    alle = liste(db)
+    treffer = [r for r in alle if r["room_id"] == wort] or [r for r in alle if r.get("name") == wort]
+    if not treffer and wort:
+        treffer = [r for r in alle if str(r.get("name", "")).lower().startswith(wort.lower())]
+    if len(treffer) != 1:
+        raise ValueError(f"kein Raum {wort!r}" if not treffer else f"{wort!r} passt auf mehrere Räume")
+    return treffer[0]
 
 
 # ── Schreiben ────────────────────────────────────────────────────────────────
@@ -213,18 +267,18 @@ def anlegen(name: str, rollen: list[str] | None = None, *, db: Path | None = Non
 
 def senden(room_id: str, text: str, *, von: str | None = None, faden: str = HAUPTFADEN,
            kennung: str | None = None, db: Path | None = None, jetzt: float | None = None) -> dict:
-    """Eine Nachricht des Menschen (oder in seinem Auftrag: Takt, Tür) in den Raum stellen.
+    """Eine Nachricht in den Raum stellen; das Gateway plant die Runde beim nächsten Blick (~5 s).
 
-    Der Kern kennt den Menschen nicht beim Namen („User“); ``von`` stellt ihn dem Text voran,
-    damit mehrere Menschen im Raum unterscheidbar bleiben. Das Gateway plant die Runde beim
-    nächsten Blick auf den Raum (höchstens ~5 s später).
+    ``von`` ist, wer spricht. Er steht im Absender des Ereignisses (für die App) und vor dem Text
+    (für die Mitglieder: der Kern nennt jeden Absender dieser Art nur „User“).
     """
     db = db or db_pfad()
     r = stand(room_id, db)
     nutzlast = discussion.validate_user_payload({"text": f"{von}: {text}" if von else text, "thread_id": faden})
+    absender = {"kind": "user", "id": ABSENDER, **({"display_name": von[:120]} if von else {})}
     return hosted_rooms.append_event(
         db, room_id=room_id, event_id=kennung or f"tikki:{uuid.uuid4().hex}", kind="message.user",
-        actor={"kind": "user", "id": "tikki"}, payload=nutzlast,
+        actor=absender, payload=nutzlast,
         authority_gateway_id=r["authority_gateway_id"], authority_epoch=r["authority_epoch"], now=jetzt,
     )
 
@@ -242,12 +296,24 @@ def aufloesen(room_id: str, *, db: Path | None = None, jetzt: float | None = Non
 
 
 def zusammenfassung(room_id: str, *, anzahl: int = VERSCHMELZEN_NACHRICHTEN, db: Path | None = None) -> str:
-    """Die letzten Wortmeldungen eines Raums als Zitat, für Verschmelzen und Türen."""
+    """Die letzten Wortmeldungen eines Raums als Zitat (für das Verschmelzen)."""
     r = stand(room_id, db)
     letzte = nachrichten(verlauf(room_id, db=db), r)[-anzahl:]
     zeilen = [f"## {r['name']}"]
     zeilen += [f"- {n['name']}: {' '.join(n['text'].split())[:600]}" for n in letzte] or ["- (noch nichts gesagt)"]
     return "\n".join(zeilen)
+
+
+def vereinte_mitglieder(*besetzungen: list[dict]) -> list[dict]:
+    """Die Mitglieder mehrerer Räume als eine Besetzung, die der Kern annimmt: jede Kennung, jeder
+    @-Name und jedes Profil nur einmal – der erste Raum gewinnt. Zwei Räume mit verschiedenen
+    Raumleiter-Klonen haben beide ein Mitglied ``raumleiter`` (mit anderem Profil); der vereinte
+    Raum behält den des ersten."""
+    vereint: list[dict] = []
+    for m in (m for eine in besetzungen for m in eine):
+        if all(str(m[k]).lower() != str(x[k]).lower() for x in vereint for k in ("member_id", "handle", "profile")):
+            vereint.append({k: m[k] for k in ("member_id", "profile", "handle", "display_name") if k in m})
+    return vereint
 
 
 def verschmelzen(a: str, b: str, *, name: str | None = None, db: Path | None = None, jetzt: float | None = None,
@@ -257,17 +323,17 @@ def verschmelzen(a: str, b: str, *, name: str | None = None, db: Path | None = N
     Raum; die Sitzungen der Mitglieder aus den alten Räumen bleiben als Gedächtnis (RAG) erhalten.
     """
     db = db or db_pfad()
+    if a == b:
+        raise ValueError("ein Raum lässt sich nicht mit sich selbst verschmelzen")
     ra, rb = stand(a, db), stand(b, db)
-    mitglieder: list[dict] = []
-    for m in [*ra["members"], *rb["members"]]:
-        if all(m["profile"] != x["profile"] for x in mitglieder):
-            mitglieder.append({k: m[k] for k in ("member_id", "profile", "handle", "display_name") if k in m})
+    mitglieder = vereinte_mitglieder(ra["members"], rb["members"])
     discussion.validate_roster(mitglieder, local_profiles=lokale_profile(db.parent))
     neuer_name = name or f"{ra['name']} + {rb['name']}"
+    leitung = next((m["handle"] for m in mitglieder if m["member_id"] == RAUMLEITER), None)
     auftakt = (
-        f"@raumleiter Dieser Raum ist aus zwei Räumen verschmolzen: „{ra['name']}“ und „{rb['name']}“. "
-        f"Hier der Stand beider; führe sie zu einem Ziel zusammen und sag, was als Nächstes dran ist.\n\n"
-        f"{zusammenfassung(a, db=db)}\n\n{zusammenfassung(b, db=db)}"
+        (f"@{leitung} " if leitung else "")
+        + f"Dieser Raum ist aus „{ra['name']}“ und „{rb['name']}“ zusammengelegt. "
+        f"Das wurde dort zuletzt gesagt:\n\n{zusammenfassung(a, db=db)}\n\n{zusammenfassung(b, db=db)}"
     )
     neu = hosted_rooms.create_room(
         db, room_id=raum_id(neuer_name, jetzt), name=neuer_name, members=mitglieder,
@@ -277,12 +343,6 @@ def verschmelzen(a: str, b: str, *, name: str | None = None, db: Path | None = N
     aufloesen(a, db=db, jetzt=jetzt)
     aufloesen(b, db=db, jetzt=jetzt)
     return neu
-
-
-def tuer(von: str, nach: str, text: str, *, db: Path | None = None, jetzt: float | None = None) -> dict:
-    """Eine Tür zwischen Räumen: Raum A spricht in Raum B hinein, als Nachricht an dessen Raumleiter."""
-    rv = stand(von, db)
-    return senden(nach, f"[Tür aus „{rv['name']}“] @raumleiter {text}", db=db, jetzt=jetzt)
 
 
 # ── Kommandozeile ────────────────────────────────────────────────────────────
@@ -303,7 +363,6 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("umbenennen"); p.add_argument("raum"); p.add_argument("name")
     p = sub.add_parser("aufloesen"); p.add_argument("raum")
     p = sub.add_parser("verschmelzen"); p.add_argument("a"); p.add_argument("b"); p.add_argument("--name")
-    p = sub.add_parser("tuer"); p.add_argument("von"); p.add_argument("nach"); p.add_argument("text")
     a = parser.parse_args(argv)
 
     if a.befehl == "anlegen":
@@ -327,8 +386,6 @@ def main(argv: list[str] | None = None) -> int:
     elif a.befehl == "verschmelzen":
         r = verschmelzen(a.a, a.b, name=a.name)
         print(f"{r['room_id']}  {r['name']}")
-    elif a.befehl == "tuer":
-        print(tuer(a.von, a.nach, a.text)["seq"])
     return 0
 
 

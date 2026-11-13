@@ -64,6 +64,8 @@ export interface InstallStamp {
   commit: string | null
   commitDate: number | null
   branch: string | null
+  /** GitHub `owner/repo` that holds `commit` and `branch`; CI stamps only. */
+  repository?: string
   builtAt: string | null
   dirty: boolean
   /** Build provenance: where the stamp's facts came from. */

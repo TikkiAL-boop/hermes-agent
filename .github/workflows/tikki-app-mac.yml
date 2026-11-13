@@ -3,20 +3,23 @@ name: Tikki App (macOS Download)
 # Baut die Tikki-App (apps/desktop, productName "Tikki") auf einem macOS-Runner
 # als DMG und legt sie als GitHub-Release zum Herunterladen ab. Unsigniert:
 # auf dem Ziel-Mac einmal Rechtsklick → Öffnen (oder `xattr -cr /Applications/Tikki.app`).
-# Die App installiert beim ersten Start den Hermes-Kern selbst aus dem Zweig,
-# aus dem sie gebaut wurde (Install-Stempel: GITHUB_REF_NAME), hier `tikki-app`.
+#
+# Gebaut wird immer der Zweig, von dem der Lauf gestartet wird ("Use workflow
+# from" bzw. `gh workflow run tikki-app-mac.yml --ref tikki-app`). Es gibt
+# bewusst keine eigene Eingabe für einen anderen Zweig oder Commit: Der
+# Install-Stempel der App kommt aus GITHUB_SHA, GITHUB_REF_NAME und
+# GITHUB_REPOSITORY, und die App holt beim ersten Start den Kern aus genau
+# diesem Repository, Zweig und Commit (install.sh bricht ab, wenn der Commit
+# nicht auf dem Zweig liegt). Code, Stempel, Release-Tag und Notiz müssen
+# deshalb dasselbe meinen.
 # Danach: ~/.hermes/hermes-agent/tikki/installieren.sh --ohne-kern --ohne-app
 
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: Zweig oder Commit, aus dem gebaut wird
-        required: true
-        default: tikki-app
 
+# Bauen darf nur lesen; schreiben darf allein der Release-Job unten.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: tikki-app-mac-${{ github.ref }}
@@ -30,10 +33,18 @@ jobs:
     env:
       TIKKI_VERSION: 2026.${{ github.run_number }}.0
     steps:
+      # Die App pinnt ihren Kern auf einen Zweig (`git clone --branch`, dann
+      # `origin/<zweig>`); von einem Tag gestartet könnte sie ihn nie holen.
+      - name: Nur von einem Zweig bauen
+        if: github.ref_type != 'branch'
+        run: |
+          echo "::error::Bitte von einem Zweig starten (z. B. tikki-app), nicht von einem Tag."
+          exit 1
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ inputs.ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Locked PM toolchain (Python + Node, core runtime for the icon generator)
         uses: ./.github/actions/setup-pm
@@ -57,10 +68,9 @@ jobs:
         run: >-
           npm run builder -- --mac dmg --arm64 --publish never
           -c.mac.identity=null
-          -c.extraMetadata.version=${{ env.TIKKI_VERSION }}
+          "-c.extraMetadata.version=$TIKKI_VERSION"
 
       - name: Collect the DMG
-        id: collect
         working-directory: apps/desktop
         run: |
           dmg="$(find release -maxdepth 1 -name '*.dmg' | head -1)"
@@ -69,28 +79,48 @@ jobs:
             find release -maxdepth 2 | head -40
             exit 1
           fi
-          out="$RUNNER_TEMP/Tikki-${TIKKI_VERSION}-mac-arm64.dmg"
+          mkdir -p "$RUNNER_TEMP/tikki-dmg"
+          out="$RUNNER_TEMP/tikki-dmg/Tikki-${TIKKI_VERSION}-mac-arm64.dmg"
           cp "$dmg" "$out"
-          shasum -a 256 "$out" | tee "$out.sha256"
-          echo "dmg=$out" >> "$GITHUB_OUTPUT"
+          (cd "$RUNNER_TEMP/tikki-dmg" && shasum -a 256 "$(basename "$out")" | tee "$out.sha256")
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Tikki-mac-arm64
-          path: |
-            ${{ steps.collect.outputs.dmg }}
-            ${{ steps.collect.outputs.dmg }}.sha256
+          path: ${{ runner.temp }}/tikki-dmg/
           if-no-files-found: error
 
+  # Eigener Job, damit das Schreibrecht nie neben `npm ci` (Postinstall-Skripte
+  # fremder Pakete) und dem Bau liegt: Hier läuft kein Code aus dem Repository,
+  # nur `gh` mit dem fertigen DMG.
+  release:
+    name: GitHub-Release (Prerelease)
+    needs: dmg
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      TIKKI_VERSION: 2026.${{ github.run_number }}.0
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Tikki-mac-arm64
+          path: dmg
+
+      # Alle Werte kommen über die Umgebung, nichts wird in den Skripttext
+      # eingesetzt. --target ist der Commit, aus dem das DMG gebaut wurde.
       - name: Publish as GitHub release (prerelease)
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: tikki-app-${{ github.run_number }}
         run: |
+          notes="$(printf 'Gebaut aus `%s` @ %s.\n\nInstallation: DMG öffnen, Tikki in Programme ziehen, beim ersten Start Rechtsklick → Öffnen (unsigniert). Die App holt den Tikki-Kern selbst; danach im Terminal:\n\n    ~/.hermes/hermes-agent/tikki/installieren.sh --ohne-kern --ohne-app\n' "$GITHUB_REF_NAME" "$GITHUB_SHA")"
           gh release create "$TAG" \
-            --target "${{ github.sha }}" \
+            --target "$GITHUB_SHA" \
             --prerelease \
             --title "Tikki App ${TIKKI_VERSION} (macOS, Apple Silicon)" \
-            --notes "$(printf 'Gebaut aus `%s` @ %s.\n\nInstallation: DMG öffnen, Tikki in Programme ziehen, beim ersten Start Rechtsklick → Öffnen (unsigniert). Die App holt den Tikki-Kern selbst; danach im Terminal:\n\n    ~/.hermes/hermes-agent/tikki/installieren.sh --ohne-kern --ohne-app\n' "${{ inputs.ref }}" "${{ github.sha }}")" \
-            "${{ steps.collect.outputs.dmg }}" "${{ steps.collect.outputs.dmg }}.sha256"
-          echo "https://github.com/${{ github.repository }}/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
+            --notes "$notes" \
+            dmg/*.dmg dmg/*.dmg.sha256
+          echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

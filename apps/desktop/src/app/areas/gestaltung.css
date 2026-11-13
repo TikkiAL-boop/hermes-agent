@@ -1,0 +1,474 @@
+/* Tikki – „Empfangszimmer“: eine Gestalt für die ganze App.
+
+   Warmes Papier, weiches Licht, ein Hauch Gold. Flächen liegen bündig
+   nebeneinander und werden von Haarlinien getrennt, nichts schwebt, nichts
+   blinkt. Die Tikki-Bereiche zeichnen mit denselben Token wie Hermes
+   (`--ui-*`), darum ist alles aus einem Guss – in hell wie in dunkel. */
+
+/* ── Maße und Farben ─────────────────────────────────────────────────── */
+
+:root {
+  --tikki-leiste-breite: 4.5rem;
+  /* Das Band am oberen Rand: so hoch wie die Titelleiste des Gesprächs. */
+  --tikki-band: 2.125rem;
+  /* Platz für die Fensterknöpfe des Systems oben rechts (Windows, Linux). */
+  --tikki-fenster-rechts: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+
+  --tikki-tinte: var(--ui-text-primary);
+  --tikki-tinte-weich: var(--ui-text-secondary);
+  --tikki-gold: var(--ui-accent);
+  --tikki-linie: var(--ui-stroke-secondary);
+  --tikki-linie-zart: var(--ui-stroke-tertiary);
+  --tikki-flaeche: var(--ui-bg-chrome);
+  --tikki-flaeche-seite: var(--ui-bg-sidebar);
+  --tikki-flaeche-karte: var(--ui-bg-editor);
+  --tikki-flaeche-feld: var(--ui-bg-input);
+  --tikki-schwebe: color-mix(in srgb, var(--ui-base) 6%, transparent);
+  --tikki-gewaehlt: color-mix(in srgb, var(--ui-accent) 13%, transparent);
+  --tikki-ruhig: 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* macOS: die Ampel liegt oben links in der Leiste – sie bekommt Platz. */
+:root[data-tikki-plattform='mac'] {
+  --tikki-leiste-breite: 5.5rem;
+}
+
+/* WSLg zeichnet eigene Fensterknöpfe; dort gibt es keine Overlay-Maße. */
+:root[data-tikki-fensterknoepfe='eigen'] {
+  --tikki-fenster-rechts: 8.75rem;
+}
+
+/* Die Haut „tikki“: warme Neutraltöne statt kühlem Grau, weichere Ecken,
+   und leise Schrift bleibt lesbar (WCAG AA). Ungeschichtet, damit es die
+   Grundwerte aus `styles.css` (@layer base) sicher überstimmt. */
+:root[data-hermes-theme='tikki'] {
+  --radius-scalar: 0.6;
+  --theme-neutral-chrome: #f4f0e8;
+  --theme-neutral-sidebar: #ece6db;
+  --theme-neutral-card: #fbf9f4;
+  --ui-bg-input: #fdfbf6;
+  --ui-text-tertiary: color-mix(in srgb, var(--ui-base) 72%, transparent);
+  --ui-text-quaternary: color-mix(in srgb, var(--ui-base) 66%, transparent);
+}
+
+:root.dark[data-hermes-theme='tikki'] {
+  --theme-neutral-chrome: #1b1815;
+  --theme-neutral-sidebar: #161311;
+  --theme-neutral-card: #221e1a;
+  --ui-bg-input: #1f1b17;
+  --ui-text-tertiary: color-mix(in srgb, var(--ui-base) 62%, transparent);
+  --ui-text-quaternary: color-mix(in srgb, var(--ui-base) 54%, transparent);
+}
+
+/* ── Fenster ziehen ──────────────────────────────────────────────────── */
+
+/* Das Fenster hat keine Titelleiste: man zieht es an den freien Flächen der
+   Leiste und der Bänder. Alles Bedienbare darin bleibt bedienbar. */
+.tikki-fenstergriff {
+  -webkit-app-region: drag;
+}
+
+.tikki-fenstergriff
+  :is(a, button, input, select, textarea, form, label, [role='tab'], [role='button'], .tikki-kein-griff) {
+  -webkit-app-region: no-drag;
+}
+
+/* Ein versteckter Bereich (auch das Gespräch hinter Post, Browser …) zieht
+   nicht und sperrt nichts. */
+[data-area][data-pane-hidden] * {
+  -webkit-app-region: initial !important;
+}
+
+/* ── Hermes-Teile im Tikki-Fenster ───────────────────────────────────── */
+
+/* Die schwebenden Titelleisten-Knöpfe sitzen an Fensterkoordinaten. Mit der
+   Leiste links davor rücken sie hinter die Leiste – sonst lägen sie auf ihr. */
+:root[data-tikki-bereich] [data-titlebar-cluster='left'] {
+  left: calc(var(--tikki-leiste-breite) + 0.875rem) !important;
+}
+
+/* Eigene Fensterknöpfe (WSLg) gehören dem Fenster, nicht dem Gespräch: sie
+   bleiben in jedem Bereich sichtbar. */
+:root[data-tikki-bereich] [data-area='tikki'] [aria-label='Window controls'].fixed {
+  visibility: visible;
+}
+
+/* Ruhe im Vorzimmer: Werkzeugschritte und Gedankengänge sind Rauschen. Was
+   der Mensch entscheiden muss – Rückfragen, Freigaben – bleibt stehen. */
+:root[data-tikki-ruhe] [data-area='tikki'] [data-slot='aui_thinking-disclosure'],
+:root[data-tikki-ruhe]
+  [data-area='tikki']
+  [data-slot='tool-block']:not(
+    :has([data-slot='clarify-inline'], [data-slot='tool-approval-stack'], [data-slot='tool-approval-card'])
+  ) {
+  display: none;
+}
+
+/* Der leere Raum: nur das Zeichen, kein Werbetext. */
+:root[data-tikki-bereich] [data-slot='aui_intro'] > * {
+  display: none;
+}
+
+:root[data-tikki-bereich] [data-slot='aui_intro']::before {
+  content: '';
+  display: block;
+  width: 7rem;
+  height: 7rem;
+  margin-inline: auto;
+  border-radius: 9999px;
+  background: url('../../../assets/tikki/tikki-logo-original.png') center / 112% no-repeat;
+  box-shadow:
+    0 0 0 1px var(--tikki-linie),
+    0 1.5rem 3rem -1.5rem color-mix(in srgb, var(--ui-accent) 55%, transparent);
+}
+
+/* ── Leiste ──────────────────────────────────────────────────────────── */
+
+.tikki-leiste {
+  display: flex;
+  width: var(--tikki-leiste-breite);
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.625rem 0 0.75rem;
+  background: var(--tikki-flaeche-seite);
+  border-right: 1px solid var(--tikki-linie-zart);
+  color: var(--tikki-tinte-weich);
+}
+
+:root[data-tikki-plattform='mac'] .tikki-leiste {
+  padding-top: 2.75rem;
+}
+
+.tikki-leiste-knopf {
+  position: relative;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 0.875rem;
+  color: var(--tikki-tinte-weich);
+  transition:
+    background-color var(--tikki-ruhig),
+    color var(--tikki-ruhig);
+}
+
+.tikki-leiste-knopf:hover {
+  background: var(--tikki-schwebe);
+  color: var(--tikki-tinte);
+}
+
+.tikki-leiste-knopf[aria-current='page'] {
+  background: var(--tikki-gewaehlt);
+  color: var(--tikki-gold);
+}
+
+/* Der Strich am Rand zeigt, wo man ist – eine Haarlinie in Gold. */
+.tikki-leiste-knopf[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: calc((var(--tikki-leiste-breite) - 2.75rem) / -2);
+  top: 0.75rem;
+  bottom: 0.75rem;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--tikki-gold);
+}
+
+.tikki-leiste-knopf:focus-visible,
+.tikki-knopf:focus-visible,
+.tikki-werkzeug:focus-visible,
+.tikki-zeile:focus-visible {
+  outline: 2px solid var(--tikki-gold);
+  outline-offset: 2px;
+}
+
+.tikki-medaillon {
+  display: block;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  object-fit: cover;
+  /* Die Kachel des Zeichens hat graue Ecken: der Kreis schneidet sie weg. */
+  transform: scale(1.12);
+  clip-path: circle(44.6%);
+}
+
+.tikki-leiste-knopf[data-marke] {
+  margin-bottom: 0.5rem;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 1px var(--tikki-linie);
+  overflow: hidden;
+}
+
+.tikki-leiste-knopf[data-marke][aria-current='page'] {
+  background: transparent;
+  box-shadow: 0 0 0 2px var(--tikki-gold);
+}
+
+/* Der Punkt: etwas wartet. Still, kein Blinken. */
+.tikki-punkt {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  display: grid;
+  min-width: 0.5rem;
+  height: 0.5rem;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--tikki-gold);
+  box-shadow: 0 0 0 2px var(--tikki-flaeche-seite);
+}
+
+/* ── Flächen ─────────────────────────────────────────────────────────── */
+
+.tikki-boden,
+.tikki-raum {
+  background: var(--tikki-flaeche);
+  color: var(--tikki-tinte);
+}
+
+/* Das Band: Griff zum Ziehen, Ort der wenigen Werkzeuge eines Bereichs. */
+.tikki-kopf {
+  display: flex;
+  min-height: var(--tikki-band);
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 calc(var(--tikki-fenster-rechts) + 0.75rem) 0 0.875rem;
+  -webkit-app-region: drag;
+}
+
+.tikki-kopf :is(a, button, input, select, textarea, form, label, [role='tab'], [role='button']) {
+  -webkit-app-region: no-drag;
+}
+
+.tikki-spalte {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--tikki-flaeche-seite);
+  border-right: 1px solid var(--tikki-linie-zart);
+}
+
+.tikki-glas,
+.tikki-glas-dicht {
+  border: 1px solid var(--tikki-linie-zart);
+  border-radius: 0.875rem;
+  background: var(--tikki-flaeche-karte);
+  color: var(--tikki-tinte);
+}
+
+.tikki-glas-dicht {
+  background: var(--ui-bg-elevated);
+}
+
+.tikki-trenner {
+  border-top: 1px solid var(--tikki-linie-zart);
+}
+
+/* ── Bedienelemente ──────────────────────────────────────────────────── */
+
+.tikki-knopf {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.625rem;
+  background: var(--tikki-gold);
+  color: var(--dt-primary-foreground);
+  transition:
+    background-color var(--tikki-ruhig),
+    color var(--tikki-ruhig),
+    opacity var(--tikki-ruhig);
+}
+
+.tikki-knopf:hover {
+  background: color-mix(in srgb, var(--tikki-gold) 88%, var(--ui-base));
+}
+
+.tikki-knopf:disabled {
+  opacity: 0.45;
+}
+
+.tikki-knopf-still {
+  justify-content: flex-start;
+  background: transparent;
+  color: var(--tikki-tinte);
+}
+
+.tikki-knopf-still:hover {
+  background: var(--tikki-schwebe);
+}
+
+.tikki-knopf[aria-current='page'],
+.tikki-knopf[data-aktiv='true'],
+.tikki-knopf[aria-pressed='true'] {
+  background: var(--tikki-gewaehlt);
+  color: var(--tikki-gold);
+}
+
+/* Kleines Werkzeug: nur ein Zeichen, die Bedeutung steht im Tooltip. */
+.tikki-werkzeug {
+  position: relative;
+  display: inline-grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 0.5rem;
+  color: var(--tikki-tinte-weich);
+  transition:
+    background-color var(--tikki-ruhig),
+    color var(--tikki-ruhig);
+}
+
+.tikki-werkzeug:hover {
+  background: var(--tikki-schwebe);
+  color: var(--tikki-tinte);
+}
+
+.tikki-werkzeug[aria-pressed='true'],
+.tikki-werkzeug[data-aktiv='true'] {
+  background: var(--tikki-gewaehlt);
+  color: var(--tikki-gold);
+}
+
+.tikki-werkzeug:disabled {
+  opacity: 0.4;
+}
+
+.tikki-werkzeug[data-gross] {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+}
+
+.tikki-werkzeug[data-gold] {
+  background: var(--tikki-gold);
+  color: var(--dt-primary-foreground);
+}
+
+.tikki-werkzeug[data-gold]:hover {
+  background: color-mix(in srgb, var(--tikki-gold) 88%, var(--ui-base));
+}
+
+.tikki-feld {
+  min-width: 0;
+  border: 1px solid var(--tikki-linie);
+  border-radius: 0.625rem;
+  background: var(--tikki-flaeche-feld);
+  color: var(--tikki-tinte);
+  outline: none;
+  transition:
+    border-color var(--tikki-ruhig),
+    box-shadow var(--tikki-ruhig);
+}
+
+.tikki-feld::placeholder {
+  color: var(--ui-text-quaternary);
+}
+
+.tikki-feld:focus,
+.tikki-feld:focus-within {
+  border-color: var(--tikki-gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tikki-gold) 16%, transparent);
+}
+
+/* Eine Zeile in einer Liste (Räume, Postfächer, Admin-Seiten). */
+.tikki-zeile {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  color: var(--tikki-tinte);
+  text-align: left;
+  transition: background-color var(--tikki-ruhig);
+}
+
+.tikki-zeile:hover {
+  background: var(--tikki-schwebe);
+}
+
+.tikki-zeile[aria-current='page'],
+.tikki-zeile[aria-current='true'],
+.tikki-zeile[data-aktiv='true'] {
+  background: var(--tikki-gewaehlt);
+}
+
+/* Monogramm: ein Raum, ein Mensch, ein Mitglied – als ruhige Scheibe. */
+.tikki-scheibe {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--ui-accent) 10%, var(--tikki-flaeche-karte));
+  box-shadow: inset 0 0 0 1px var(--tikki-linie-zart);
+  color: var(--tikki-gold);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.tikki-scheibe[data-braucht='true'] {
+  box-shadow: inset 0 0 0 1.5px var(--tikki-gold);
+}
+
+/* Der leere Zustand: ein blasses Zeichen statt eines Satzes. */
+.tikki-leer {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  place-items: center;
+  color: color-mix(in srgb, var(--ui-base) 16%, transparent);
+}
+
+.tikki-leer > svg {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+/* Ein Etikett: kurze Auskunft in kleiner Schrift. */
+.tikki-marke {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  padding: 0.125rem 0.5rem;
+  background: var(--tikki-schwebe);
+  color: var(--tikki-tinte-weich);
+  font-size: 0.6875rem;
+  line-height: 1.25rem;
+  white-space: nowrap;
+}
+
+.tikki-marke[data-gold] {
+  background: var(--tikki-gewaehlt);
+  color: var(--tikki-gold);
+}
+
+/* Die Mitte: Gespräche und Formulare bleiben in lesbarer Breite. */
+.tikki-mitte {
+  width: 100%;
+  max-width: 46rem;
+  margin-inline: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tikki-leiste-knopf,
+  .tikki-knopf,
+  .tikki-werkzeug,
+  .tikki-feld,
+  .tikki-zeile {
+    transition: none;
+  }
+}

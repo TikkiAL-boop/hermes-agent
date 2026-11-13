@@ -2,7 +2,7 @@
 
 Tikkis Daueraufträge sind Hermes-Cronjobs ihres Profils; jeder Lauf hinterlässt eine Datei unter
 ``<profil>/cron/output/<job>/<zeit>.md``. Das Briefing sammelt alles, was seit dem letzten
-Briefing dazukam, dazu ungelesene Post, Räume, die auf den Menschen warten, und neue WhatsApps,
+Briefing dazukam, dazu ungelesene Post, Räume, in denen etwas liegen geblieben ist, und neue WhatsApps,
 wenn die WA-Bridge erreichbar ist. Der Zeitpunkt des letzten Briefings steht in
 ``~/.tikki/briefing.json`` (``TIKKI_HOME`` übersteuert) – pro Mensch.
 """
@@ -18,6 +18,11 @@ from pathlib import Path
 from . import post
 
 AUSZUG = 700
+#: Je Dauerauftrag kommen die jüngsten Läufe mit Text ins Briefing, insgesamt höchstens so viele;
+#: der Rest wird gezählt. Ein Vier-Minuten-Auftrag schreibt 360 Dateien am Tag – als Werkzeugausgabe
+#: wären das rund 250 kB, das erste Briefing (seit = 0) alles, was je lief.
+JE_AUFTRAG = 5
+HOECHSTENS = 30
 
 
 def tikki_home() -> Path:
@@ -41,55 +46,66 @@ def stand_setzen(zeit: float | None = None) -> None:
     datei.write_text(json.dumps({"zuletzt": zeit or time.time()}), encoding="utf-8")
 
 
-def erledigtes(seit: float, home: Path | None = None) -> list[dict]:
-    """Cron-Ausgaben des Profils, die nach *seit* geschrieben wurden, jüngste zuerst."""
+def erledigtes(seit: float) -> tuple[list[dict], dict[str, int]]:
+    """Cron-Ausgaben des Profils, die nach *seit* geschrieben wurden, jüngste zuerst – je Auftrag
+    die jüngsten ``JE_AUFTRAG``, zusammen höchstens ``HOECHSTENS``. Dazu je Auftrag, wie viele
+    Läufe es seit *seit* insgesamt gab."""
     from cron.jobs import get_cron_output_dir, load_jobs
 
-    ausgaben = home / "cron" / "output" if home else get_cron_output_dir()
+    ausgaben = get_cron_output_dir()
     namen = {j.get("id"): j.get("name") or j.get("id") for j in load_jobs() if isinstance(j, dict)}
-    treffer: list[dict] = []
+    juengste: list[tuple[float, str, Path]] = []
+    laeufe: dict[str, int] = {}
     if not ausgaben.is_dir():
-        return treffer
+        return [], laeufe
     for job_dir in ausgaben.iterdir():
         if not job_dir.is_dir():
             continue
+        neu = []
         for datei in job_dir.glob("*.md"):
             try:
                 zeit = datei.stat().st_mtime
             except OSError:
                 continue
-            if zeit <= seit:
-                continue
-            try:
-                text = datei.read_text(encoding="utf-8", errors="replace").strip()
-            except OSError:
-                continue
-            treffer.append({
-                "auftrag": namen.get(job_dir.name, job_dir.name), "zeit": zeit,
-                "text": text[:AUSZUG] + ("…" if len(text) > AUSZUG else ""),
-            })
-    treffer.sort(key=lambda t: t["zeit"], reverse=True)
-    return treffer
+            if zeit > seit:
+                neu.append((zeit, datei))
+        if neu:
+            auftrag = str(namen.get(job_dir.name, job_dir.name))
+            laeufe[auftrag] = laeufe.get(auftrag, 0) + len(neu)
+            juengste += [(zeit, auftrag, datei) for zeit, datei in sorted(neu, reverse=True)[:JE_AUFTRAG]]
+    treffer: list[dict] = []
+    for zeit, auftrag, datei in sorted(juengste, reverse=True)[:HOECHSTENS]:
+        try:
+            text = datei.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            continue
+        treffer.append({"auftrag": auftrag, "zeit": zeit, "text": text[:AUSZUG] + ("…" if len(text) > AUSZUG else "")})
+    return treffer, laeufe
 
 
 def wartende_raeume() -> list[dict]:
-    """Räume, deren Raumleiter auf den Menschen wartet; die Räume liegen neben der Hermes-Wurzel, nicht im Profil."""
+    """Räume, in denen etwas liegen geblieben ist – abgelesen an der Art ihrer Ereignisse, nicht an
+    Worten: eine gescheiterte Runde, oder eine Wortmeldung des Menschen, auf die niemand geantwortet
+    hat und an der niemand arbeitet. Die Räume liegen neben der Hermes-Wurzel, nicht im Profil."""
     try:
-        from tikki.werkzeuge.suite_takt import alle_raeume
+        from tikki.werkzeuge import raeume
+
+        lagen = [raeume.lage(r) for r in raeume.liste()] if raeume.db_pfad().is_file() else []
     except Exception:
         return []
-    try:
-        return [
-            {"titel": r.titel, "brauche": r.brauche, "stand": r.stand}
-            for r in alle_raeume() if r.brauche
-        ][:10]
-    except Exception:
-        return []
+    return [
+        {"titel": l["name"], "gescheitert": l["gescheitert"], "unbeantwortet": l["unbeantwortet"]}
+        for l in lagen if l["gescheitert"] or l["unbeantwortet"]
+    ][:10]
 
 
-def neue_whatsapps(env: dict | None = None, timeout: float = 4.0) -> list[dict] | None:
-    env = os.environ if env is None else env
-    token = env.get("WA_BRIDGE_TOKEN")
+def neue_whatsapps(token: str | None = None, timeout: float = 4.0) -> list[dict] | None:
+    """Neue WhatsApps über die WA-Bridge; ohne ``token`` gilt ``WA_BRIDGE_TOKEN`` des Profils, in
+    dem der Aufruf läuft (Secret-Scope, nicht ``os.environ``)."""
+    if token is None:
+        from agent.secret_scope import get_secret
+
+        token = get_secret("WA_BRIDGE_TOKEN")
     if not token:
         return None
     try:
@@ -112,14 +128,17 @@ def neue_whatsapps(env: dict | None = None, timeout: float = 4.0) -> list[dict] 
     return treffer[:8]
 
 
-def sammeln(home: Path, *, stempeln: bool = True, mails: int = 12) -> dict:
-    """Alles für ein Briefing; setzt danach den Zeitpunkt, wenn *stempeln*."""
+def sammeln(*, stempeln: bool = True, mails: int = 12) -> dict:
+    """Alles für ein Briefing aus dem Profil, in dem der Aufruf läuft; setzt danach den Zeitpunkt,
+    wenn *stempeln*. ``erledigt_laeufe`` nennt je Auftrag alle Läufe seit dem letzten Mal – auch
+    die, deren Text nicht mehr in ``erledigt`` steht."""
     seit = letzter_stand()
-    ergebnis: dict = {"seit": seit, "jetzt": time.time(), "erledigt": erledigtes(seit)}
+    erledigt, laeufe = erledigtes(seit)
+    ergebnis: dict = {"seit": seit, "jetzt": time.time(), "erledigt": erledigt, "erledigt_laeufe": laeufe}
     zugang = post.zugang()
     if zugang is None:
         ergebnis["post"] = None
-        ergebnis["post_hinweis"] = "kein Postfach eingerichtet (TIKKI_MAIL_ADDRESS/TIKKI_MAIL_PASSWORD)"
+        ergebnis["post_hinweis"] = "kein Postfach eingerichtet (hermes pa postfach <adresse>, Passwort in der .env)"
     else:
         try:
             ergebnis["post"] = [post.als_dict(n) for n in post.Postfach(zugang).ungelesen(mails)]

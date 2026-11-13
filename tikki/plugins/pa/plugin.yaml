@@ -7,3 +7,36 @@ provides_tools:
   - briefing_sammeln
   - lokale_modelle
   - ressourcen_stand
+# Einstellungen je Profil: config.yaml → plugins.entries.pa.settings.<feld>. Nur das Passwort ist
+# ein Geheimnis und liegt in der .env des Profils.
+config_schema:
+  mail_address:
+    type: str
+    label: "Postfach"
+    description: "Adresse des Postfachs, das Tikki in diesem Profil liest und aus dem sie sendet (z. B. tikki@tikki.team)."
+  mail_password:
+    type: secret
+    env: TIKKI_MAIL_PASSWORD
+    label: "Postfach-Passwort"
+    description: "Passwort des Postfachs; steht in der .env des Profils, nie in config.yaml."
+  mail_freigabe:
+    type: list
+    default: []
+    label: "Senden ohne Nachfrage"
+    description: "Empfänger (Adresse oder @domain), an die Tikki ohne Freigabe senden darf. Für alle anderen fragt sie den Menschen; ohne sein Ja wird die Mail Entwurf."
+  mail_imap_host:
+    type: str
+    label: "IMAP-Server"
+    description: "Nur für fremde Server; Standard ist mail.tikki.email bzw. mail.<domain>."
+  mail_imap_port:
+    type: int
+    label: "IMAP-Port"
+    description: "Standard 993 (TLS); jeder andere Port verlangt STARTTLS."
+  mail_smtp_host:
+    type: str
+    label: "SMTP-Server"
+    description: "Standard ist der IMAP-Server."
+  mail_smtp_port:
+    type: int
+    label: "SMTP-Port"
+    description: "Standard 587 (STARTTLS); 465 ist TLS von Anfang an."

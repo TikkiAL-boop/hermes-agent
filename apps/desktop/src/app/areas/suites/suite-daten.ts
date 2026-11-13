@@ -132,23 +132,3 @@ export function ausgabenAusNachrichten(messages: readonly ChatMessage[]): Ausgab
 
   return [...seen.values()]
 }
-
-const TAKT = /(?:^|\n)[ \t>*_]*TAKT:[ \t*_]*([^\n]+)/g
-const AUS = new Set(['aus', 'stopp', 'stop', 'keiner', 'kein', 'nein', 'off', '-'])
-
-/** The room's standing schedule: the last `TAKT:` line from the person or the room lead; `aus` ends it. */
-export function taktAusNachrichten(messages: readonly ChatMessage[]): string | undefined {
-  let takt: string | undefined
-
-  for (const message of messages) {
-    if (message.role !== 'user' && message.role !== 'assistant') {
-      continue
-    }
-
-    for (const treffer of chatMessageText(message).matchAll(TAKT)) {
-      takt = treffer[1]!.replace(/[*_`]+$/g, '').trim()
-    }
-  }
-
-  return takt && !AUS.has(takt.toLowerCase()) ? takt : undefined
-}

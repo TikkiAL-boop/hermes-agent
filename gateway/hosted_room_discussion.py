@@ -26,6 +26,7 @@ from gateway.hosted_rooms_common import compact_json
 MAX_DISCUSSION_MEMBERS = 128
 MIN_DISCUSSION_MEMBERS = 2
 MAX_DISCUSSION_ROUNDS = 3
+# Published replies per user message; a roster larger than this still hears every member once (_message_budget).
 MAX_DISCUSSION_MESSAGES = 10
 MAX_DISCUSSION_DELTA_LINES = 24
 MAX_USER_TEXT_BYTES = 64 * 1024
@@ -615,6 +616,13 @@ def _effective_watermarks(
     return watermarks
 
 
+def _message_budget(room: DiscussionRoom) -> int:
+    """Published replies one user message may draw. The first round asks every addressed member in
+    roster order, so a budget below the roster size would end the Discussion before the members
+    seated last were ever asked."""
+    return max(MAX_DISCUSSION_MESSAGES, len(room.members))
+
+
 def plan_next_task(
     room_value: Any, events: Sequence[Mapping[str, Any]], *, local_profiles: Iterable[str],
     initial_watermarks: Mapping[tuple[str, str], int] | None = None) -> DiscussionDecision:
@@ -628,7 +636,7 @@ def plan_next_task(
         DiscussionDecision, discussion_event_id=discussion.event_id, source_event_seq=discussion.seq,
         thread_id=thread_id)
     thread_messages, discussion_messages, member_messages = _thread_messages(validated, discussion)
-    if len(member_messages) >= MAX_DISCUSSION_MESSAGES:
+    if len(member_messages) >= _message_budget(room):
         return decide("bounded", "max_messages")
     terminals = {
         (int(event.payload["round_index"]), str(event.payload["member_id"])) for event in validated

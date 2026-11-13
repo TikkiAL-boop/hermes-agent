@@ -20,7 +20,7 @@
 
 import { THEME_PRESET_PALETTES } from '@hermes/shared'
 
-import { retintTheme } from './retint'
+import { TIKKI_COLORS, TIKKI_DARK_COLORS, TIKKI_DARK_TERMINAL, TIKKI_TERMINAL } from './tikki'
 import type { DesktopTheme, DesktopThemeTypography } from './types'
 
 // Color-emoji fonts to append to every stack as a last resort. None of the UI
@@ -397,17 +397,19 @@ export const slateTheme: DesktopTheme = {
 }
 
 /**
- * Tikki — the Nous skin re-seeded with the yellow of the Tikki design (Thorsten, 29.09.: „Grundfarbe gelb“)
- * (`assets/tikki/tikki-logo-original.png`), so chrome, accents and the
- * terminal palette match the app icon. Light and dark both derive from
- * the one seed via `retintTheme`, which keeps AA contrast as a floor.
+ * Tikki — warm paper in light, warm umber in dark, gold only as an accent.
+ * The palette is hand-tuned (see ./tikki.ts); fonts are the platform's own,
+ * so nothing is fetched from the network to draw the room.
  */
-export const TIKKI_ACCENT = '#f2c200'
 export const tikkiTheme: DesktopTheme = {
-  ...retintTheme(nousTheme, TIKKI_ACCENT),
   name: 'tikki',
   label: 'Tikki',
-  description: 'Tikki yellow: glass, light and warm chrome'
+  description: 'Warm paper, soft light and a trace of gold',
+  colors: TIKKI_COLORS,
+  darkColors: TIKKI_DARK_COLORS,
+  typography: { fontSans: SYSTEM_SANS, fontMono: SYSTEM_MONO, fontUrl: undefined },
+  terminal: TIKKI_TERMINAL,
+  darkTerminal: TIKKI_DARK_TERMINAL
 }
 
 export const BUILTIN_THEMES: Record<string, DesktopTheme> = {

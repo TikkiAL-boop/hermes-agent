@@ -3,7 +3,9 @@
 Prüft jede Schicht einzeln und sagt, was fehlt – ohne je einen Schlüsselwert zu zeigen:
 
     Zweig        der Checkout steht auf tikki-app und enthält die Hermes-Basis
-    Rollen       jede Rolle aus rollen/KATALOG.json hat ihr Profil mit config.yaml
+    Update       ein nacktes `hermes update` kann nicht auf main umschalten
+    Rollen       jede Rolle aus rollen/KATALOG.json hat ihr Profil mit config.yaml, und die
+                 Profile sind auf dem Stand von Katalog und Vorlage
     Vorzimmer    das aktive Profil ist tikki
     Gedächtnis   das Plugin gedaechtnis ist in jedem Profil verlinkt und eingeschaltet
     Takt         Raumleiter-Takt und Wachhalter-Rundgang stehen als Cronjob bereit und laufen
@@ -38,7 +40,8 @@ REPO = Path(__file__).resolve().parents[2]
 TIKKI = REPO / "tikki"
 ZWEIG = "tikki-app"
 #: Cronjobs, die rollen-einrichten.sh anlegt: Profil → Jobname.
-CRONJOBS = {"raumleiter": "tikki-takt", "wachhalter": "tikki-rundgang"}
+#: Die Daueraufträge des Hauses. Raum-Takte sind Hermes-Zeitpläne je Raum und stehen nicht hier.
+CRONJOBS = {"wachhalter": "tikki-rundgang"}
 
 OK, WARNUNG, FEHLER = "ok", "warnung", "fehler"
 ZEICHEN = {OK: "✓", WARNUNG: "⚠", FEHLER: "✗"}
@@ -80,10 +83,32 @@ def _config(profil: Path) -> dict:
     return (YAML(typ="safe").load(pfad.read_text(encoding="utf-8")) or {}) if pfad.is_file() else {}
 
 
+def pruefe_update_schalter(home: Path) -> Punkt:
+    """Ohne ``updates.auto_switch_parked_branch: false`` im Hauptprofil schaltet ein nacktes
+    ``hermes update`` (auch ``/update`` im Chat) den Checkout auf ``main`` um – Tikki wäre weg."""
+    updates = _config(home).get("updates")
+    if isinstance(updates, dict) and updates.get("auto_switch_parked_branch") is False:
+        return Punkt("Update", OK, f"Updates bleiben auf {ZWEIG} (tikki/werkzeuge/tikki-update.sh)")
+    return Punkt("Update", WARNUNG, f"ein nacktes hermes update würde von {ZWEIG} auf main umschalten"
+                 " → hermes -p default config set updates.auto_switch_parked_branch false")
+
+
 def pruefe_rollen(profile: Path) -> Punkt:
     fehlend = [e["hermes_profil"] for e in katalog() if not (profile / e["hermes_profil"] / "config.yaml").is_file()]
     if fehlend:
         return Punkt("Rollen", FEHLER, "ohne Profil: " + ", ".join(fehlend) + " → tikki/werkzeuge/rollen-einrichten.sh")
+    # Der Code kann neuer sein als die Profile: /update und der Update-Knopf der App holen den Zweig,
+    # richten die Rollen aber nicht nach (das tut nur tikki-update.sh bzw. der Installer).
+    from tikki.werkzeuge import rollen_config
+
+    veraltet = [
+        e["hermes_profil"] for e in katalog()
+        if rollen_config.veraltet(str(TIKKI / "rollen" / "KATALOG.json"), str(TIKKI / "hermes" / "vorlage-rolle.yaml"),
+                                  e["slug"], str(profile / e["hermes_profil"] / "config.yaml"))
+    ]
+    if veraltet:
+        return Punkt("Rollen", WARNUNG, "nicht auf dem Stand von Katalog und Vorlage: " + ", ".join(veraltet[:8])
+                     + (" …" if len(veraltet) > 8 else "") + " → tikki/werkzeuge/rollen-einrichten.sh")
     return Punkt("Rollen", OK, f"{len(katalog())} Profile eingerichtet")
 
 
@@ -136,7 +161,7 @@ def pruefe_takt(profile: Path) -> Punkt:
                           "Cronjob abgeschaltet: " + ", ".join(aus) + " → hermes -p <profil> cron enable" if aus else ""])))
     if kaputt:
         return Punkt("Takt", WARNUNG, "letzter Lauf gescheitert – " + "; ".join(kaputt) + " → hermes -p <profil> cron logs")
-    return Punkt("Takt", OK, "Raumleiter-Takt (5 min) und Wachhalter-Rundgang (15 min) angelegt")
+    return Punkt("Takt", OK, "Wachhalter-Rundgang (15 min) angelegt; Raum-Takte sind Hermes-Zeitpläne je Raum")
 
 
 def pruefe_raum(home: Path) -> Punkt:
@@ -192,6 +217,28 @@ def _env_namen(pfad: Path) -> set[str]:
 ANBIETER_HINWEIS = {"cursor": "Endpunkt prüfen, Katalog ggf. auf xai umstellen"}
 
 
+def katalog_modelle() -> dict[str, set[str]]:
+    """Anbieter → Modell-Kennungen, die der Katalog für ihn nennt (Haupt-, Ausweich-, weitere Modelle)."""
+    modelle: dict[str, set[str]] = {}
+    for rolle in katalog():
+        kette = rolle.get("modell") or {}
+        for eintrag in (kette.get("primary"), kette.get("fallback"), *kette.get("weitere", [])):
+            anbieter, _, kennung = str(eintrag or "").partition("/")
+            if kennung:
+                modelle.setdefault(anbieter, set()).add(kennung)
+    return modelle
+
+
+def _modell_kennungen(antwort: bytes) -> set[str]:
+    """Die Kennungen aus einer ``GET /models``-Antwort; leer, wenn sie keine Liste nennt."""
+    try:
+        daten = json.loads(antwort.decode("utf-8", errors="replace"))
+    except ValueError:
+        return set()
+    liste = daten.get("data") if isinstance(daten, dict) else daten
+    return {str(e["id"]) for e in liste if isinstance(e, dict) and e.get("id")} if isinstance(liste, list) else set()
+
+
 def pruefe_anbieter(profile: Path, profil: str = "raumleiter") -> Punkt:
     """``GET {base_url}/models`` je Anbieter unter ``providers.*`` der Rollen-Config, dessen
     Schlüssel in der .env steht – ein falscher Cursor-Endpunkt fällt so vor dem ersten Raum auf."""
@@ -208,16 +255,24 @@ def pruefe_anbieter(profile: Path, profil: str = "raumleiter") -> Punkt:
             uebersprungen.append(name)
             continue
         anfrage = urllib.request.Request(f"{basis}/models", headers={"Authorization": f"Bearer {schluessel}"})
+        kennungen: set[str] = set()
         try:
             with urllib.request.urlopen(anfrage, timeout=5) as antwort:
                 befund = "" if antwort.status == 200 else f"HTTP {antwort.status}"
+                kennungen = _modell_kennungen(antwort.read()) if not befund else set()
         except urllib.error.HTTPError as e:
             befund = f"HTTP {e.code}"
         except OSError as e:
             befund = f"keine Verbindung ({getattr(e, 'reason', e)})"
+        # Nennt der Anbieter seine Modelle, muss jede Katalog-Kennung darunter sein: eine falsch
+        # geschriebene läuft sonst bei jedem Turn erst in den Fehler und dann auf das Ausweichmodell.
+        unbekannt = sorted(katalog_modelle().get(name, set()) - kennungen) if kennungen else []
         if befund:
             hinweis = ANBIETER_HINWEIS.get(name, "base_url und Schlüssel prüfen")
             warnungen.append(f"{name}: {befund} ({basis}/models) → {hinweis}")
+        elif unbekannt:
+            warnungen.append(f"{name}: kennt die Katalog-Modelle {', '.join(unbekannt)} nicht"
+                             " → Kennung in rollen/KATALOG.json berichtigen, dann rollen-einrichten.sh")
         else:
             ok.append(name)
     rest = f" (ohne Schlüssel übersprungen: {', '.join(uebersprungen)})" if uebersprungen else ""
@@ -300,7 +355,8 @@ def pruefe_app() -> Punkt:
         exe = installiert[0] / "Contents" / "MacOS" / name
         if app_ist_aelter(exe.stat().st_mtime if exe.is_file() else 0, code_zeit):
             return Punkt("App", FEHLER, f"{installiert[0]} ist älter als der Code (Stand {time.strftime('%d.%m. %H:%M', time.localtime(code_zeit))})"
-                         " → tikki/installieren.sh --ohne-kern (Tikki wird dafür beendet)")
+                         " → tikki/installieren.sh (holt den Stand und baut neu; Tikki wird dafür beendet)."
+                         " Nur lokal neu bauen: hermes desktop --build-only, dann tikki/installieren.sh --ohne-kern")
         return Punkt("App", OK, f"{installiert[0]}")
     if app_ist_aelter(gebaut.stat().st_mtime, code_zeit):
         return Punkt("App", FEHLER, f"{gebaut} ist älter als der Code → tikki/installieren.sh")
@@ -354,7 +410,8 @@ def pruefe_backend(hermes: str, warten: float = 120.0) -> Punkt:
 def alle(home: Path, *, app: bool, backend: bool, hermes: str) -> list[Punkt]:
     profile = home / "profiles"
     punkte = [
-        pruefe_zweig(), pruefe_rollen(profile), pruefe_vorzimmer(home), pruefe_gedaechtnis(profile),
+        pruefe_zweig(), pruefe_update_schalter(home), pruefe_rollen(profile), pruefe_vorzimmer(home),
+        pruefe_gedaechtnis(profile),
         pruefe_takt(profile), pruefe_schluessel(profile), pruefe_anbieter(profile), pruefe_sprache(profile),
         pruefe_raum(home), pruefe_gateway(),
     ]

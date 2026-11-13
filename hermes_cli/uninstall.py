@@ -912,10 +912,12 @@ def _macos_cache_leftover_dirs() -> "list[Path]":
     keyed by both the product name and the app id, and the Tauri setup binary does the
     same under its own pair of identifiers. ``gui_uninstall`` removes the userData dir
     (``Application Support/Hermes``) but never these (#62209)."""
+    from hermes_cli.desktop_identity import desktop_app_ids, desktop_app_names
+
     caches = Path.home() / "Library" / "Caches"
     return [
-        caches / "Hermes",
-        caches / "com.nousresearch.hermes",
+        *(caches / name for name in desktop_app_names()),
+        *(caches / app_id for app_id in desktop_app_ids()),
         caches / "hermes-setup",
         caches / "com.nousresearch.hermes.setup",
     ]

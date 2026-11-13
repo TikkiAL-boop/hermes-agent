@@ -42,7 +42,7 @@ BRANCH_EXPLICIT=0
 RELAUNCH_CWD="" SANDBOX_FALLBACK=0 RELAUNCH_ARGS=()
 NO_GATEWAY=0
 NO_UI=0 NO_MARKER_CLEANUP=0 SELF_TEST_UI=0 SELF_TEST_GATE=0 SELF_TEST_MARKER=0
-SELF_TEST_TCC_HEAL=0
+SELF_TEST_TCC_HEAL=0 SELF_TEST_MAC_BUNDLE=0
 HANDOFF_DAEMONIZED=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -64,6 +64,7 @@ while [ $# -gt 0 ]; do
     --self-test-ui) SELF_TEST_UI=1; shift ;;
     --self-test-gate) SELF_TEST_GATE=1; shift ;;
     --self-test-tcc-heal) SELF_TEST_TCC_HEAL=1; shift ;;
+    --self-test-mac-bundle) SELF_TEST_MAC_BUNDLE=1; shift ;;
     --daemonized) HANDOFF_DAEMONIZED=1; shift ;;
     --self-test-marker) SELF_TEST_MARKER=1; NO_UI=1; NO_MARKER_CLEANUP=1; shift ;;
     --) shift; RELAUNCH_ARGS=("$@"); shift $# ;;
@@ -390,12 +391,25 @@ linux_gate() {
   GATE=manual GATE_MSG="Update complete, but the rebuilt app can't relaunch itself (its sandbox helper needs root ownership). Reopen Hermes to finish."
 }
 
-mac_swap() {
-  local rebuilt="" c
-  for c in "$INSTALL_ROOT/apps/desktop/release/mac-arm64/Hermes.app" \
-           "$INSTALL_ROOT/apps/desktop/release/mac/Hermes.app"; do
-    [ -d "$c" ] && { rebuilt="$c"; break; }
+mac_rebuilt_bundle() { # the bundle the rebuild produced, named after the product
+  # (electron-builder: <productName>.app). The relaunch target's own name
+  # wins; an installed bundle from before a product rename takes whatever the
+  # build produced.
+  local dir c want
+  want="$(basename "$RELAUNCH_TARGET")"
+  for dir in "$INSTALL_ROOT/apps/desktop/release/mac-arm64" "$INSTALL_ROOT/apps/desktop/release/mac"; do
+    [ -d "$dir/$want" ] && { printf '%s' "$dir/$want"; return; }
   done
+  for dir in "$INSTALL_ROOT/apps/desktop/release/mac-arm64" "$INSTALL_ROOT/apps/desktop/release/mac"; do
+    for c in "$dir"/*.app; do
+      [ -d "$c" ] && { printf '%s' "$c"; return; }
+    done
+  done
+}
+
+mac_swap() {
+  local rebuilt
+  rebuilt="$(mac_rebuilt_bundle)"
 
   # Transactional swap: stage a full copy, move the old bundle aside, move
   # the copy in. Every step checked; a failed final move ROLLS BACK so the
@@ -673,6 +687,15 @@ if [ "$SELF_TEST_TCC_HEAL" -eq 1 ]; then
   tcc_anchor_heal "$INSTALL_ROOT/venv/bin" || true
   tcc_pick_update_invoke "$INSTALL_ROOT/venv/bin"
   echo "state=$TCC_HEAL_STATE invoke=${UPDATE_INVOKE[*]}"
+  exit 0
+fi
+
+if [ "$SELF_TEST_MAC_BUNDLE" -eq 1 ]; then
+  # Prints the rebuilt bundle mac_swap would install for the given
+  # --install-root/--relaunch-target and exits.
+  trap - EXIT
+  mac_rebuilt_bundle
+  echo
   exit 0
 fi
 

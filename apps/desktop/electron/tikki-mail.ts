@@ -11,7 +11,9 @@
 // mail volume does not justify a long-lived socket that must survive sleep
 // and network changes; the cost is a TLS handshake per click, which is fine.
 
-import { ImapFlow, type ListResponse } from 'imapflow'
+import { randomUUID } from 'node:crypto'
+
+import { ImapFlow, type ImapFlowOptions, type ListResponse } from 'imapflow'
 import { type ParsedMail, simpleParser } from 'mailparser'
 import nodemailer from 'nodemailer'
 
@@ -102,7 +104,11 @@ export function resolveMailServers(address: string, env: NodeJS.ProcessEnv = pro
   }
 }
 
-/** `name@tikki.team` is the only accepted shape: lowercase, one `@`, a domain with a dot. */
+/**
+ * A full address in the shape of `name@tikki.team`: lowercased, one `@`, a
+ * domain with a dot. The domain itself is not restricted; another domain signs
+ * in at `mail.<domain>` (resolveMailServers).
+ */
 export function normalizeMailAddress(raw: string): string | null {
   const value = String(raw ?? '')
     .trim()
@@ -133,9 +139,45 @@ export interface MailStoreIo {
   log?(message: string): void
 }
 
-/** Optional env override so the SMTP leg can be pointed at a test relay. */
+/**
+ * Optional env override so the SMTP leg can be pointed at a test relay, and
+ * the two network factories so the IMAP and SMTP legs run against fakes.
+ */
 export interface MailServiceOptions {
   env?: NodeJS.ProcessEnv
+  createImapClient?: (options: ImapFlowOptions) => ImapFlow
+  createTransport?: typeof nodemailer.createTransport
+}
+
+type SecretRewrite = (secret: unknown) => unknown
+
+/**
+ * Re-encode the stored mailbox password in place. The secret-storage toggle
+ * and the legacy keychain migration walk every desktop secret store through
+ * this pair; a store they skip keeps its old encoding, which the next policy
+ * either leaves in plain text or can no longer read. Returns true when the
+ * store was rewritten; a missing or unreadable store has nothing to rewrite.
+ */
+export function rewriteMailStoreSecret(
+  io: Pick<MailStoreIo, 'readStoreText' | 'writeStoreText'>,
+  shouldRewrite: (secret: unknown) => boolean,
+  reencode: SecretRewrite
+): boolean {
+  let stored: StoredAccount | null
+
+  try {
+    stored = JSON.parse(io.readStoreText()) as StoredAccount | null
+  } catch {
+    return false
+  }
+
+  if (!stored || typeof stored !== 'object' || !shouldRewrite(stored.password)) {
+    return false
+  }
+
+  io.writeStoreText(JSON.stringify({ ...stored, password: reencode(stored.password) }))
+
+  return true
 }
 
 export class TikkiMailService {
@@ -192,14 +234,31 @@ export class TikkiMailService {
   }
 
   private client(account: MailAccount): ImapFlow {
-    return new ImapFlow({
+    const { host, port, secure } = account.servers.imap
+    const create = this.options.createImapClient ?? (options => new ImapFlow(options))
+
+    const client = create({
       auth: { pass: account.password, user: account.address },
-      host: account.servers.imap.host,
+      // Off the TLS port the password may only travel after STARTTLS. Left
+      // unset, imapflow upgrades "if available" and logs in over clear text
+      // when someone on the path strips STARTTLS from the capabilities.
+      doSTARTTLS: !secure,
+      host,
       logger: false,
-      port: account.servers.imap.port,
-      secure: account.servers.imap.secure,
+      port,
+      secure,
       socketTimeout: 60_000
     })
+
+    // imapflow reports a connection that dies after connect() (network gone,
+    // socket timeout) as an 'error' event. Without a listener Node turns that
+    // into an uncaught exception in the main process; the command in flight
+    // rejects on its own, so the event only needs a log line.
+    client.on('error', error => {
+      this.io.log?.(`[tikki-mail] IMAP connection to ${host} failed: ${error?.message ?? error}`)
+    })
+
+    return client
   }
 
   private async withImap<T>(account: MailAccount, run: (client: ImapFlow) => Promise<T>): Promise<T> {
@@ -322,10 +381,11 @@ export class TikkiMailService {
         const parsed: ParsedMail = await simpleParser(message.source)
         const summary = summarize(message)
 
-        // Reading marks the message seen, like every mail client.
+        // Reading marks the message seen, like every mail client. A read-only
+        // folder refuses the flag; the message is still readable, it just
+        // stays unseen, and the answer says so.
         if (!summary.seen) {
-          await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true }).catch(() => {})
-          summary.seen = true
+          summary.seen = await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true }).catch(() => false)
         }
 
         return {
@@ -356,11 +416,11 @@ export class TikkiMailService {
       const lock = await client.getMailboxLock(mailbox)
 
       try {
-        if (seen) {
-          await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true })
-        } else {
-          await client.messageFlagsRemove(String(uid), ['\\Seen'], { uid: true })
-        }
+        const stored = seen
+          ? await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true })
+          : await client.messageFlagsRemove(String(uid), ['\\Seen'], { uid: true })
+
+        requireAccepted(stored, 'Der Mailserver hat die Markierung nicht übernommen.')
       } finally {
         lock.release()
       }
@@ -377,11 +437,12 @@ export class TikkiMailService {
       const lock = await client.getMailboxLock(mailbox)
 
       try {
-        if (trash && trash.path !== mailbox) {
-          await client.messageMove(String(uid), trash.path, { uid: true })
-        } else {
-          await client.messageDelete(String(uid), { uid: true })
-        }
+        const removed =
+          trash && trash.path !== mailbox
+            ? await client.messageMove(String(uid), trash.path, { uid: true })
+            : await client.messageDelete(String(uid), { uid: true })
+
+        requireAccepted(removed, 'Der Mailserver hat das Löschen abgelehnt.')
       } finally {
         lock.release()
       }
@@ -396,7 +457,9 @@ export class TikkiMailService {
       throw new Error('Bitte einen Empfänger angeben.')
     }
 
-    const transport = nodemailer.createTransport({
+    const createTransport = this.options.createTransport ?? nodemailer.createTransport
+
+    const transport = createTransport({
       auth: { pass: account.password, user: account.address },
       host: account.servers.smtp.host,
       port: account.servers.smtp.port,
@@ -404,10 +467,16 @@ export class TikkiMailService {
       secure: account.servers.smtp.secure
     })
 
+    // The message is compiled twice, once for SMTP and once for the Sent
+    // copy. Left to nodemailer, each pass gets its own Message-ID and Date,
+    // and a reply to the delivered message no longer finds its copy. Both are
+    // fixed here, before the first pass.
     const message = {
       cc: input.cc?.trim() || undefined,
+      date: new Date(),
       from: account.address,
       inReplyTo: input.inReplyTo || undefined,
+      messageId: `<${randomUUID()}@${account.address.split('@')[1]}>`,
       references: input.references || undefined,
       subject: String(input.subject ?? ''),
       text: String(input.text ?? ''),
@@ -418,12 +487,17 @@ export class TikkiMailService {
 
     // Keep a copy in Sent so the thread is complete in every client.
     try {
-      const raw = await nodemailer.createTransport({ buffer: true, streamTransport: true }).sendMail(message)
+      const raw = await createTransport({ buffer: true, streamTransport: true }).sendMail(message)
       const boxes = await this.withImap(account, client => client.list())
       const sent = boxes.find(box => box.specialUse === '\\Sent')
 
       if (sent && Buffer.isBuffer(raw.message)) {
-        await this.withImap(account, client => client.append(sent.path, raw.message as Buffer, ['\\Seen']))
+        const copy = raw.message
+
+        requireAccepted(
+          await this.withImap(account, client => client.append(sent.path, copy, ['\\Seen'])),
+          `${sent.path} hat die Kopie nicht angenommen.`
+        )
       }
     } catch (error) {
       this.io.log?.(`[tikki-mail] could not file the sent copy: ${(error as Error)?.message ?? error}`)
@@ -461,7 +535,7 @@ function summarize(message: {
 
   return {
     answered: flags.has('\\Answered'),
-    date: env.date ? new Date(env.date).toISOString() : null,
+    date: isoDate(env.date),
     flagged: flags.has('\\Flagged'),
     from: addr(env.from),
     fromAddress: firstAddress(env.from),
@@ -471,6 +545,32 @@ function summarize(message: {
     subject: env.subject ?? '',
     to: addr(env.to),
     uid: message.uid
+  }
+}
+
+/**
+ * A message date as ISO text, or null. imapflow passes a `Date:` header it
+ * cannot parse through as the raw string; a sender controls that header, and
+ * one such message must not take the folder listing down with it.
+ */
+function isoDate(value: Date | string | undefined): string | null {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+/**
+ * imapflow answers a command the server refused (full Trash, read-only
+ * folder, unknown UID) with a falsy result instead of throwing. Turn that
+ * back into an error, so a refused change is never reported as done.
+ */
+function requireAccepted(result: unknown, message: string): void {
+  if (!result) {
+    throw new Error(message)
   }
 }
 

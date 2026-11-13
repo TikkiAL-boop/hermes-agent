@@ -31,6 +31,7 @@ function host(
   buttons: ConsentElement[]
 ): ConsentHost & { timers: (() => void)[]; mutate: () => void } {
   const timers: (() => void)[] = []
+
   let mutate = () => {}
 
   return {
@@ -50,6 +51,7 @@ function host(
 describe('pickGenericAccept', () => {
   test('accepts a German "Alle akzeptieren" inside a cookie container', () => {
     const clicked: string[] = []
+
     const pick = pickGenericAccept([
       el({ ancestorAttrs: 'div#cookie-banner', text: 'Ablehnen' }, clicked),
       el({ ancestorAttrs: 'div#cookie-banner', text: 'Alle akzeptieren' }, clicked)
@@ -67,6 +69,7 @@ describe('pickGenericAccept', () => {
     // its own; an `<a>` clicked there navigates the guest. "banner", "privacy"
     // and "tracking" say nothing about cookies.
     const clicked: string[] = []
+
     const list = [
       el({ ancestorAttrs: 'class=banner', text: 'OK' }, clicked),
       el({ ancestorAttrs: 'id=privacy-footer', text: 'Accept' }, clicked),
@@ -175,6 +178,7 @@ describe('consentAllowedFor', () => {
 describe('acceptOnce', () => {
   test('a known consent manager wins over generic text matching', () => {
     const clicked: string[] = []
+
     const h = host({ '#onetrust-accept-btn-handler': [el({ attrs: 'id=onetrust-accept-btn-handler' }, clicked)] }, [
       el({ ancestorAttrs: 'cookie', text: 'Accept' }, clicked)
     ])

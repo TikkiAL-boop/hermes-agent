@@ -5,7 +5,10 @@ import path from 'node:path'
 
 import { test } from 'vitest'
 
+import { buildStampPayload, fromCI } from '../scripts/write-build-stamp.mjs'
+
 import {
+  buildInstallerRepoEnv,
   buildPinArgs,
   buildPosixPinArgs,
   cachedScriptPath,
@@ -109,6 +112,64 @@ test('existing-checkout bootstrap args keep branch but skip the packaged commit 
     }),
     ['--dir', '/tmp/hermes-agent', '--hermes-home', '/tmp/hermes', '--branch', 'main']
   )
+})
+
+// A fork's CI build is stamped with the fork's branch and commit. Upstream has
+// neither, so first launch on a clean machine has to fetch the installer AND
+// clone the core from the repository the build ran in.
+test('a CI build bootstraps from the repository it was built in', async () => {
+  const home = mkTmpHome()
+
+  try {
+    const ci = {
+      GITHUB_REF_NAME: 'tikki-app',
+      GITHUB_REPOSITORY: 'some-family/hermes-agent',
+      GITHUB_SHA: 'a'.repeat(40)
+    }
+
+    // The stamp exactly as the build bakes it into the packaged app.
+    const installStamp = buildStampPayload(fromCI(ci), {})
+    const downloads = []
+
+    await resolveInstallScript({
+      installStamp,
+      sourceRepoRoot: null,
+      hermesHome: home,
+      emit: () => {},
+      _download: async (ref, destPath, repository) => {
+        downloads.push({ ref, repository })
+        fs.mkdirSync(path.dirname(destPath), { recursive: true })
+        fs.writeFileSync(destPath, '#!/bin/sh\n')
+
+        return destPath
+      }
+    })
+
+    assert.deepEqual(downloads, [{ ref: ci.GITHUB_SHA, repository: ci.GITHUB_REPOSITORY }])
+
+    const cloneUrl = buildInstallerRepoEnv(installStamp, { env: {} }).HERMES_REPO_URL
+
+    assert.equal(new URL(cloneUrl).hostname, 'github.com')
+    assert.equal(new URL(cloneUrl).pathname.replace(/^\/|\.git$/g, ''), ci.GITHUB_REPOSITORY)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('the stamped repository never re-points an existing checkout, a user override or a malformed stamp', () => {
+  const installStamp = { commit: 'a'.repeat(40), branch: 'tikki-app', repository: 'some-family/hermes-agent' }
+
+  // Repair of an existing checkout: its origin is the user's, like the commit pin.
+  assert.deepEqual(buildInstallerRepoEnv(installStamp, { env: {}, freshInstall: false }), {})
+  // An explicit HERMES_REPO_URL in the app's environment stays in charge.
+  assert.deepEqual(buildInstallerRepoEnv(installStamp, { env: { HERMES_REPO_URL: 'https://example.org/x.git' } }), {})
+  // Stamps without a repository (local builds, older artifacts) leave the installer's default alone.
+  assert.deepEqual(buildInstallerRepoEnv({ commit: 'a'.repeat(40), branch: 'main' }, { env: {} }), {})
+
+  // The value becomes part of two URLs; anything that is not `owner/repo` is ignored.
+  for (const repository of ['../x', 'owner/..', 'a/b/c', 'https://evil.example/x', 'owner/re po', '', 42]) {
+    assert.deepEqual(buildInstallerRepoEnv({ ...installStamp, repository }, { env: {} }), {}, String(repository))
+  }
 })
 
 test('fallback install stamps use an unpinned branch ref', () => {

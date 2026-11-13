@@ -49,6 +49,41 @@ const IS_WINDOWS = process.platform === 'win32'
 const STAMP_COMMIT_RE = /^[0-9a-f]{7,40}$/i
 const FALLBACK_COMMIT_RE = /^0{7,40}$/
 const FALLBACK_BRANCH = 'main'
+const UPSTREAM_REPOSITORY = 'NousResearch/hermes-agent'
+// GitHub's own `owner/repo` alphabet; the value ends up in two URLs.
+const STAMP_REPOSITORY_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/
+
+/**
+ * The GitHub `owner/repo` this artifact was built from, or null when the stamp
+ * does not say (local and fallback builds, older artifacts). A fork's branch
+ * and pinned commit exist only in the fork, so both the installer download and
+ * the installer's clone have to go there.
+ */
+function stampRepository(installStamp): string | null {
+  const repository = installStamp?.repository
+
+  return typeof repository === 'string' && STAMP_REPOSITORY_RE.test(repository) ? repository : null
+}
+
+/**
+ * Environment that points install.sh / install.ps1 at the stamped repository.
+ * Fresh installs only, like the commit pin: the installer reads an explicit
+ * HERMES_REPO_URL as "re-point origin" on an existing checkout, and a packaged
+ * app must not rewrite a remote the user already has. A HERMES_REPO_URL the
+ * user exported themselves always wins.
+ */
+function buildInstallerRepoEnv(
+  installStamp,
+  { freshInstall = true, env = process.env }: { freshInstall?: boolean; env?: NodeJS.ProcessEnv } = {}
+): Record<string, string> {
+  const repository = stampRepository(installStamp)
+
+  if (!freshInstall || !repository || env.HERMES_REPO_URL) {
+    return {}
+  }
+
+  return { HERMES_REPO_URL: `https://github.com/${repository}.git` }
+}
 
 function isPinnedCommit(commit) {
   return typeof commit === 'string' && STAMP_COMMIT_RE.test(commit) && !FALLBACK_COMMIT_RE.test(commit)
@@ -238,13 +273,13 @@ function cachedScriptPath(hermesHome, commit) {
   return path.join(bootstrapCacheDir(hermesHome), `install-${commit}.${process.platform === 'win32' ? 'ps1' : 'sh'}`)
 }
 
-function downloadInstallScript(ref, destPath) {
+function downloadInstallScript(ref, destPath, repository = UPSTREAM_REPOSITORY) {
   // Fetch from GitHub raw at the install ref. Normal production builds pass a
   // pinned SHA (immutable). Non-git fallback builds pass an unpinned branch
   // ref so local builds can still bootstrap without pretending the all-zero
   // placeholder is a real GitHub commit.
   const scriptName = installScriptName()
-  const url = `https://raw.githubusercontent.com/NousResearch/hermes-agent/${ref}/scripts/${scriptName}`
+  const url = `https://raw.githubusercontent.com/${repository}/${ref}/scripts/${scriptName}`
 
   return new Promise((resolve, reject) => {
     fs.mkdirSync(path.dirname(destPath), { recursive: true })
@@ -378,7 +413,7 @@ async function resolveInstallScript({
   })
 
   try {
-    await _download(installRef.ref, cached)
+    await _download(installRef.ref, cached, stampRepository(installStamp) || UPSTREAM_REPOSITORY)
     emit({ type: 'log', line: `[bootstrap] saved to ${cached}` })
 
     return { path: cached, source: 'download', commit: resolvedCommit, kind: installScriptKind() }
@@ -479,7 +514,7 @@ function cleanInstallerLogLine(raw: string): string {
   return frames.length ? frames[frames.length - 1] : ''
 }
 
-function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, hermesHome }: any = {}) {
+function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, hermesHome, installerEnv }: any = {}) {
   return new Promise<any>((resolve, reject) => {
     const ps = process.platform === 'win32' ? resolveWindowsPowerShell() : 'pwsh'
     const fullArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, ...args]
@@ -491,6 +526,7 @@ function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, herme
         stdio: ['ignore', 'pipe', 'pipe'],
         env: {
           ...process.env,
+          ...installerEnv,
           // Pass HERMES_HOME through so install.ps1 respects the caller's
           // choice rather than re-computing the default.
           HERMES_HOME: hermesHome || process.env.HERMES_HOME || ''
@@ -586,12 +622,13 @@ function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, herme
   })
 }
 
-function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome }: any = {}) {
+function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome, installerEnv }: any = {}) {
   return new Promise<any>((resolve, reject) => {
     const child = spawn('bash', [scriptPath, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
+        ...installerEnv,
         HERMES_HOME: hermesHome || process.env.HERMES_HOME || ''
       }
     })
@@ -727,6 +764,7 @@ async function fetchManifest({
   activeRoot,
   installStamp,
   pinCommit,
+  installerEnv,
   abortSignal
 }) {
   abortSignal?.throwIfAborted()
@@ -740,7 +778,8 @@ async function fetchManifest({
     emit,
     stageName: '__manifest__',
     abortSignal,
-    hermesHome
+    hermesHome,
+    installerEnv
   })
 
   if (result.code !== 0) {
@@ -805,7 +844,8 @@ async function runStage({
   activeRoot,
   abortSignal,
   installStamp,
-  pinCommit
+  pinCommit,
+  installerEnv
 }) {
   const startedAt = Date.now()
   emit({ type: 'stage', name: stage.name, state: 'running' })
@@ -826,7 +866,8 @@ async function runStage({
     emit,
     stageName: stage.name,
     abortSignal,
-    hermesHome
+    hermesHome,
+    installerEnv
   })
 
   const durationMs = Date.now() - startedAt
@@ -961,6 +1002,7 @@ async function runBootstrap(opts) {
   try {
     const existingCheckout = hasExistingGitCheckout(activeRoot)
     const pinCommit = !existingCheckout
+    const installerEnv = buildInstallerRepoEnv(installStamp, { freshInstall: !existingCheckout })
 
     if (existingCheckout && installStamp && installStamp.commit) {
       emit({
@@ -986,6 +1028,7 @@ async function runBootstrap(opts) {
       activeRoot,
       installStamp,
       pinCommit,
+      installerEnv,
       abortSignal
     })
 
@@ -1017,7 +1060,8 @@ async function runBootstrap(opts) {
         activeRoot,
         abortSignal,
         installStamp,
-        pinCommit
+        pinCommit,
+        installerEnv
       })
 
       if (ev.state === 'failed') {
@@ -1078,6 +1122,7 @@ async function runBootstrap(opts) {
 }
 
 export {
+  buildInstallerRepoEnv,
   buildPinArgs,
   buildPosixPinArgs,
   cachedScriptPath,

@@ -149,8 +149,6 @@ export interface MailServiceOptions {
   createTransport?: typeof nodemailer.createTransport
 }
 
-type SecretRewrite = (secret: unknown) => unknown
-
 /**
  * Re-encode the stored mailbox password in place. The secret-storage toggle
  * and the legacy keychain migration walk every desktop secret store through
@@ -161,7 +159,7 @@ type SecretRewrite = (secret: unknown) => unknown
 export function rewriteMailStoreSecret(
   io: Pick<MailStoreIo, 'readStoreText' | 'writeStoreText'>,
   shouldRewrite: (secret: unknown) => boolean,
-  reencode: SecretRewrite
+  reencode: (secret: unknown) => unknown
 ): boolean {
   let stored: StoredAccount | null
 

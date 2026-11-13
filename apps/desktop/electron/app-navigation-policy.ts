@@ -34,19 +34,33 @@ function parse(url: string): URL | null {
   }
 }
 
+/**
+ * A URL path with its percent-escapes resolved. Node (`pathToFileURL`) and
+ * Chromium do not escape the same characters, so the same file can arrive in
+ * two spellings; a malformed escape is compared as written.
+ */
+function plainPath(url: URL): string {
+  try {
+    return decodeURIComponent(url.pathname)
+  } catch {
+    return url.pathname
+  }
+}
+
 /** Same document, whatever the hash: scheme, host, path and query all agree. */
 const sameDocument = (a: URL, b: URL) =>
-  a.protocol === b.protocol && a.host === b.host && a.pathname === b.pathname && a.search === b.search
+  a.protocol === b.protocol && a.host === b.host && plainPath(a) === plainPath(b) && a.search === b.search
 
 /**
  * Does this URL belong to the app itself? A dev server owns its whole origin;
  * a packaged app owns one file, not the filesystem around it.
  */
 function isAppUrl(url: URL, entries: readonly URL[]): boolean {
-  return entries.some(entry =>
-    entry.protocol === 'file:'
-      ? url.protocol === 'file:' && url.host === entry.host && url.pathname === entry.pathname
-      : url.protocol === entry.protocol && url.host === entry.host
+  return entries.some(
+    entry =>
+      url.protocol === entry.protocol &&
+      url.host === entry.host &&
+      (entry.protocol !== 'file:' || plainPath(url) === plainPath(entry))
   )
 }
 
@@ -63,16 +77,21 @@ function isAppUrl(url: URL, entries: readonly URL[]): boolean {
  */
 export function classifyAppNavigation(targetUrl: string, context: AppNavigationContext): AppNavigationVerdict {
   const target = parse(targetUrl)
+  const current = parse(context.currentUrl)
+
+  // A reload changes nothing about what the window shows.
+  if (target && current && sameDocument(target, current)) {
+    return 'allow'
+  }
+
   const entries = context.entryUrls.map(parse).filter((entry): entry is URL => entry !== null)
 
   if (!target || !isAppUrl(target, entries)) {
     return 'external'
   }
 
-  const current = parse(context.currentUrl)
-
   if (current && isAppUrl(current, entries)) {
-    return sameDocument(target, current) ? 'allow' : 'deny'
+    return 'deny'
   }
 
   return entries.some(entry => sameDocument(target, entry)) ? 'allow' : 'deny'

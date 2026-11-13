@@ -158,6 +158,29 @@ function restorePlatform() {
   }
 }
 
+// The tray menu is native: no renderer string table reaches it, so it has to
+// take the product name from the running app, entry by entry.
+test('every tray menu entry names the running app', async () => {
+  const appName = 'Beispielprodukt'
+  Object.assign(native.app, { name: appName })
+
+  try {
+    const { controller } = setup()
+    await controller.start()
+    await controller.setEnabled(true)
+
+    const labels: string[] = native.trays[0].menu.flatMap((item: { label?: string }) => item.label ?? [])
+
+    expect(labels.length).toBeGreaterThan(1)
+
+    for (const label of labels) {
+      expect(label).toContain(appName)
+    }
+  } finally {
+    Object.assign(native.app, { name: undefined })
+  }
+})
+
 test('tray hide defers past the minimize dispatch (#119252)', async () => {
   const { controller, main } = setup()
   await controller.start()

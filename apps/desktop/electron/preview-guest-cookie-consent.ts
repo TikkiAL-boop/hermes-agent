@@ -219,12 +219,15 @@ export function pickGenericAccept(candidates: ConsentElement[]): ConsentElement 
     if (!el.visible || !el.text || el.text.length > 60) {
       continue
     }
+
     if (REJECT_TEXT.test(el.text) && !/^(?:alle|all)/i.test(el.text)) {
       continue
     }
+
     if (!ACCEPT_TEXT.test(el.text.replace(/\s+/g, ' '))) {
       continue
     }
+
     if (!looksLikeConsentContainer(el.ancestorAttrs, el.text) && !looksLikeConsentContainer(el.attrs, el.text)) {
       continue
     }

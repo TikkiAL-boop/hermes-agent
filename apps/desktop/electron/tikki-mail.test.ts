@@ -283,7 +283,9 @@ describe('TikkiMailService against a mail server', () => {
   })
 
   test('the copy filed in Sent is the message that went out', async () => {
-    const { clients, compiled, service } = signedIn({ boxes: [{ name: 'Gesendet', path: 'Sent', specialUse: '\\Sent' }] })
+    const { clients, compiled, service } = signedIn({
+      boxes: [{ name: 'Gesendet', path: 'Sent', specialUse: '\\Sent' }]
+    })
 
     const result = await service.send({ subject: 'Hallo', text: 'Text', to: 'karin@tikki.team' })
     const copy = clients.flatMap(client => client.appended)

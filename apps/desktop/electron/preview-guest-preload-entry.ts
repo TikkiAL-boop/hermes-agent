@@ -65,6 +65,7 @@ function ancestorSoup(node: Element): string {
   while (current && chain.length < MAX_ANCESTOR_DEPTH) {
     if (current instanceof ShadowRoot) {
       current = current.host
+
       continue
     }
 
@@ -92,6 +93,7 @@ function describe(node: Element): ConsentElement {
 /** querySelectorAll across the document and every open shadow root. */
 function deepQuery(selector: string): Element[] {
   const out: Element[] = []
+
   const walk = (root: Document | ShadowRoot) => {
     let found: NodeListOf<Element>
 

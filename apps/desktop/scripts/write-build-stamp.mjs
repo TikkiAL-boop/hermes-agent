@@ -42,7 +42,10 @@ export function fromCI(env = process.env) {
     commit: sha,
     branch: branch,
     dirty: false, // CI builds from a checkout-of-ref by definition
-    source: "ci"
+    source: "ci",
+    // The `owner/repo` that commit and branch live in. A fork's build has to
+    // bootstrap its core from the fork; upstream has neither.
+    ...(env.GITHUB_REPOSITORY ? { repository: env.GITHUB_REPOSITORY } : {})
   }
 }
 
@@ -233,7 +236,8 @@ export function buildStampPayload(stamp, env = process.env, platform = process.p
     displayVersion: channelBuild
       ? `${channelBuild.sourceVersion} (${channelBuild.channel} #${channelBuild.sequence}, ${channelBuild.commit.slice(0, 7)})`
       : stamp.displayVersion ?? version,
-    distance: stamp.distance ?? null
+    distance: stamp.distance ?? null,
+    ...(stamp.repository ? { repository: stamp.repository } : {})
   }
 
   if (channelBuild) base.channelBuild = channelBuild

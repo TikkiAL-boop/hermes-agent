@@ -21,6 +21,7 @@
 #   TIKKI_DIENSTE     Ablage der Dienste (Standard: ~/.tikki/dienste).
 #   TIKKI_HOME        Tikkis Ordner mit gedaechtnis.json (Standard: ~/.tikki).
 set -euo pipefail
+umask 077   # Schlüsseldateien (<instanz>.key, <instanz>.env) nur für den Besitzer
 
 TDAI_REPO="https://github.com/TencentCloud/TencentDB-Agent-Memory.git"
 TDAI_SHA="29bb8dffa9b11617316d50f21d7a8af9f47240be"
@@ -90,20 +91,26 @@ starten() {
   gueltig "$name"
   bauen
   konfig "$name"
-  [ -s "$ZIEL/$name.key" ] || { umask 077; openssl rand -hex 24 > "$ZIEL/$name.key"; }
+  [ -s "$ZIEL/$name.key" ] || openssl rand -hex 24 > "$ZIEL/$name.key"
   chmod 600 "$ZIEL/$name.key"
   mkdir -p "$ZIEL/daten/$name"
   port="$(eintragen "$name")"
   [ -n "${XAI_API_KEY:-}" ] || echo "Hinweis: XAI_API_KEY fehlt – Fakten und Szenen werden erst mit Schlüssel herausgezogen." >&2
+  # Die Schlüssel gehen über eine Datei an den Container, nicht als -e NAME=wert: so stehen sie
+  # nicht in der Prozessliste. printf ist ein Shell-Befehl ohne eigenen Prozess.
+  {
+    printf 'TDAI_GATEWAY_API_KEY=%s\n' "$(< "$ZIEL/$name.key")"
+    printf 'TDAI_LLM_API_KEY=%s\n' "${XAI_API_KEY:-}"
+    printf 'TDAI_LLM_BASE_URL=%s\n' "https://api.x.ai/v1"
+    printf 'TDAI_LLM_MODEL=%s\n' "grok-4.7"
+  } > "$ZIEL/$name.env"
+  chmod 600 "$ZIEL/$name.env"
   docker rm -f "tikki-tencent-$name" >/dev/null 2>&1 || true
   docker run -d --name "tikki-tencent-$name" --restart unless-stopped \
     -p "127.0.0.1:$port:8420" \
     -v "$ZIEL/$name.yaml:/data/config/tdai-gateway.yaml:ro" \
     -v "$ZIEL/daten/$name:/data/tdai-memory" \
-    -e TDAI_GATEWAY_API_KEY="$(cat "$ZIEL/$name.key")" \
-    -e TDAI_LLM_API_KEY="${XAI_API_KEY:-}" \
-    -e TDAI_LLM_BASE_URL="https://api.x.ai/v1" \
-    -e TDAI_LLM_MODEL="grok-4.7" \
+    --env-file "$ZIEL/$name.env" \
     "$BILD" >/dev/null
   for _ in $(seq 1 60); do
     curl -sf --max-time 2 "http://127.0.0.1:$port/health" >/dev/null 2>&1 && break

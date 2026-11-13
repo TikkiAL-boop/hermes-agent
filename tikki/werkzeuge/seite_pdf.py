@@ -10,8 +10,26 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.graphics.shapes import Drawing, Rect, Circle, String, Line, Polygon, Wedge
 
-pdfmetrics.registerFont(TTFont("DV", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
-pdfmetrics.registerFont(TTFont("DVB", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"))
+def schriften(kandidaten=None) -> tuple[str, str]:
+    """(normal, fett) als TrueType-Dateien: DejaVu, wo es liegt (Linux, auf dem Mac nach
+    ``brew install font-dejavu``), sonst Arial des Macs. Fehlt alles, sagt der Fehler, was zu tun ist."""
+    zuhause = Path.home()
+    for normal, fett in kandidaten or (
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+        (f"{zuhause}/Library/Fonts/DejaVuSans.ttf", f"{zuhause}/Library/Fonts/DejaVuSans-Bold.ttf"),
+        ("/Library/Fonts/DejaVuSans.ttf", "/Library/Fonts/DejaVuSans-Bold.ttf"),
+        ("/System/Library/Fonts/Supplemental/Arial.ttf", "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+        ("/Library/Fonts/Arial.ttf", "/Library/Fonts/Arial Bold.ttf"),
+    ):
+        if Path(normal).is_file() and Path(fett).is_file():
+            return normal, fett
+    raise SystemExit("Keine Schrift gefunden (DejaVu Sans oder Arial). Auf dem Mac: brew install font-dejavu")
+
+
+_NORMAL, _FETT = schriften()
+pdfmetrics.registerFont(TTFont("DV", _NORMAL))
+pdfmetrics.registerFont(TTFont("DVB", _FETT))
 pdfmetrics.registerFontFamily("DV", normal="DV", bold="DVB", italic="DV", boldItalic="DVB")
 
 GELB = colors.HexColor("#F2C230")

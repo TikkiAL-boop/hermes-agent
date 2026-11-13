@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import time
 import urllib.request
 from dataclasses import asdict, dataclass, field
@@ -52,6 +53,7 @@ class Modell:
     aktiv: str | None = None  # bei MoE: aktive Parameter je Token
     quant: str | None = None
     start: str = ""  # Startbefehl als Hinweis, mit 64k Kontext
+    hermes: str = ""  # wie das Modell in Hermes heißt, wenn der Server läuft (kein Befehl)
 
 
 @dataclass
@@ -65,7 +67,14 @@ def parameter_aus_name(name: str) -> tuple[str | None, str | None]:
     """„Qwen3-235B-A22B-4bit“ → („235B“, „22B“); „Llama-3.3-70B-Instruct-Q4_K_M“ → („70B“, None)."""
     klein = name.lower()
     for kenn, werte in sorted(_BEKANNT.items(), key=lambda kv: -len(kv[0])):
-        if kenn in klein:
+        stelle = klein.find(kenn)
+        if stelle < 0 or "distill" in klein:
+            continue
+        # Der bekannte Name gilt nur, solange der Rest keine andere Größe nennt: „DeepSeek-R1-Distill-
+        # Qwen-7B“ und „deepseek-r1:32b“ sind kleine Destillate, nicht das 671B-Original.
+        rest = name[:stelle] + " " + name[stelle + len(kenn):]
+        genannt = {f"{float(m.group(1).replace(',', '.')):g}B" for m in _PARAMETER.finditer(rest)}
+        if genannt <= set(werte):
             return werte
     exp = _EXPERTEN.search(name)
     if exp:
@@ -126,20 +135,32 @@ def _ist_mlx(ordner: Path) -> bool:
 
 
 def startbefehl(m: Modell) -> str:
+    """Startbefehl als Hinweis. Der Pfad kommt von der Platte (auch aus ~/Downloads) und wird für
+    die Shell maskiert: das Modell reicht den Befehl womöglich ans Terminal weiter. Nach dem
+    Befehl steht kein Kommentar mit Dateinamen – ein Zeilenumbruch im Namen würde ihn beenden."""
+    pfad = shlex.quote(m.pfad)
     if m.format == "gguf":
-        return f"llama-server -m '{m.pfad}' -c {KONTEXT_MINDESTENS} --port 8080"
+        return f"llama-server -m {pfad} -c {KONTEXT_MINDESTENS} --port 8080"
     if m.format == "mlx":
-        return f"mlx_lm.server --model '{m.pfad}' --port 8080  # Hermes: lokal/{Path(m.pfad).name}, context_length {KONTEXT_MINDESTENS}"
+        return f"mlx_lm.server --model {pfad} --port 8080"
     if m.format == "ollama":
-        return f"OLLAMA_CONTEXT_LENGTH={KONTEXT_MINDESTENS} ollama serve  # Hermes: lokal.base_url http://127.0.0.1:11434/v1, Modell lokal/{m.name}"
-    return f"vllm serve '{m.pfad}' --max-model-len {KONTEXT_MINDESTENS} --port 8000"
+        return f"OLLAMA_CONTEXT_LENGTH={KONTEXT_MINDESTENS} ollama serve"
+    return f"vllm serve {pfad} --max-model-len {KONTEXT_MINDESTENS} --port 8000"
+
+
+def hermes_hinweis(m: Modell) -> str:
+    if m.format == "mlx":
+        return f"lokal/{Path(m.pfad).name}, context_length {KONTEXT_MINDESTENS}"
+    if m.format == "ollama":
+        return f"lokal/{m.name}, providers.lokal.base_url http://127.0.0.1:11434/v1"
+    return ""
 
 
 def _modell(name: str, pfad: Path, format_: str, quelle: str, bytes_: int) -> Modell:
     gesamt, aktiv = parameter_aus_name(name)
     m = Modell(name=name, pfad=str(pfad), format=format_, quelle=quelle, gb=_gb(bytes_), parameter=gesamt, aktiv=aktiv,
                quant=quant_aus_name(name))
-    m.start = startbefehl(m)
+    m.start, m.hermes = startbefehl(m), hermes_hinweis(m)
     return m
 
 
@@ -243,7 +264,8 @@ def _hole(url: str, timeout: float) -> dict | list | None:
 def server_suchen(ports: dict[int, str] | None = None, timeout: float = 0.7, host: str = "127.0.0.1",
                   zusatz: list[str] | None = None) -> list[Server]:
     """Welche Modellserver antworten gerade – und mit welchen Modell-Kennungen (für ``lokal/<id>``)."""
-    adressen: list[tuple[str, str]] = [(f"http://{host}:{p}/v1", art) for p, art in (ports or PORTS).items()]
+    adressen: list[tuple[str, str]] = [
+        (f"http://{host}:{p}/v1", art) for p, art in (PORTS if ports is None else ports).items()]
     for z in zusatz or []:
         basis = z.rstrip("/")
         if basis and basis not in {a for a, _ in adressen}:

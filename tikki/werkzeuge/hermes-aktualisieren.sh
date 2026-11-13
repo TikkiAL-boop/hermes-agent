@@ -73,24 +73,30 @@ if ! git merge --no-edit -m "Tikki: Hermes-Update übernommen ($remote/main)" "$
 fi
 basis_schreiben() {
   # Der Update-Wächter der App vergleicht gegen diesen Stand.
-  local sha datum
+  local sha datum version
   sha="$(git rev-parse "$remote/main")"; datum="$(git log -1 --format=%cI "$sha")"
-  python3 - "$sha" "$datum" <<'PY'
+  # Die Version, die Hermes an diesem Stand von sich nennt (der Selbsttest zeigt sie an).
+  version="$(git show "$sha:hermes_cli/__init__.py" 2>/dev/null | sed -n 's/^__release_date__ *= *"\(.*\)".*/\1/p' | head -1)"
+  python3 - "$sha" "$datum" "$version" <<'PY'
 import json, sys
 from pathlib import Path
 p = Path("tikki/hermes-basis.json")
 d = json.loads(p.read_text(encoding="utf-8"))
 d["commit"], d["datum"] = sys.argv[1], sys.argv[2]
+if sys.argv[3]:
+    d["hermes_version"] = sys.argv[3]
 p.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
   git add tikki/hermes-basis.json
   git commit -q -m "Tikki: Hermes-Basis auf $sha gesetzt" || true
 }
 basis_schreiben
-# Rollen wirklich neu einrichten (idempotent; eingestellte Modelle bleiben): Cron-Skripte und
-# Konfigurationen folgen sonst dem neuen Stand nicht – ein Takt-Skript mit altem Argument
-# scheiterte so 25 Läufe lang, während der Selbsttest „✓“ zeigte.
-tikki/werkzeuge/rollen-einrichten.sh | tail -2
+# Erst prüfen, dann die laufenden Profile anfassen: scheitert eine Prüfung (set -e), bleiben die
+# Rollen auf dem Stand, mit dem sie gerade arbeiten.
 pruefen
+# Rollen wirklich neu einrichten (idempotent; was im Profil eingestellt wurde, bleibt): Cron-Skripte
+# und Konfigurationen folgen sonst dem neuen Stand nicht – ein Takt-Skript mit altem Argument
+# scheiterte so 25 Läufe lang, während der Selbsttest „✓“ zeigte.
+tikki/werkzeuge/rollen-einrichten.sh | tail -4
 echo
 echo "Update übernommen. Zum Veröffentlichen: git push origin tikki-app"

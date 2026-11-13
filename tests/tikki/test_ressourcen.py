@@ -54,6 +54,9 @@ def _katalog(port: int) -> list[dict]:
     ]
 
 
+LOKAL_BASIS = "http://127.0.0.1:8080/v1"
+
+
 def _profile(tmp_path: Path, port: int) -> Path:
     profile = tmp_path / ".hermes" / "profiles"
     profil = profile / "raumleiter"
@@ -64,12 +67,15 @@ def _profile(tmp_path: Path, port: int) -> Path:
         encoding="utf-8",
     )
     (profil / ".env").write_text(f"CURSOR_API_KEY={GEHEIM}\n# XAI_API_KEY=\n", encoding="utf-8")
+    lokal = profile / "raumleiter-lokal"
+    lokal.mkdir(exist_ok=True)
+    (lokal / "config.yaml").write_text(f"providers:\n  lokal:\n    base_url: \"{LOKAL_BASIS}\"\n", encoding="utf-8")
     return profile
 
 
 def _sammeln(tmp_path: Path, port: int, monkeypatch, *, server: list | None = None, abo: bool = False) -> dict:
     monkeypatch.setenv("TIKKI_HOME", str(tmp_path / ".tikki"))
-    monkeypatch.setattr(ressourcen, "_abo_angemeldet", lambda name: abo)
+    monkeypatch.setattr(ressourcen, "_abo_angemeldet", lambda name, profil: abo)
     return ressourcen.sammeln(
         katalog=_katalog(port), profile=_profile(tmp_path, port), umgebung={}, abos=False,
         lokal={"server": server or [], "modelle": [], "empfehlung": {}},
@@ -103,12 +109,50 @@ def test_404_heisst_nicht_erreichbar_und_frei_jetzt_ordnet_lokal_vor_abo_vor_api
     assert "nichts" in ressourcen.frei_zeile(stand)
 
     _Modelle.status = 200
-    lokal = [{"adresse": "http://127.0.0.1:1234/v1", "art": "lmstudio", "modelle": ["tikki-gross"]}]
+    lokal = [{"adresse": LOKAL_BASIS, "art": "config", "modelle": ["tikki-gross"]}]
     stand = _sammeln(tmp_path, server.server_port, monkeypatch, server=lokal, abo=True)
 
     assert [f["slug"] for f in stand["frei"]] == ["raumleiter-lokal", "raumleiter-anthropic", "raumleiter"]
     assert [f["weg"] for f in stand["frei"]] == ["lokal", "abo", "api"]
     assert ressourcen.frei_zeile(stand).startswith("Frei jetzt: raumleiter-lokal (Server läuft")
+
+
+def test_lokal_ist_nur_frei_wenn_der_server_des_klons_dessen_modell_fuehrt(tmp_path: Path, monkeypatch, server) -> None:
+    """Ein Ollama auf einem anderen Port oder ein Server ohne das Modell des Klons macht den
+    lokalen Klon nicht frei – er würde beim ersten Turn scheitern."""
+    _Modelle.status = 200
+    for fremd in (
+        [{"adresse": "http://127.0.0.1:11434/v1", "art": "ollama", "modelle": ["tikki-gross"]}],
+        [{"adresse": LOKAL_BASIS, "art": "config", "modelle": ["etwas-anderes"]}],
+    ):
+        stand = _sammeln(tmp_path, server.server_port, monkeypatch, server=fremd)
+        assert "raumleiter-lokal" not in [f["slug"] for f in stand["frei"]], fremd
+
+
+def test_abo_zaehlt_im_profil_des_klons_nicht_im_profil_des_fragenden(tmp_path: Path, monkeypatch, server) -> None:
+    """Abos werden je Rolle angemeldet. Fragt MR (ohne Claude-Anmeldung), ist der Claude-Klon frei,
+    wenn SEIN Profil angemeldet ist – und der Status wird wirklich in dessen Home erfragt."""
+    import hermes_cli.auth as auth
+    from hermes_constants import get_hermes_home
+
+    profile = _profile(tmp_path, server.server_port)
+    (profile / "raumleiter-anthropic").mkdir()
+    monkeypatch.setenv("TIKKI_HOME", str(tmp_path / ".tikki"))
+    gefragt: list[str] = []
+
+    def status(anbieter=None):
+        gefragt.append(get_hermes_home().name)
+        return {"logged_in": get_hermes_home().name == "raumleiter-anthropic"}
+
+    monkeypatch.setattr(auth, "get_auth_status", status)
+    vorher = get_hermes_home()
+    stand = ressourcen.sammeln(
+        katalog=_katalog(server.server_port), profile=profile, umgebung={}, abos=False,
+        lokal={"server": [], "modelle": [], "empfehlung": {}})
+
+    assert "raumleiter-anthropic" in [f["slug"] for f in stand["frei"]]
+    assert "raumleiter-anthropic" in gefragt and vorher.name not in gefragt
+    assert get_hermes_home() == vorher  # der Scope des Klons ist wieder verlassen
 
 
 def test_rundgang_liest_den_stand_nur_und_warnt_wenn_er_alt_ist(tmp_path: Path, monkeypatch, server) -> None:

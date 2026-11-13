@@ -88,23 +88,68 @@ def test_skill_roles_see_tikki_skills_every_builtin_hermes_skill_and_the_opencla
     assert not any(Path(o).is_relative_to(TIKKI.parent / "skills") for o in ordner[2:])
 
 
-@pytest.mark.parametrize("rolle", _rollen(), ids=lambda r: r["slug"])
-@pytest.mark.parametrize("plattform", ["api_server", "cli"])
-def test_plugin_toolsets_reach_only_the_roles_that_list_them(tmp_path, monkeypatch, rolle, plattform):
-    """Hermes treats a plugin toolset absent from ``known_plugin_toolsets`` as "new" and enables it
-    everywhere; the role's catalog ``werkzeuge`` must be the only thing that decides."""
+def test_rerun_keeps_what_was_changed_in_the_profile_and_still_delivers_catalog_changes(tmp_path):
+    """Settings made in Hermes (TTS voice, a Telegram platform, an MCP server, a toolset toggled
+    with ``hermes tools``) survive the next installer run; a catalog change the user did not touch
+    (a toolset the role gains or loses, a corrected model id) still arrives."""
     from ruamel.yaml import YAML
-    import hermes_cli.tools_config as tools_config
+    from hermes_cli.config import atomic_config_write
+    from hermes_yaml import roundtrip_yaml
 
-    plugin_toolsets = {"pa", "gedaechtnis"}
-    monkeypatch.setattr(tools_config, "_get_plugin_toolset_keys", lambda: set(plugin_toolsets))
-    ziel = tmp_path / "profiles" / rolle["hermes_profil"] / "config.yaml"
+    katalog = tmp_path / "rollen" / "KATALOG.json"
+    katalog.parent.mkdir()
+    eintraege = json.loads(KATALOG.read_text(encoding="utf-8"))
+    katalog.write_text(json.dumps(eintraege), encoding="utf-8")
+    ziel = tmp_path / "profiles" / "rechercheur" / "config.yaml"
     ziel.parent.mkdir(parents=True)
-    rollen_config.schreiben(str(KATALOG), str(VORLAGE), rolle["slug"], str(ziel))
-    cfg = YAML(typ="safe").load(ziel.read_text(encoding="utf-8"))
+    assert rollen_config.schreiben(str(katalog), str(VORLAGE), "rechercheur", str(ziel))
 
-    aktiv = set(tools_config._get_platform_tools(cfg, plattform)) & plugin_toolsets
-    assert aktiv == set(rolle["werkzeuge"]) & plugin_toolsets
+    stand = roundtrip_yaml().load(ziel.read_text(encoding="utf-8"))
+    stand["tts"]["edge"]["voice"] = "de-DE-ConradNeural"
+    stand["approvals"]["mode"] = "manual"
+    stand["platforms"]["telegram"] = {"enabled": True}
+    stand["mcp_servers"] = {"notizen": {"command": "notizen-mcp"}}
+    stand["platform_toolsets"]["cli"] = [*stand["platform_toolsets"]["cli"], "todo"]
+    atomic_config_write(ziel, stand)
+
+    rolle = next(e for e in eintraege if e["slug"] == "rechercheur")
+    rolle["werkzeuge"] = [w for w in rolle["werkzeuge"] if w != "browser"] + ["terminal"]
+    rolle["modell"]["primary"] = "xai/grok-korrigiert"
+    katalog.write_text(json.dumps(eintraege), encoding="utf-8")
+    assert rollen_config.schreiben(str(katalog), str(VORLAGE), "rechercheur", str(ziel))
+
+    cfg = YAML(typ="safe").load(ziel.read_text(encoding="utf-8"))
+    assert cfg["tts"]["edge"]["voice"] == "de-DE-ConradNeural" and cfg["approvals"]["mode"] == "manual"
+    assert cfg["platforms"]["telegram"] == {"enabled": True} and cfg["mcp_servers"] == {"notizen": {"command": "notizen-mcp"}}
+    assert set(cfg["platform_toolsets"]["cli"]) == set(rolle["werkzeuge"]) | {"todo"}
+    assert set(cfg["platform_toolsets"]["cron"]) == set(rolle["werkzeuge"])
+    assert cfg["model"]["provider"] + "/" + cfg["model"]["default"] == "xai/grok-korrigiert"
+    assert not rollen_config.schreiben(str(katalog), str(VORLAGE), "rechercheur", str(ziel))
+
+
+def test_profile_from_before_the_stamp_takes_the_new_toolsets_and_keeps_foreign_settings(tmp_path):
+    """A profile written before the merge stamp existed: what catalog and template define wins once
+    (as every run did before), everything else in the file is the user's and stays."""
+    from ruamel.yaml import YAML
+
+    ziel = tmp_path / "profiles" / "tikki" / "config.yaml"
+    ziel.parent.mkdir(parents=True)
+    ziel.write_text(
+        "model:\n  provider: xai\n  default: selbst-gewaehlt\n"
+        "platform_toolsets:\n  api_server: [gedaechtnis, pa, web]\n  cli: [gedaechtnis, pa, web]\n"
+        "known_plugin_toolsets:\n  cli: [gedaechtnis, pa]\n"
+        "mcp_servers:\n  notizen:\n    command: notizen-mcp\n", encoding="utf-8")
+
+    assert rollen_config.schreiben(str(KATALOG), str(VORLAGE), "tikki", str(ziel))
+
+    cfg = YAML(typ="safe").load(ziel.read_text(encoding="utf-8"))
+    rolle = next(r for r in _rollen() if r["slug"] == "tikki")
+    for oberflaeche in rollen_config.OBERFLAECHEN:
+        assert set(cfg["platform_toolsets"][oberflaeche]) == set(rolle["werkzeuge"]), oberflaeche
+        assert set(cfg["known_plugin_toolsets"][oberflaeche]) == set(rollen_config.PLUGIN_TOOLSETS), oberflaeche
+    assert cfg["mcp_servers"] == {"notizen": {"command": "notizen-mcp"}}
+    assert cfg["model"]["default"] == "selbst-gewaehlt"
+    assert cfg["platforms"]["api_server"]["extra"]["port"] == rolle["port"]
 
 
 def test_rerun_keeps_the_model_hermes_wrote_and_hermes_indentation(tmp_path, monkeypatch):

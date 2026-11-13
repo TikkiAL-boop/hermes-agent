@@ -63,5 +63,3 @@ TÜREN OFFEN: <Titel → Ziel>, … (oder: keine)
 - Kurz halten.
 - Nie den Tech-Stack oder Modellnamen bewerben.
 - Aufgaben werden zu Ende gebracht.
-- Wenn wirklich der Mensch gebraucht wird: eine Zeile, die mit `BRAUCHE:` beginnt, mit konkretem Vorschlag.
-- Ergebnisse im Raum-Chat berichten, nicht privat.

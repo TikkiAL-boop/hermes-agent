@@ -9,12 +9,16 @@ dann nicht gestempelt und Hermes holt das beim ersten Start nach.
 Unterbefehle (alle Pfade absolut):
 
     --pruefen                                      "ok", wenn ruamel.yaml importierbar ist
+    profilwurzel                                   der Ordner, in dem Hermes die Profile anlegt
     zeilen <katalog>                               slug<TAB>name<TAB>port je Rolle
     vorschau <katalog> <vorlage> <slug>            eine Zeile, was geschrieben würde
-    schreiben <katalog> <vorlage> <slug> <ziel> [--modelle-zuruecksetzen]
-                                                   config.yaml schreiben, wenn abweichend; eine
-                                                   vorhandene Datei behält model/fallback_providers
-                                                   (hermes model, Admin → Modelle), außer mit Flag
+    schreiben <katalog> <vorlage> <slug> <ziel> [--modelle-zuruecksetzen] [--frisch]
+                                                   config.yaml auf den Stand von Katalog und Vorlage
+                                                   bringen; eine vorhandene Datei wird gemischt: was
+                                                   im Profil geändert wurde (Hermes-Einstellungen,
+                                                   hermes tools, hermes model), bleibt. --frisch
+                                                   ersetzt sie (eben angelegtes Profil),
+                                                   --modelle-zuruecksetzen erzwingt die Katalogmodelle
     honcho <vorlage-honcho> <slug> <ziel>         honcho.json der Rolle schreiben, wenn abweichend
 """
 
@@ -25,6 +29,16 @@ import json
 import os
 import sys
 from pathlib import Path
+
+#: Toolsets, die die Tikki-Plugins anmelden (``tikki/plugins/*``); eine Rolle bekommt davon nur,
+#: was ihr Katalog nennt. Der Vertrag mit den Plugins steht in ``tests/tikki/test_plugins_echt.py``.
+PLUGIN_TOOLSETS = ("briefing", "gedaechtnis", "modelle", "post", "ressourcen")
+#: Oberflächen, auf denen jede Rolle läuft: HTTP-Dienst und Raum-Runden (``api_server``), Terminal
+#: und App (``cli``), Daueraufträge (``cron``).
+OBERFLAECHEN = ("api_server", "cli", "cron")
+#: Neben jeder config.yaml: was Tikki zuletzt festgelegt hat – die Basis für das Mischen.
+STEMPEL = "tikki-rolle.json"
+_FEHLT = object()
 
 
 def _vererben(eintraege: list[dict]) -> list[dict]:
@@ -65,6 +79,14 @@ def _einmischen(ziel, zusatz: dict) -> None:
             ziel[schluessel] = wert
 
 
+def profilwurzel() -> Path:
+    """Der Ordner, in dem ``hermes profile create`` Profile anlegt – von Hermes erfragt, damit
+    Skripte nie ``~/.hermes`` annehmen (eigenes ``HERMES_HOME``, Docker-Wurzel)."""
+    from hermes_constants import get_default_hermes_root
+
+    return get_default_hermes_root() / "profiles"
+
+
 def aktuelle_config_version() -> int | None:
     """Der Stand, den Hermes selbst stempeln würde. Ohne Hermes-Umgebung: None.
 
@@ -100,36 +122,17 @@ def _yaml():
         return yaml
 
 
-def _bestehende_modelle(ziel: str | None) -> dict:
-    """``model``/``fallback_providers`` einer vorhandenen config.yaml – was Thorsten über
-    ``hermes model`` oder Admin → Modelle gewählt hat, überlebt den nächsten Installer-Lauf."""
-    if not ziel or not Path(ziel).is_file():
-        return {}
-    try:
-        alt = _yaml().load(Path(ziel).read_text(encoding="utf-8")) or {}
-    except Exception:
-        return {}
-    if not isinstance(alt, dict):
-        return {}
-    return {
-        k: alt[k] for k, art in (("model", dict), ("fallback_providers", list))
-        if isinstance(alt.get(k), art)
-    }
+def soll_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None,
+                oberflaechen: tuple[str, ...] = OBERFLAECHEN):
+    """Was Tikki für die Rolle festlegt: die Vorlage, gefüllt mit Modellen, Werkzeugen und Port aus
+    dem Katalog (als Dokument mit den Kommentaren der Vorlage).
 
-
-def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None, *,
-                  modelle_zuruecksetzen: bool = False):
-    """Vorlage laden und mit Modellen, Werkzeugen und Port der Rolle füllen.
-
-    ``ziel`` (Pfad der config.yaml) verankert die Skill-Ordner (Tikki-Skills, alle eingebauten
-    Hermes-Skills, die OpenClaw-Bibliothek im Profil ``openclaw``) und liefert bei einer
-    vorhandenen Datei die gewählten Modelle; die Katalogmodelle gelten nur für eine neue Datei
-    oder mit ``modelle_zuruecksetzen``.
+    ``ziel`` (Pfad der config.yaml) verankert die Skill-Ordner: Tikki-Skills, alle eingebauten
+    Hermes-Skills und die OpenClaw-Bibliothek im Profil ``openclaw``.
     """
     rolle = _rolle(katalog, slug)
-    yaml = _yaml()
     with open(vorlage, encoding="utf-8") as f:
-        cfg = yaml.load(f)
+        cfg = _yaml().load(f)
 
     (p_prov, p_model), (f_prov, f_model) = _modelle(rolle)
     version = aktuelle_config_version()
@@ -141,20 +144,15 @@ def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None
         {"provider": prov, "model": model}
         for prov, model in (eintrag.split("/", 1) for eintrag in rolle["modell"].get("weitere", []))
     ]
-    if not modelle_zuruecksetzen:
-        for schluessel, wert in _bestehende_modelle(ziel).items():
-            cfg[schluessel] = wert
     cfg.setdefault("approvals", {})["mode"] = rolle.get("freigabe", "smart")
     werkzeuge = list(rolle.get("werkzeuge", []))
-    cfg.setdefault("platform_toolsets", {})
-    cfg["platform_toolsets"]["api_server"] = list(werkzeuge)
-    cfg["platform_toolsets"]["cli"] = list(werkzeuge)
-    # Plugin-Toolsets (heißen wie die Plugins: pa, gedaechtnis) gelten Hermes ohne diesen Eintrag
-    # als „neu“ und damit auf jeder Oberfläche als eingeschaltet – auch bei Rollen, die sie im
-    # Katalog nicht haben (hermes_cli/tools_config.py::_enabled_plugin_toolsets). Als „bekannt“
-    # eingetragen zählt allein die Werkzeugliste der Rolle.
-    plugin_toolsets = sorted(str(p) for p in (cfg.get("plugins") or {}).get("enabled") or [])
-    cfg["known_plugin_toolsets"] = {"api_server": list(plugin_toolsets), "cli": list(plugin_toolsets)}
+    # Dieselbe Werkzeugliste auf jeder Oberfläche, auf der die Rolle läuft – auch in ihren
+    # Daueraufträgen: ohne Eintrag für ``cron`` liefe der Rundgang des Wachhalters mit Hermes'
+    # vollem Cron-Satz. Und jedes Plugin-Toolset als „bekannt“: sonst hält Hermes es für neu und
+    # schaltet es dort ein, auch bei Rollen, die es im Katalog nicht haben
+    # (hermes_cli/tools_config.py::_enabled_plugin_toolsets).
+    cfg["platform_toolsets"] = {o: list(werkzeuge) for o in oberflaechen}
+    cfg["known_plugin_toolsets"] = {o: sorted(PLUGIN_TOOLSETS) for o in oberflaechen}
     api = cfg.setdefault("platforms", {}).setdefault("api_server", {})
     api["enabled"] = True
     api.setdefault("extra", {})["port"] = int(rolle["port"])
@@ -172,23 +170,178 @@ def rollen_config(katalog: str, vorlage: str, slug: str, ziel: str | None = None
             str(profile / "openclaw" / "skills"),
         ]
     _einmischen(cfg, rolle.get("einstellungen") or {})
-
-    buf = io.StringIO()
-    yaml.dump(cfg, buf)
-    return buf.getvalue()
+    return cfg
 
 
-def schreiben(katalog: str, vorlage: str, slug: str, ziel: str, *, modelle_zuruecksetzen: bool = False) -> bool:
-    """Schreibt config.yaml nur, wenn sich der Inhalt ändert. True = geschrieben."""
-    neu = rollen_config(katalog, vorlage, slug, ziel, modelle_zuruecksetzen=modelle_zuruecksetzen)
-    zielpfad = Path(ziel)
-    alt = zielpfad.read_text(encoding="utf-8") if zielpfad.exists() else None
-    if alt == neu:
-        return False
-    tmp = zielpfad.with_name(zielpfad.name + ".tmp")
-    tmp.write_text(neu, encoding="utf-8")
-    os.replace(tmp, zielpfad)
-    return True
+# ─── Mischen: was Tikki festlegt, was der Mensch im Profil geändert hat ──────
+
+
+def _schlicht(wert):
+    """Ein YAML-Dokument als schlichte dicts/Listen (zum Vergleichen und für den Stempel)."""
+    if isinstance(wert, dict):
+        return {str(k): _schlicht(v) for k, v in wert.items()}
+    if isinstance(wert, (list, tuple)):
+        return [_schlicht(v) for v in wert]
+    if isinstance(wert, (bool, int, float)) or wert is None:
+        return wert
+    return str(wert)
+
+
+def _skalarliste(wert) -> bool:
+    return isinstance(wert, list) and not any(isinstance(e, (dict, list)) for e in wert)
+
+
+def _schnitt(ist, soll):
+    """Der Teil von *ist*, den auch *soll* festlegt (gleiche Schlüssel, die Werte von *ist*)."""
+    if isinstance(ist, dict) and isinstance(soll, dict):
+        return {k: _schnitt(ist[k], soll[k]) for k in ist if k in soll}
+    return ist
+
+
+def _aenderungen(basis, soll, ist, pfad: tuple = ()) -> list[tuple[tuple, object]]:
+    """Drei-Wege-Mischen: was an *ist* zu ändern ist, damit Tikkis neue Festlegung (*soll*) ankommt,
+    ohne zu verlieren, was der Mensch seit dem letzten Lauf (*basis*) geändert hat.
+
+    Je Wert: steht er noch so da, wie Tikki ihn zuletzt schrieb, folgt er *soll*; sonst bleibt er.
+    Listen einfacher Werte (Werkzeuge, Plugins, Skill-Ordner) mischen je Eintrag. Rückgabe:
+    ``(Pfad, Wert)`` je Änderung, ``_FEHLT`` als Wert heißt löschen.
+    """
+    if isinstance(soll, dict) and isinstance(ist, dict) and (basis is _FEHLT or isinstance(basis, dict)):
+        basis = {} if basis is _FEHLT else basis
+        aus: list[tuple[tuple, object]] = []
+        for k in dict.fromkeys([*ist, *soll, *basis]):
+            aus += _aenderungen(basis.get(k, _FEHLT), soll.get(k, _FEHLT), ist.get(k, _FEHLT), (*pfad, k))
+        return aus
+    if _skalarliste(soll) and _skalarliste(ist) and (basis is _FEHLT or _skalarliste(basis)):
+        basis = [] if basis is _FEHLT else basis
+        gemischt = [e for e in ist if e in soll or e not in basis] + [e for e in soll if e not in basis and e not in ist]
+        return [] if gemischt == ist else [(pfad, gemischt)]
+    return [(pfad, soll)] if ist == basis and soll != ist else []
+
+
+def _kette(cfg: dict) -> tuple | None:
+    """Die Modellkette einer config: (Anbieter, Modell, Ausweichmodelle); None ohne Hauptmodell."""
+    modell = cfg.get("model")
+    if not isinstance(modell, dict) or not modell.get("provider") or not modell.get("default"):
+        return None
+    ausweich = cfg.get("fallback_providers")
+    return (str(modell["provider"]), str(modell["default"]), tuple(
+        (str(e.get("provider")), str(e.get("model"))) for e in (ausweich if isinstance(ausweich, list) else [])
+        if isinstance(e, dict)))
+
+
+def _anwenden(doc, aenderungen: list[tuple[tuple, object]]) -> None:
+    for pfad, wert in aenderungen:
+        knoten = doc
+        for schluessel in pfad[:-1]:
+            if not isinstance(knoten.get(schluessel), dict):
+                knoten[schluessel] = {}
+            knoten = knoten[schluessel]
+        if wert is _FEHLT:
+            knoten.pop(pfad[-1], None)
+        else:
+            knoten[pfad[-1]] = wert
+
+
+def _stempel_lesen(pfad: Path) -> dict | None:
+    try:
+        daten = json.loads(pfad.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    config = daten.get("config") if isinstance(daten, dict) else None
+    return config if isinstance(config, dict) else None
+
+
+def _ersetzen(pfad: Path, text: str) -> None:
+    tmp = pfad.with_name(pfad.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, pfad)
+
+
+def schreiben(katalog: str, vorlage: str, slug: str, ziel: str, *, modelle_zuruecksetzen: bool = False,
+              frisch: bool = False) -> bool:
+    """Die config.yaml der Rolle auf den Stand von Katalog und Vorlage bringen. True = geschrieben.
+
+    Eine neue Datei (oder ``frisch``: ein eben angelegtes Profil, dessen config.yaml noch nichts von
+    der Rolle weiß) ist die gefüllte Vorlage. Eine vorhandene wird gemischt (``_aenderungen``): was
+    der Mensch im Profil geändert hat (Hermes-Einstellungen, ``hermes tools``, ``hermes config
+    set``), bleibt; was Tikki zuletzt schrieb und nun anders festlegt, folgt. Tikkis letzte
+    Festlegung steht als Stempel neben der Datei (``tikki-rolle.json``).
+
+    Die Modellkette zählt als Ganzes: Sie folgt dem Katalog, solange der Mensch nicht davon
+    abgewichen ist (``hermes model``, Admin → Modelle); ``modelle_zuruecksetzen`` erzwingt den
+    Katalog. Ein Profil aus der Zeit vor dem Stempel behält ein vom Katalog abweichendes Modell –
+    ob es gewählt wurde oder nur älter ist, lässt sich dort nicht mehr sagen.
+    """
+    zielpfad, stempelpfad = Path(ziel), Path(ziel).with_name(STEMPEL)
+    yaml = _yaml()
+    ist_doc = None
+    if zielpfad.is_file() and not frisch:
+        try:
+            ist_doc = yaml.load(zielpfad.read_text(encoding="utf-8"))
+        except Exception:
+            ist_doc = None
+    if not isinstance(ist_doc, dict):
+        soll_doc = soll_config(katalog, vorlage, slug, ziel)
+        puffer = io.StringIO()
+        yaml.dump(soll_doc, puffer)
+        neu_text = puffer.getvalue()
+        geschrieben = not zielpfad.is_file() or zielpfad.read_text(encoding="utf-8") != neu_text
+        if geschrieben:
+            _ersetzen(zielpfad, neu_text)
+        _stempeln(stempelpfad, _schlicht(soll_doc))
+        return geschrieben
+
+    ist = _schlicht(ist_doc)
+    eigene = tuple(o for o in (ist.get("platform_toolsets") or {}) if o not in OBERFLAECHEN) \
+        if isinstance(ist.get("platform_toolsets"), dict) else ()
+    soll = _schlicht(soll_config(katalog, vorlage, slug, ziel, (*OBERFLAECHEN, *eigene)))
+    for o in eigene:  # eine Oberfläche des Menschen (Telegram …): seine Werkzeugliste, aber kein Plugin-Leck
+        soll["platform_toolsets"].pop(o)
+    basis = _stempel_lesen(stempelpfad)
+    stempel = json.loads(json.dumps(soll))
+    kette_basis = _kette(basis if basis is not None else soll)
+    if basis is None:
+        basis = _schnitt(ist, soll)
+    # Die Version stempelt und hebt Hermes selbst (Migration); eine vorhandene Datei gehört ihm.
+    modellteile = ("model", "fallback_providers")
+    for teil in (basis, soll, ist):
+        for schluessel in ("_config_version", *modellteile):
+            teil.pop(schluessel, None)
+    aenderungen = _aenderungen(basis, soll, ist)
+    kette_ist = _kette(_schlicht(ist_doc))
+    if (modelle_zuruecksetzen or kette_ist is None or kette_ist == kette_basis) and kette_ist != _kette(stempel):
+        aenderungen += [((teil,), stempel[teil]) for teil in modellteile]
+    if aenderungen:
+        _anwenden(ist_doc, aenderungen)
+        puffer = io.StringIO()
+        yaml.dump(ist_doc, puffer)
+        _ersetzen(zielpfad, puffer.getvalue())
+    _stempeln(stempelpfad, stempel)
+    return bool(aenderungen)
+
+
+def veraltet(katalog: str, vorlage: str, slug: str, ziel: str) -> bool:
+    """Ob die Rolle nicht mehr eingerichtet wurde, seit Katalog oder Vorlage sich geändert haben:
+    der Stempel neben der config.yaml ist nicht, was Tikki heute festlegen würde. So fällt auf,
+    wenn ein Update den Code geholt hat (``/update``, der Knopf in der App), ohne die Rollen
+    nachzuziehen – der Selbsttest fragt hier nach."""
+    stempel = _stempel_lesen(Path(ziel).with_name(STEMPEL))
+    if stempel is None:
+        return True
+    soll = _schlicht(soll_config(katalog, vorlage, slug, ziel))
+    for teil in (soll, stempel):
+        teil.pop("_config_version", None)  # die Version führt Hermes
+        bekannt = teil.get("known_plugin_toolsets")
+        if isinstance(bekannt, dict):  # Oberflächen, die der Mensch dazugenommen hat, zählen hier nicht
+            teil["known_plugin_toolsets"] = {o: bekannt.get(o) for o in OBERFLAECHEN}
+    return soll != stempel
+
+
+def _stempeln(pfad: Path, config: dict) -> None:
+    text = json.dumps({"config": config}, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
+    if not pfad.is_file() or pfad.read_text(encoding="utf-8") != text:
+        _ersetzen(pfad, text)
 
 
 def honcho_config(vorlage: str, slug: str) -> str:
@@ -223,6 +376,9 @@ def main(argv: list[str]) -> int:
 
         print("ok")
         return 0
+    if befehl == "profilwurzel":
+        print(profilwurzel())
+        return 0
     if befehl == "zeilen":
         (katalog,) = rest
         for eintrag in _katalog(katalog):
@@ -239,9 +395,10 @@ def main(argv: list[str]) -> int:
               f"port={rolle['port']} approvals={rolle['freigabe']} toolsets={rolle['werkzeuge']}{stempel}")
         return 0
     if befehl == "schreiben":
-        zuruecksetzen = "--modelle-zuruecksetzen" in rest
-        katalog, vorlage, slug, ziel = [r for r in rest if r != "--modelle-zuruecksetzen"]
-        if schreiben(katalog, vorlage, slug, ziel, modelle_zuruecksetzen=zuruecksetzen):
+        schalter = {"--modelle-zuruecksetzen", "--frisch"}
+        katalog, vorlage, slug, ziel = [r for r in rest if r not in schalter]
+        if schreiben(katalog, vorlage, slug, ziel, modelle_zuruecksetzen="--modelle-zuruecksetzen" in rest,
+                     frisch="--frisch" in rest):
             print(f"  config.yaml geschrieben: {ziel}")
         else:
             print("  config.yaml unverändert")
@@ -258,4 +415,5 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # ohne Hermes-Starter: hermes_constants aus dem Repo
     sys.exit(main(sys.argv[1:]))

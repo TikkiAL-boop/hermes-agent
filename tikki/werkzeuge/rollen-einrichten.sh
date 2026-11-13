@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Tikki – richtet für jede Rolle aus rollen/KATALOG.json ein Hermes-Profil ein.
 #
-# Idempotent: vorhandene Profile werden nicht neu angelegt, SOUL.md und config.yaml
-# werden auf den Stand des Repos gebracht; gewählte Modelle (hermes model, Admin →
-# Modelle) bleiben, außer mit --modelle-zuruecksetzen. Mit --dry-run wird nur angezeigt,
-# was passieren würde. Keine Geheimnisse werden geschrieben; Schlüssel kommen aus
-# Umgebungsvariablen (siehe README.md).
+# Idempotent: vorhandene Profile werden nicht neu angelegt, SOUL.md folgt dem Repo, und die
+# config.yaml wird gemischt: was Katalog und Vorlage festlegen, kommt an; was im Profil
+# geändert wurde (Hermes-Einstellungen, hermes tools, hermes model), bleibt. Die
+# Katalogmodelle erzwingt --modelle-zuruecksetzen. Mit --dry-run wird nur angezeigt, was
+# passieren würde. Keine Geheimnisse werden geschrieben; Schlüssel gehören in die .env der
+# Profile (tikki/werkzeuge/schluessel-einlesen.sh).
 #
 # Verwendung:
 #   tikki/werkzeuge/rollen-einrichten.sh [--dry-run] [--nur <slug>] [--modelle-zuruecksetzen]
@@ -17,8 +18,6 @@ REPO="$(cd "$TIKKI/.." && pwd)"
 KATALOG="$TIKKI/rollen/KATALOG.json"
 VORLAGE="$TIKKI/hermes/vorlage-rolle.yaml"
 VORLAGE_HONCHO="$TIKKI/hermes/vorlage-honcho.json"
-HERMES_HOME_BASIS="${HERMES_HOME_BASIS:-$HOME/.hermes}"
-PROFILE_DIR="$HERMES_HOME_BASIS/profiles"
 MODUL="tikki.werkzeuge.rollen_config"
 
 DRY_RUN=0
@@ -54,7 +53,7 @@ if [ -n "$HERMES_BIN" ] && [ "$("$HERMES_BIN" --run-module "$MODUL" --pruefen 2>
   konfig() { "$HERMES_BIN" --run-module "$MODUL" "$@"; }
 else
   PY="python3"
-  for kandidat in "$REPO/.venv/bin/python" "$HERMES_HOME_BASIS/hermes-agent/venv/bin/python"; do
+  for kandidat in "$REPO/.venv/bin/python" "$REPO/venv/bin/python"; do
     if [ -x "$kandidat" ]; then PY="$kandidat"; break; fi
   done
   if ! "$PY" -c "import ruamel.yaml" 2>/dev/null; then
@@ -64,6 +63,9 @@ else
   KONFIG_LAUF="$PY"
   konfig() { "$PY" "$HIER/rollen_config.py" "$@"; }
 fi
+# Wo die Profile liegen, sagt Hermes (HERMES_HOME, Docker-Wurzel …) – nie ein fester Pfad.
+PROFILE_DIR="$(konfig profilwurzel)"
+[ -n "$PROFILE_DIR" ] || { echo "FEHLER: Hermes nennt keine Profilwurzel." >&2; exit 1; }
 
 sagen() { if [ "$DRY_RUN" = 1 ]; then echo "  [dry-run] $*"; else echo "  $*"; fi; }
 
@@ -156,10 +158,10 @@ while IFS=$'\t' read -r SLUG NAME PORT SOUL_SLUG; do
   if [ "$DRY_RUN" = 1 ]; then
     konfig vorschau "$KATALOG" "$VORLAGE" "$SLUG"
   else
-    # Ein frisch angelegtes Profil bekommt von `hermes profile create` schon eine config.yaml
-    # (Kopie des aktiven Profils) – deren Modell darf nicht als „Nutzerwahl“ überleben.
+    # Ein frisch angelegtes Profil bekommt von `hermes profile create` schon eine config.yaml,
+    # die nichts von der Rolle weiß – sie ist keine „Einstellung des Menschen“ und wird ersetzt.
     if [ "$STATUS" = angelegt ]; then
-      konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml" --modelle-zuruecksetzen
+      konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml" --frisch
     else
       konfig schreiben "$KATALOG" "$VORLAGE" "$SLUG" "$ZIEL/config.yaml" ${MODELLE[@]+"${MODELLE[@]}"}
     fi
@@ -190,7 +192,7 @@ while IFS=$'\t' read -r SLUG NAME PORT SOUL_SLUG; do
   # 3d) Dauerbetrieb: Taktgeber der Räume (raumleiter, ohne Modell), Rundgang des Wachhalters und
   #     Ressourcen-Stand des MR-Bots (ohne Modell, stündlich nach ~/.tikki/ressourcen.json).
   #     Die Räume selbst fährt das Gateway; der Taktgeber stellt nur Nachrichten ein.
-  #     Hermes-Cron führt nur Skripte aus ~/.hermes/profiles/<slug>/scripts/ aus.
+  #     Hermes-Cron führt nur Skripte aus dem Ordner scripts/ des Profils aus.
   case "$SLUG" in
     raumleiter)
       skript_und_job "$SLUG" "$ZIEL" tikki-takt.sh \
@@ -209,7 +211,7 @@ while IFS=$'\t' read -r SLUG NAME PORT SOUL_SLUG; do
 
   # 4) .env-Hinweis (wird nie vom Skript befüllt)
   if [ "$DRY_RUN" = 0 ] && [ ! -f "$ZIEL/.env" ]; then
-    printf '# Tikki-Rolle %s – Schlüssel hier eintragen (Datei bleibt lokal, nie ins Repo)\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n# HONCHO_API_KEY=\n# LOKAL_API_KEY=lokal\n# CLAUDE_CODE_OAUTH_TOKEN=   (Claude-Abo: claude setup-token)\n# WA_BRIDGE_TOKEN=\n# TIKKI_MAIL_ADDRESS=   (Postfach der PA, z. B. tikki@tikki.team)\n# TIKKI_MAIL_PASSWORD=\n# Alle auf einmal aus einer Textdatei: tikki/werkzeuge/schluessel-einlesen.sh <datei>\n' "$SLUG" > "$ZIEL/.env"
+    printf '# Tikki-Rolle %s – nur Geheimnisse (Datei bleibt lokal, nie ins Repo); Einstellungen stehen in config.yaml\n# API_SERVER_KEY=\n# XAI_API_KEY=\n# CURSOR_API_KEY=\n# HONCHO_API_KEY=\n# LOKAL_API_KEY=lokal\n# CLAUDE_CODE_OAUTH_TOKEN=   (Claude-Abo: claude setup-token)\n# WA_BRIDGE_TOKEN=\n# TIKKI_MAIL_PASSWORD=   (Postfach der PA; die Adresse: hermes -p %s pa postfach <adresse>)\n# Alle auf einmal aus einer Textdatei: tikki/werkzeuge/schluessel-einlesen.sh <datei>\n' "$SLUG" "$SLUG" > "$ZIEL/.env"
     chmod 600 "$ZIEL/.env"
     sagen ".env-Vorlage angelegt (ohne Werte): $ZIEL/.env"
   fi
@@ -228,14 +230,27 @@ printf '%s' "$ZUSAMMENFASSUNG"
 echo
 echo "angelegt: $ANGELEGT  aktualisiert: $AKTUALISIERT  Fehler: $FEHLER"
 if [ "$FEHLER" -gt 0 ]; then exit 1; fi
+
+# Die gemeinsame Skill-Bibliothek (Profil openclaw), die jede Rolle mit „skills“ einhängt: anlegen
+# und so einrichten, dass ihr Pflicht-Skill nicht neben dem des Repos steht (openclaw_skills.py).
+if [ -z "$NUR" ] && [ -n "$HERMES_BIN" ]; then
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "[dry-run] Skill-Bibliothek: Profil openclaw anlegen bzw. entdoppeln"
+  else
+    "$HERMES_BIN" --run-module tikki.werkzeuge.openclaw_skills bibliothek \
+      || echo "Hinweis: Skill-Bibliothek nicht eingerichtet – später: tikki/werkzeuge/openclaw-einrichten.sh" >&2
+  fi
+fi
+
 if [ "$DRY_RUN" = 0 ]; then
   echo
   echo "Nächste Schritte:"
-  echo "  1. XAI_API_KEY, CURSOR_API_KEY, HONCHO_API_KEY und je Profil API_SERVER_KEY setzen (Umgebung oder ~/.hermes/profiles/<slug>/.env)."
+  echo "  1. Schlüssel in die .env der Profile:  tikki/werkzeuge/schluessel-einlesen.sh <datei>"
+  echo "     (Ein export in ~/.zshrc reicht nicht: der Gateway-Dienst erbt die Umgebung der Shell nicht.)"
   echo "     Honcho-SDK einmal bereitstellen: hermes pm install --extra honcho"
-  echo "  2. Pro Rolle starten:  hermes -p <slug> gateway   (als Dienst: hermes -p <slug> gateway install)"
-  echo "     Ein Gateway fährt die Räume rund um die Uhr (hermes gateway install); raumleiter, wachhalter und mr tragen"
-  echo "     die Cronjobs tikki-takt, tikki-rundgang und tikki-ressourcen – ihr Gateway muss ebenfalls immer laufen."
+  echo "  2. EIN Gateway für alle Rollen, aus dem Hauptprofil:  hermes -p default gateway install"
+  echo "     Es fährt die Räume, die Cronjobs aller Profile (tikki-takt, tikki-rundgang, tikki-ressourcen) und"
+  echo "     Tikkis Daueraufträge. Ein Gateway je Rolle gibt es nicht; Hermes lehnt es ab."
   echo "  3. Vorzimmer = Profil tikki (Tikkis SOUL, Gedächtnis, schnelle Antworten):  hermes profile use tikki"
-  echo "  4. Prüfen:             tikki/werkzeuge/rollen-status.sh"
+  echo "  4. Prüfen:             tikki/installieren.sh --nur-pruefen"
 fi

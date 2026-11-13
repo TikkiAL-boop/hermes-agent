@@ -16,7 +16,9 @@
     },
     "werkzeuge": [
       "gedaechtnis",
-      "pa",
+      "post",
+      "briefing",
+      "modelle",
       "web",
       "browser",
       "file",
@@ -62,7 +64,8 @@
       "delegation",
       "todo",
       "gedaechtnis",
-      "pa",
+      "ressourcen",
+      "modelle",
       "web",
       "browser",
       "file",
@@ -171,7 +174,8 @@
       ]
     },
     "werkzeuge": [
-      "pa",
+      "ressourcen",
+      "modelle",
       "terminal",
       "file",
       "skills",
@@ -402,7 +406,7 @@
     "slug": "organisator",
     "name": "Organisator",
     "icon": "📅",
-    "kurz": "Kalender, To-dos, Erinnerungen, Mail-Sichtung; hält den Überblick.",
+    "kurz": "Termine, To-dos, Erinnerungen, Fristen; hält den Überblick.",
     "kategorie": "organisation",
     "modell": {
       "primary": "xai/grok-4.7",

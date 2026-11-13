@@ -1,8 +1,10 @@
 """Tikki-Plugin „gedaechtnis“: keine Information, kein Arbeitsschritt geht verloren.
 
-- Nach jeder Runde (``post_llm_call``) geht das Frage-Antwort-Paar im Hintergrund an
-  die TencentDB-Instanzen des Menschen und des Systems und in seine RAG-Sammlung.
-  Die Runde wartet darauf nicht: das Vorzimmer bleibt schnell.
+- Nach jeder Runde (``post_llm_call``) geht im Hintergrund ins Gedächtnis, was dazugehört:
+  ein Gespräch mit dem Menschen als Frage-Antwort-Paar an die TencentDB-Instanzen des Menschen
+  und des Systems und in seine RAG-Sammlung; die Wortmeldung eines Mitglieds im Raum als
+  Raumwissen (System-Instanz, RAG) – nie als „Mensch:“. Läufe ohne Menschen (Daueraufträge,
+  delegierte Bots) werden nicht gespiegelt. Die Runde wartet darauf nicht.
 - Das Werkzeug ``nachschlagen`` sucht in RAG, TencentDB und (falls eingerichtet)
   Hindsight. Honcho hat eigene Werkzeuge über den Gedächtnisanbieter.
 - ``hermes gedaechtnis einspielen <pfad>`` nimmt Dateien (Markdown, Text) ins Systemwissen
@@ -86,6 +88,7 @@ def nachschlagen(args: dict, **_kw) -> str:
 
 
 def _spiegeln(sitzung: str, profil: str, frage: str, antwort: str) -> None:
+    """Eine Runde mit einem Menschen: in seine Speicher und die des Systems."""
     cfg = speicher.einstellungen()
     nutzer = cfg["nutzer"]
     schluessel = f"{profil}:{sitzung}"
@@ -101,21 +104,59 @@ def _spiegeln(sitzung: str, profil: str, frage: str, antwort: str) -> None:
         logger.debug("gedaechtnis: Hindsight nicht erreichbar: %s", exc)
     rag = speicher.rag_fuer(nutzer, cfg)
     try:
-        rag.aufnehmen(f"gespraech:{profil}", sitzung, f"Mensch: {frage}\n\nAntwort ({profil}): {antwort}")
+        rag.aufnehmen(
+            f"gespraech:{profil}", sitzung, speicher.runden_text(profil, frage, antwort),
+            schluessel=speicher.runden_schluessel(profil, sitzung, antwort),
+        )
     finally:
         rag.close()
 
 
-def nach_der_runde(*, session_id: str = "", user_message=None, assistant_response=None, **_kw) -> None:
+def _raum_spiegeln(sitzung: str, profil: str, raum: str, mitglied: str, antwort: str) -> None:
+    """Die Wortmeldung eines Mitglieds im Raum: Wissen des Systems, nicht etwas, das der Mensch
+    gesagt hat. Der Prompt der Runde (die Wortmeldungen der anderen) wird nicht gespiegelt – jedes
+    Mitglied spiegelt seine eigene, so steht jede genau einmal im Gedächtnis."""
+    cfg = speicher.einstellungen()
+    system = (cfg.get("tencent") or {}).get("system") or {}
+    if system.get("url"):
+        try:
+            speicher.tencent_merken(system, f"{profil}:{sitzung}", "system", f"Raum „{raum}“", f"@{mitglied}: {antwort}")
+        except Exception as exc:
+            logger.debug("gedaechtnis: tencent:system nicht erreichbar: %s", exc)
+    try:
+        speicher.hindsight_merken(cfg, speicher.raum_text(raum, mitglied, profil, antwort))
+    except Exception as exc:
+        logger.debug("gedaechtnis: Hindsight nicht erreichbar: %s", exc)
+    rag = speicher.rag_fuer(cfg["nutzer"], cfg)
+    try:
+        rag.aufnehmen(
+            f"raum:{profil}", raum, speicher.raum_text(raum, mitglied, profil, antwort),
+            schluessel=speicher.runden_schluessel(profil, sitzung, antwort),
+        )
+    finally:
+        rag.close()
+
+
+def nach_der_runde(*, session_id: str = "", user_message=None, assistant_response=None, platform=None, **_kw) -> None:
+    """Nach jeder Runde: Gespräche mit dem Menschen und Wortmeldungen im Raum merken. Läufe ohne
+    Menschen (Daueraufträge, delegierte Bots, HTTP-Aufrufe) sind kein Gespräch und bleiben draußen."""
+    from tikki.werkzeuge.turn_art import AUFTRAG, RAUM, raum_aus_prompt, turn_art
+
     frage = user_message if isinstance(user_message, str) else ""
     antwort = assistant_response if isinstance(assistant_response, str) else ""
-    if not (frage.strip() and antwort.strip()):
+    art = turn_art(plattform=platform, prompt=frage)
+    if art == AUFTRAG or not (frage.strip() and antwort.strip()):
         return
     from agent.memory_provider import spawn_context_thread
 
-    spawn_context_thread(
-        _spiegeln, name="tikki-gedaechtnis", args=(session_id, _profil(), frage, antwort)
-    ).start()
+    if art == RAUM:
+        raum = raum_aus_prompt(frage)
+        if raum is None or speicher.ist_pass(antwort):
+            return
+        ziel, argumente = _raum_spiegeln, (session_id, _profil(), *raum, antwort)
+    else:
+        ziel, argumente = _spiegeln, (session_id, _profil(), frage, antwort)
+    spawn_context_thread(ziel, name="tikki-gedaechtnis", args=argumente).start()
 
 
 # ─── hermes gedaechtnis … ────────────────────────────────────────────────────
@@ -144,7 +185,8 @@ def einspielen(pfade: list[str]) -> tuple[int, int]:
             for datei in kandidaten:
                 text = datei.read_text(encoding="utf-8", errors="replace")
                 titel = str(datei.relative_to(wurzel.parent)) if datei != wurzel else datei.name
-                neu = rag.aufnehmen("wissen", titel, text, schluessel=f"datei:{datei.resolve()}")
+                # Eine geänderte Datei ersetzt ihren früheren Stand; eine unveränderte bleibt, wie sie ist.
+                neu = rag.ersetzen("wissen", titel, text, schluessel=f"datei:{datei.resolve()}")
                 stuecke += neu
                 dateien += 1
                 # Nur Neues ins Systemgedächtnis: ein zweites Einspielen erzeugt dort keine Doppel.
@@ -157,36 +199,62 @@ def einspielen(pfade: list[str]) -> tuple[int, int]:
 
 
 def verlauf_nachholen() -> int:
-    """Alle Gespräche aller Tikki-Profile (state.db) in die RAG-Sammlung aufnehmen, ohne Doppel."""
+    """Die bisherigen Gespräche der Tikki-Profile (state.db) in die RAG-Sammlung aufnehmen, ohne
+    Doppel – nach denselben Regeln und mit denselben Schlüsseln wie das Spiegeln nach der Runde:
+    Gespräche mit dem Menschen als solche, Wortmeldungen im Raum als Raumwissen, Läufe ohne
+    Menschen (Daueraufträge) gar nicht. Profile, die nicht im Rollenkatalog stehen, bleiben außen vor."""
     from hermes_cli.profiles import get_profile_dir
     from hermes_state import SessionDB
+    from tikki.werkzeuge.raeume import katalog
+    from tikki.werkzeuge.turn_art import OHNE_MENSCH, RAUM_QUELLE, raum_aus_prompt
 
     cfg = speicher.einstellungen()
     rag = speicher.rag_fuer(cfg["nutzer"], cfg)
     neu = 0
     try:
         wurzel = get_profile_dir("tikki").parent
-        for home in sorted(p for p in wurzel.iterdir() if (p / "state.db").is_file()):
+        for home in sorted(wurzel / e["hermes_profil"] for e in katalog()):
+            if not (home / "state.db").is_file():
+                continue
             db = SessionDB(db_path=home / "state.db", read_only=True)
             try:
                 for zeile in db.list_sessions_rich(limit=100000, include_hidden=True):
+                    quelle = str(zeile.get("source") or "").strip().lower()
+                    if quelle in OHNE_MENSCH:
+                        continue
                     frage = None
                     for nachricht in db.get_messages(zeile["id"]):
                         inhalt = nachricht.get("content") if isinstance(nachricht.get("content"), str) else ""
                         if nachricht.get("role") == "user":
                             frage = inhalt
                         elif nachricht.get("role") == "assistant" and frage and inhalt.strip():
-                            neu += rag.aufnehmen(
-                                f"gespraech:{home.name}", zeile.get("title") or zeile["id"],
-                                f"Mensch: {frage}\n\nAntwort ({home.name}): {inhalt}",
-                                schluessel=f"msg:{home.name}:{nachricht.get('id')}",
-                            )
+                            neu += _nachholen(rag, home.name, zeile, nachricht, frage, inhalt,
+                                              raum_aus_prompt(frage), quelle == RAUM_QUELLE)
                             frage = None
             finally:
                 db.close()
     finally:
         rag.close()
     return neu
+
+
+def _nachholen(rag, profil: str, sitzung: dict, nachricht: dict, frage: str, antwort: str,
+               raum: tuple[str, str] | None, raum_sitzung: bool) -> int:
+    """Eine Antwort aus dem Verlauf aufnehmen, wenn sie noch fehlt; Rückgabe: neue Stücke."""
+    schluessel = speicher.runden_schluessel(profil, sitzung["id"], antwort)
+    # Vor dem gemeinsamen Schlüssel nahm ``verlauf`` unter ``msg:<profil>:<id>`` auf.
+    if rag.kennt(f"msg:{profil}:{nachricht.get('id')}"):
+        return 0
+    if raum is not None:
+        if speicher.ist_pass(antwort):
+            return 0
+        return rag.aufnehmen(f"raum:{profil}", raum[0], speicher.raum_text(*raum, profil, antwort), schluessel=schluessel)
+    if raum_sitzung:
+        return 0  # Raum-Sitzung ohne lesbaren Raum-Prompt: kein Gespräch mit dem Menschen
+    return rag.aufnehmen(
+        f"gespraech:{profil}", sitzung.get("title") or sitzung["id"],
+        speicher.runden_text(profil, frage, antwort), schluessel=schluessel,
+    )
 
 
 def _cli(args) -> int:

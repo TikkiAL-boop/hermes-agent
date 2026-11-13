@@ -1,4 +1,7 @@
-"""Tikki-Plugin „pa“: Postfach-Regeln wie die App, Briefing nur mit Neuem seit dem letzten Mal."""
+"""Tikki-Plugin „pa“: Postfach-Regeln wie die App, Briefing nur mit Neuem seit dem letzten Mal.
+
+Der Weg durch IMAP und SMTP (lesen, antworten, senden, ablegen) steht in ``test_post.py``.
+"""
 
 from __future__ import annotations
 
@@ -14,35 +17,6 @@ from pathlib import Path
 import pytest
 
 from tikki.plugins.pa import briefing, post
-
-_ZUGANG = post.Zugang(
-    "thorsten@tikki.team", "geheim",
-    post.Server("mail.tikki.email", 993, True), post.Server("mail.tikki.email", 587, False),
-)
-
-
-class _FakePostfach(post.Postfach):
-    """Postfach im Speicher: ``mails`` uid → Rohbytes, ``flags`` uid → gesetzte IMAP-Flags."""
-
-    def __init__(self, mails: dict[str, bytes], *, senden_scheitert: bool = False):
-        super().__init__(_ZUGANG)
-        self.mails = mails
-        self.flags: dict[str, set[str]] = {}
-        self.gesendet: list = []
-        self.senden_scheitert = senden_scheitert
-
-    def lesen(self, uid, ordner="INBOX"):
-        roh = self.mails.get(uid)
-        return post.nachricht_aus_bytes(uid, roh, mit_text=True, flags=" ".join(self.flags.get(uid, ()))) if roh else None
-
-    def erledigt(self, uid, ordner="INBOX", *, beantwortet=False):
-        self.flags.setdefault(uid, set()).update({"\\Seen", "\\Answered"} if beantwortet else {"\\Seen"})
-
-    def senden(self, msg):
-        if self.senden_scheitert:
-            raise ConnectionResetError("SMTP weg")
-        self.gesendet.append(msg)
-        return msg["Message-ID"]
 
 
 def _selbstsigniertes_zertifikat(ordner: Path) -> tuple[Path, Path]:
@@ -115,70 +89,67 @@ def test_imap_verweigert_selbstsigniertes_zertifikat(tmp_path: Path) -> None:
     assert isinstance(info.value, ssl.SSLError), info.value
 
 
-_AUTOMAT = (
-    b"From: Shop <newsletter@laden.de>\r\nTo: thorsten@tikki.team\r\nSubject: Angebote der Woche\r\n"
-    b"Message-ID: <nl1@laden.de>\r\nAuto-Submitted: auto-generated\r\nList-Unsubscribe: <mailto:ab@laden.de>\r\n"
-    b"\r\nTolle Angebote."
-)
 _MENSCH = (
     b"From: Oma <oma@beispiel.de>\r\nReply-To: Opa <opa@beispiel.de>\r\nTo: thorsten@tikki.team\r\n"
     b"Subject: Sonntag\r\nMessage-ID: <s1@beispiel.de>\r\n\r\nKommt ihr Sonntag?"
 )
 
 
-def test_automaten_werden_nicht_beantwortet() -> None:
-    fach = _FakePostfach({"1": _AUTOMAT, "2": _MENSCH})
-    gelistet = post.als_dict(fach.lesen("1"))
-    assert gelistet["automatisch"] is True
-    assert post.als_dict(fach.lesen("2"))["automatisch"] is False
-    assert post.nachricht_aus_bytes("3", b"From: no-reply@bank.de\r\nSubject: x\r\n\r\n").automatisch
-
-    ergebnis = fach.antworten("1", "Danke!")
-    assert "fehler" in ergebnis and not ergebnis.get("gesendet")
-    assert fach.gesendet == []
-
-    ergebnis = fach.antworten("2", "Ja, gern.")
-    assert ergebnis["gesendet"] is True
-    (msg,) = fach.gesendet
-    assert msg["To"] == "opa@beispiel.de"
-    assert msg["Auto-Submitted"] == "auto-replied"
-
-
-def test_antworten_markiert_vor_dem_senden() -> None:
+def test_antworten_markiert_vor_dem_senden(monkeypatch) -> None:
     """Scheitert das Senden, bleibt die Mail markiert: lieber eine Antwort zu wenig als doppelt."""
-    fach = _FakePostfach({"2": _MENSCH}, senden_scheitert=True)
-    erster = fach.antworten("2", "Ja, gern.")
-    assert "fehler" in erster and not erster.get("gesendet")
-    assert "\\Answered" in fach.flags["2"]
+    fach = post.Postfach(post.zugang({"mail_address": "thorsten@tikki.team"}, "geheim"))
+    flags: set[str] = set()
+    monkeypatch.setattr(fach, "lesen", lambda uid, ordner="INBOX": post.nachricht_aus_bytes(
+        uid, _MENSCH, mit_text=True, flags=" ".join(flags)))
+    monkeypatch.setattr(fach, "erledigt", lambda uid, ordner="INBOX", *, beantwortet=False, wartet=False:
+                        flags.update({"\\Seen", *(["\\Answered"] if beantwortet else [])}))
 
-    fach.senden_scheitert = False
-    zweiter = fach.antworten("2", "Ja, gern.")
+    def weg(msg):
+        raise ConnectionResetError("SMTP weg")
+
+    monkeypatch.setattr(fach, "_smtp", weg)
+    erster = fach.antworten("2", "Ja, gern.", mensch=True, freigabe=[])
+    assert "fehler" in erster and not erster.get("gesendet")
+    assert "\\Answered" in flags
+
+    monkeypatch.setattr(fach, "_smtp", lambda msg: pytest.fail("keine zweite Antwort"))
+    zweiter = fach.antworten("2", "Ja, gern.", mensch=True, freigabe=[])
     assert "fehler" in zweiter and not zweiter.get("gesendet")
-    assert fach.gesendet == []
 
 
 def test_senden_braucht_echte_adresse(monkeypatch) -> None:
     import json
 
+    from hermes_constants import get_hermes_home
     from tikki.plugins import pa
 
-    monkeypatch.setenv("TIKKI_MAIL_ADDRESS", "thorsten@tikki.team")
-    monkeypatch.setenv("TIKKI_MAIL_PASSWORD", "geheim")
-    monkeypatch.setattr(post.Postfach, "senden", lambda self, msg: pytest.fail("darf nicht senden"))
+    (get_hermes_home() / "config.yaml").write_text(
+        "plugins:\n  entries:\n    pa:\n      settings:\n        mail_address: thorsten@tikki.team\n", encoding="utf-8")
+    monkeypatch.setenv(post.PASSWORT, "geheim")
+    monkeypatch.setattr(post.Postfach, "_smtp", lambda self, msg: pytest.fail("darf nicht senden"))
     ergebnis = json.loads(pa.post_werkzeug({"aktion": "senden", "an": "Oma", "text": "Hallo"}))
     assert "fehler" in ergebnis and "geheim" not in json.dumps(ergebnis)
 
 
 def test_serverregeln_entsprechen_der_app() -> None:
-    imap, smtp = post.server_fuer("karin@tikki.team", env={})
+    imap, smtp = post.server_fuer("karin@tikki.team")
     assert (imap.host, imap.port, imap.secure) == ("mail.tikki.email", 993, True)
     assert (smtp.host, smtp.port, smtp.secure) == ("mail.tikki.email", 587, False)
 
-    imap, smtp = post.server_fuer("x@beispiel.de", env={"TIKKI_MAIL_SMTP_PORT": "465"})
+    imap, smtp = post.server_fuer("x@beispiel.de", {"mail_smtp_port": 465})
     assert imap.host == "mail.beispiel.de"
     assert (smtp.port, smtp.secure) == (465, True)
 
-    assert post.zugang(env={"TIKKI_MAIL_ADDRESS": "a@tikki.team"}) is None
+    assert post.zugang({"mail_address": "a@tikki.team"}, "") is None
+
+
+def test_freigabe_gilt_fuer_die_adresse_oder_ihre_domain_und_nie_fuer_aehnliche() -> None:
+    liste = post.freigabe({"mail_freigabe": ["Oma@Beispiel.de", "@tikki.team", "kaputt"]})
+
+    assert post.freigegeben("Oma <oma@beispiel.de>", liste) and post.freigegeben("karin@tikki.team", liste)
+    for fremd in ("opa@beispiel.de", "x@tikki.team.fremd.example", "oma@beispiel.de@fremd.example", "tikki.team", ""):
+        assert not post.freigegeben(fremd, liste), fremd
+    assert not post.freigegeben("oma@beispiel.de", post.freigabe({}))
 
 
 def test_antwort_bleibt_im_faden_und_geht_an_den_absender() -> None:
@@ -214,9 +185,38 @@ def test_briefing_nimmt_nur_ausgaben_seit_dem_letzten_mal(tmp_path: Path, monkey
     neu = home / "cron" / "output" / "job-a" / "neu.md"
     neu.write_text("Zwei Mails beantwortet, eine an Karin weitergeleitet.", encoding="utf-8")
 
-    daten = briefing.sammeln(home)
+    daten = briefing.sammeln()
 
     assert [e["text"] for e in daten["erledigt"]] == ["Zwei Mails beantwortet, eine an Karin weitergeleitet."]
     assert daten["post"] is None and "Postfach" in daten["post_hinweis"]
     assert briefing.letzter_stand() >= daten["jetzt"]
-    assert briefing.sammeln(home)["erledigt"] == []
+    assert briefing.sammeln()["erledigt"] == []
+
+
+def test_briefing_bleibt_klein_auch_wenn_ein_auftrag_hunderte_male_lief(tmp_path: Path, monkeypatch) -> None:
+    """Ein Vier-Minuten-Auftrag schreibt 360 Ausgaben am Tag. Das Briefing trägt je Auftrag die
+    jüngsten mit Text, zählt den Rest und bleibt insgesamt gedeckelt."""
+    home = tmp_path / "profiles" / "tikki"
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("TIKKI_HOME", str(tmp_path / ".tikki"))
+    for key in ("TIKKI_MAIL_ADDRESS", "TIKKI_MAIL_PASSWORD", "WA_BRIDGE_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    jetzt = time.time()
+    auftraege = [f"job-{i}" for i in range(briefing.HOECHSTENS // briefing.JE_AUFTRAG + 2)]
+    for auftrag in auftraege:
+        (home / "cron" / "output" / auftrag).mkdir(parents=True)
+        for lauf in range(briefing.JE_AUFTRAG * 3):
+            datei = home / "cron" / "output" / auftrag / f"{lauf:03d}.md"
+            datei.write_text(f"{auftrag} Lauf {lauf}", encoding="utf-8")
+            os.utime(datei, (jetzt - 1000 + lauf, jetzt - 1000 + lauf))
+
+    daten = briefing.sammeln(stempeln=False)
+
+    assert len(daten["erledigt"]) == briefing.HOECHSTENS
+    assert daten["erledigt_laeufe"] == {auftrag: briefing.JE_AUFTRAG * 3 for auftrag in auftraege}
+    je_auftrag: dict[str, list[str]] = {}
+    for eintrag in daten["erledigt"]:
+        je_auftrag.setdefault(eintrag["auftrag"], []).append(eintrag["text"])
+    assert all(len(texte) <= briefing.JE_AUFTRAG for texte in je_auftrag.values())
+    juengster = f"Lauf {briefing.JE_AUFTRAG * 3 - 1}"
+    assert all(texte[0].endswith(juengster) for texte in je_auftrag.values())

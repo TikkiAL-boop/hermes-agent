@@ -27,6 +27,41 @@ def test_leeres_zuhause_meldet_jede_fehlende_schicht_und_nie_einen_schluesselwer
     assert all(geheim not in p.text for p in punkte.values())
 
 
+def test_update_schalter_wird_geprueft_und_steht_im_gesamtlauf(tmp_path: Path) -> None:
+    """Der Schalter, der ``hermes update`` auf dem Tikki-Zweig hält, steht im Hauptprofil – fehlt er
+    oder steht er auf true, sagt der Selbsttest es, statt „✓“ zu zeigen."""
+    assert selbsttest.pruefe_update_schalter(tmp_path).stand == selbsttest.WARNUNG
+    (tmp_path / "config.yaml").write_text("updates:\n  auto_switch_parked_branch: true\n", encoding="utf-8")
+    assert selbsttest.pruefe_update_schalter(tmp_path).stand == selbsttest.WARNUNG
+
+    (tmp_path / "config.yaml").write_text("updates:\n  auto_switch_parked_branch: false\n", encoding="utf-8")
+    punkte = {p.name: p for p in selbsttest.alle(tmp_path, app=False, backend=False, hermes="hermes")}
+    assert punkte["Update"].stand == selbsttest.OK
+
+
+def test_rollen_warnt_wenn_der_code_neuer_ist_als_die_eingerichteten_profile(tmp_path: Path) -> None:
+    """Nach ``/update`` oder dem Update-Knopf der App ist der Zweig neu, die Profile sind es nicht:
+    was Tikki zuletzt in ein Profil schrieb, ist dann nicht mehr, was der Katalog heute festlegt."""
+    import json
+
+    from tikki.werkzeuge import rollen_config
+
+    profile = tmp_path / "profiles"
+    katalog, vorlage = selbsttest.TIKKI / "rollen" / "KATALOG.json", selbsttest.TIKKI / "hermes" / "vorlage-rolle.yaml"
+    for e in selbsttest.katalog():
+        (profile / e["hermes_profil"]).mkdir(parents=True)
+        rollen_config.schreiben(str(katalog), str(vorlage), e["slug"], str(profile / e["hermes_profil"] / "config.yaml"))
+    assert selbsttest.pruefe_rollen(profile).stand == selbsttest.OK
+
+    stempel = profile / "wachhalter" / rollen_config.STEMPEL  # ein Profil, das ein älterer Stand eingerichtet hat
+    alt = json.loads(stempel.read_text(encoding="utf-8"))
+    alt["config"]["platform_toolsets"]["cron"] = alt["config"]["platform_toolsets"]["cron"][:-1]
+    stempel.write_text(json.dumps(alt), encoding="utf-8")
+
+    punkt = selbsttest.pruefe_rollen(profile)
+    assert punkt.stand == selbsttest.WARNUNG and "wachhalter" in punkt.text and "rollen-einrichten" in punkt.text
+
+
 def test_takt_erkennt_cronjobs_im_format_des_hermes_schedulers(tmp_path: Path, monkeypatch) -> None:
     from cron import jobs
 
@@ -79,13 +114,16 @@ def test_takt_meldet_abgeschalteten_cronjob_als_fehler(tmp_path: Path, monkeypat
 class _Modelle(BaseHTTPRequestHandler):
     status = 404
     gesehen: list[str] = []
+    kennungen: list[str] = []
 
     def do_GET(self) -> None:  # noqa: N802
+        import json
+
         _Modelle.gesehen.append(f"{self.path} {self.headers.get('Authorization')}")
         self.send_response(self.status)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(b'{"data": []}')
+        self.wfile.write(json.dumps({"data": [{"id": k} for k in _Modelle.kennungen]}).encode())
 
     def log_message(self, *args) -> None:
         pass
@@ -112,6 +150,23 @@ def _anbieter_profil(tmp_path: Path, port: int, geheim: str) -> Path:
     )
     (profil / ".env").write_text(f"CURSOR_API_KEY={geheim}\n# XAI_API_KEY=\n", encoding="utf-8")
     return profil
+
+
+def test_anbieter_warnt_wenn_er_ein_modell_aus_dem_katalog_nicht_kennt(tmp_path: Path, modell_server) -> None:
+    """Zwei Schreibweisen für denselben Anbieter im Katalog: ist eine falsch, scheitert jeder Turn
+    erst am Hauptmodell. Der Anbieter selbst sagt, welche Kennungen es gibt."""
+    alle = sorted(selbsttest.katalog_modelle()["cursor"])
+    _anbieter_profil(tmp_path, modell_server.server_port, "key_" + "z" * 40)
+    try:
+        _Modelle.status, _Modelle.kennungen = 200, alle
+        assert selbsttest.pruefe_anbieter(tmp_path / "profiles").stand == selbsttest.OK
+
+        _Modelle.kennungen = alle[1:] + ["etwas-anderes"]
+        punkt = selbsttest.pruefe_anbieter(tmp_path / "profiles")
+    finally:
+        _Modelle.status, _Modelle.kennungen = 404, []
+
+    assert punkt.stand == selbsttest.WARNUNG and alle[0] in punkt.text and "KATALOG.json" in punkt.text
 
 
 def test_anbieter_warnt_bei_404_mit_handlungshinweis_und_zeigt_nie_den_schluessel(tmp_path: Path, modell_server) -> None:

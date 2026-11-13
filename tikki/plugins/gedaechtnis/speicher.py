@@ -16,6 +16,7 @@ dieser Datei, nur Pfade zu Schlüsseldateien oder Namen von Umgebungsvariablen.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -59,12 +60,11 @@ def _schluessel(eintrag: dict) -> str | None:
             return None
     name = eintrag.get("schluessel_env")
     if name:
-        try:
-            from agent.secret_scope import get_secret
+        # Über den Secret-Scope des Profils, nie os.environ: in einem Gateway für viele Profile
+        # trägt die Prozessumgebung die Schlüssel des Startprofils.
+        from agent.secret_scope import get_secret
 
-            return get_secret(name)
-        except Exception:
-            return os.environ.get(name)
+        return get_secret(name)
     return None
 
 
@@ -107,6 +107,25 @@ def _stueckeln(text: str, groesse: int = 1200, ueberlapp: int = 150) -> list[str
             break
         start = max(ende - ueberlapp, start + 1)
     return [s for s in stuecke if s]
+
+
+def runden_text(profil: str, frage: str, antwort: str) -> str:
+    return f"Mensch: {frage}\n\nAntwort ({profil}): {antwort}"
+
+
+def raum_text(raum: str, mitglied: str, profil: str, antwort: str) -> str:
+    return f"Raum „{raum}“ – @{mitglied} ({profil}): {antwort}"
+
+
+def runden_schluessel(profil: str, sitzung: str, antwort: str) -> str:
+    """Schlüssel einer Antwort – derselbe beim Spiegeln nach der Runde und beim Nachholen aus dem
+    Verlauf, damit ``gedaechtnis verlauf`` nichts ein zweites Mal aufnimmt."""
+    return f"runde:{profil}:{sitzung}:{hashlib.sha256(antwort.strip().encode('utf-8')).hexdigest()[:20]}"
+
+
+def ist_pass(antwort: str) -> bool:
+    """„(pass)“ – das Mitglied hatte im Raum nichts beizutragen."""
+    return antwort.strip().strip("*_`").strip().lower() == "(pass)"
 
 
 def _fts_anfrage(frage: str) -> str:
@@ -176,6 +195,24 @@ class Rag:
             neu += 1
         self._db.commit()
         return neu
+
+    def kennt(self, schluessel: str) -> bool:
+        """Ob unter *schluessel* schon Stücke liegen."""
+        praefix = f"{schluessel}#"
+        return self._db.execute(
+            "SELECT 1 FROM stuecke WHERE substr(schluessel, 1, ?) = ? LIMIT 1", (len(praefix), praefix)
+        ).fetchone() is not None
+
+    def ersetzen(self, quelle: str, titel: str, text: str, schluessel: str) -> int:
+        """Wie ``aufnehmen``, aber unter *schluessel* liegt danach genau *text*: die Stücke eines
+        früheren Stands (eine geänderte Datei) verschwinden. 0, wenn sich nichts geändert hat."""
+        praefix = f"{schluessel}#"
+        alt = [zeile[0] for zeile in self._db.execute(
+            "SELECT text FROM stuecke WHERE substr(schluessel, 1, ?) = ? ORDER BY id", (len(praefix), praefix))]
+        if alt == _stueckeln(text):
+            return 0
+        self._db.execute("DELETE FROM stuecke WHERE substr(schluessel, 1, ?) = ?", (len(praefix), praefix))
+        return self.aufnehmen(quelle, titel, text, schluessel)
 
     def suchen(self, frage: str, anzahl: int = 6) -> list[Treffer]:
         ausdruck = _fts_anfrage(frage)

@@ -68,7 +68,7 @@ kannst; du benutzt sie nicht für eigene Inhaltsarbeit.
 - `organisator`: cronjob, todo, file, skills, memory
 - `api-fachmann`: terminal, cronjob, file, skills, memory
 - `uebersetzer`: file, skills, memory
-- `mr`: pa, terminal, file, skills, memory
+- `mr`: ressourcen, modelle, terminal, file, skills, memory
 
 ## Nachrichten vom System
 

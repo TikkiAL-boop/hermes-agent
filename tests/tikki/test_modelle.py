@@ -19,12 +19,40 @@ def _datei(pfad: Path, groesse: int = 1_000_000) -> None:
 def test_name_verraet_parameter_aktive_parameter_und_quantisierung() -> None:
     assert modelle.parameter_aus_name("Qwen3-235B-A22B-4bit") == ("235B", "22B")
     assert modelle.parameter_aus_name("Llama-3.3-70B-Instruct-Q4_K_M") == ("70B", None)
-    assert modelle.parameter_aus_name("gpt-oss-120b-MXFP4") == ("117B", "5.1B")  # bekannter Name schlägt die Zahl
-    assert modelle.parameter_aus_name("GLM-4.5-Air-4bit") == ("106B", "12B")
+    # Ein bekannter Name liefert die Größe aus der Tabelle – auch wenn der Name selbst eine Zahl trägt.
+    assert modelle.parameter_aus_name("gpt-oss-120b-MXFP4") == modelle._BEKANNT["gpt-oss-120b"]
+    assert modelle.parameter_aus_name("GLM-4.5-Air-4bit") == modelle._BEKANNT["glm-4.5-air"]
+    assert modelle.parameter_aus_name("Llama-4-Scout-17B-16E-Instruct") == modelle._BEKANNT["llama-4-scout"]
     assert modelle.parameter_aus_name("Mixtral-8x22B-Instruct-v0.1") == ("8x22B", None)
     assert modelle.parameter_aus_name("SmolLM2-135M-Instruct") == (None, None)
     assert modelle.quant_aus_name("Llama-3.3-70B-Instruct-Q4_K_M.gguf") == "Q4_K_M"
     assert modelle.quant_aus_name("mlx-community/Qwen3-235B-A22B-4bit") == "4bit"
+
+
+def test_destillat_eines_bekannten_modells_ist_so_gross_wie_sein_name_sagt_nicht_wie_das_original(tmp_path: Path) -> None:
+    original = modelle._BEKANNT["deepseek-r1"]
+    for name, erwartet in (("DeepSeek-R1-Distill-Qwen-7B-Q4_K_M", "7B"), ("deepseek-r1:32b", "32B"),
+                           ("DeepSeek-R1-Distill-Llama-70B", "70B")):
+        assert modelle.parameter_aus_name(name) == (erwartet, None) != original, name
+    assert modelle.parameter_aus_name("deepseek-r1-distill") == (None, None)
+
+    _datei(tmp_path / "Downloads/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf")
+    _datei(tmp_path / "Downloads/gemma-3-27b-it-Q8_0.gguf")
+    assert modelle.empfehlung(modelle.modelle_auf_platte(tmp_path))["raeume"] == "gemma-3-27b-it-Q8_0"
+
+
+def test_startbefehl_bleibt_ein_befehl_auch_bei_einem_dateinamen_mit_anfuehrungszeichen(tmp_path: Path) -> None:
+    """Der Pfad kommt aus ~/Downloads und der Befehl womöglich ins Terminal: die Shell muss ihn als
+    genau ein Argument lesen, was immer im Dateinamen steht."""
+    import shlex
+
+    boese = tmp_path / "Downloads" / "x'; touch gekapert; echo '-7B.gguf"
+    _datei(boese)
+    (fund,) = modelle.modelle_auf_platte(tmp_path)
+
+    teile = shlex.split(fund.start)
+    assert teile[:2] == ["llama-server", "-m"] and teile[2] == str(boese)
+    assert "touch" not in teile and ";" not in teile
 
 
 def test_platte_fasst_shards_zusammen_erkennt_mlx_hf_cache_und_ollama(tmp_path: Path) -> None:

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 
+import type { ImapFlow, ImapFlowOptions } from 'imapflow'
+import nodemailer from 'nodemailer'
 import { describe, test } from 'vitest'
 
-import { normalizeMailAddress, resolveMailServers, TikkiMailService } from './tikki-mail'
+import { normalizeMailAddress, resolveMailServers, rewriteMailStoreSecret, TikkiMailService } from './tikki-mail'
 
 describe('resolveMailServers', () => {
   test('tikki.team goes to the family server: IMAP 993 TLS, SMTP 587 STARTTLS', () => {

@@ -496,7 +496,7 @@ export class TikkiMailService {
 
         requireAccepted(
           await this.withImap(account, client => client.append(sent.path, copy, ['\\Seen'])),
-          `${sent.path} hat die Kopie nicht angenommen.`
+          `the server refused the append to ${sent.path}`
         )
       }
     } catch (error) {

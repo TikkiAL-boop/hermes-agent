@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
-import { HERMES_BASIS, updateStandAus } from './update-waechter'
+import { HERMES_BASIS, standAlsCache, standAusCache, updateStandAus } from './update-waechter'
+
+describe('the remembered update state', () => {
+  const stand = { neueCommits: 12, version: 'v2026.10.1', geprueft: 5 }
+
+  it('is believed only for the build it was measured against', () => {
+    expect(standAusCache(standAlsCache(stand, 'aaa'), 'aaa')).toEqual(stand)
+    // After hermes-aktualisieren.sh the base is another commit: "12 behind" was about the old one.
+    expect(standAusCache(standAlsCache(stand, 'aaa'), 'bbb')).toBeNull()
+  })
+
+  it('does not trust an entry that names no base, or is not an entry at all', () => {
+    expect(standAusCache(JSON.stringify(stand), 'aaa')).toBeNull()
+    expect(standAusCache('{broken', 'aaa')).toBeNull()
+    expect(standAusCache(null, 'aaa')).toBeNull()
+  })
+})
 
 describe('updateStandAus', () => {
   it("turns GitHub's compare and release into what the card shows", () => {

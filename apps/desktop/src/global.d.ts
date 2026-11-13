@@ -229,6 +229,9 @@ declare global {
         remove: (mailbox: string, uid: number) => Promise<void>
         send: (input: SendMailInput) => Promise<{ messageId: string }>
       }
+      // Tikki Admin: does a service on this machine answer `/health`? Asked by
+      // main, because a page's own fetch fails on the service's CORS answer.
+      tikkiLocalHealth?: (port: number) => Promise<boolean>
       // v2 multi-connection registry: named agent sources, all persisted
       // together (local + any number of remote/cloud/ssh instances).
       connections: {

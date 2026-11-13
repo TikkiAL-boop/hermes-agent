@@ -1,6 +1,5 @@
 import { useStore } from '@nanostores/react'
-import DOMPurify from 'dompurify'
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, type SyntheticEvent, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +10,7 @@ import { fmtDayTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
 import { areaLabels } from './labels'
+import { MAIL_SANDBOX, mailDokument, mailKlickZiel } from './post/mail-html'
 import {
   $busy,
   $compose,
@@ -24,17 +24,18 @@ import {
   $selectedUid,
   cancelCompose,
   type ComposeDraft,
-  loadMessages,
   mailLogin,
   mailLogout,
   markUnread,
   openMailbox,
   openMessage,
+  refreshMailbox,
   refreshMailStatus,
   removeMessage,
   sendCompose,
   startCompose,
-  startReply
+  startReply,
+  updateCompose
 } from './post/store'
 
 type PostLabels = ReturnType<typeof areaLabels>['post']
@@ -51,9 +52,15 @@ export function PostArea() {
   const error = useStore($error)
   const notice = useStore($notice)
 
+  // The area mounts whenever the person comes (back) to it: mail that arrived
+  // meanwhile and the folders' counts are read again, not remembered.
   useEffect(() => {
-    if ($mailStatus.get() === null) {
+    const known = $mailStatus.get()
+
+    if (known === null) {
       void refreshMailStatus()
+    } else if (known.signedIn) {
+      void refreshMailbox()
     }
   }, [])
 
@@ -81,7 +88,7 @@ function SignIn({ labels }: { labels: PostLabels }) {
   const busy = useStore($busy)
   const [address, setAddress] = useState('')
   const [password, setPassword] = useState('')
-  const signingIn = busy === 'login'
+  const signingIn = busy.has('login')
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -95,7 +102,7 @@ function SignIn({ labels }: { labels: PostLabels }) {
     <div className="flex flex-1 items-center justify-center p-8">
       <form
         className="w-full max-w-sm rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-chrome) p-6"
-        onSubmit={submit}
+        onSubmit={event => void submit(event)}
       >
         <div className="mb-4 flex items-center gap-2 text-(--ui-text-primary)">
           <Mail aria-hidden className="size-5 text-(--ui-accent)" stroke={1.75} />
@@ -183,18 +190,18 @@ function Mailbox({ address, labels }: { address: string; labels: PostLabels }) {
           </span>
           <Button
             aria-label={labels.refresh}
-            disabled={busy === 'list'}
-            onClick={() => void loadMessages()}
+            disabled={busy.has('list')}
+            onClick={() => void refreshMailbox()}
             size="icon-sm"
             variant="ghost"
           >
-            <RefreshCw aria-hidden className={cn(busy === 'list' && 'animate-spin')} />
+            <RefreshCw aria-hidden className={cn(busy.has('list') && 'animate-spin')} />
           </Button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {messages.length === 0 && (
             <p className="p-4 text-sm text-(--ui-text-secondary)">
-              {busy === 'list' || busy === 'mailboxes' ? labels.loading : labels.noMessages}
+              {busy.has('list') || busy.has('mailboxes') ? labels.loading : labels.noMessages}
             </p>
           )}
           {messages.map(entry => (
@@ -241,9 +248,50 @@ function Mailbox({ address, labels }: { address: string; labels: PostLabels }) {
       </section>
 
       <section className="flex min-w-0 flex-1 flex-col">
-        {compose ? <Compose draft={compose} labels={labels} /> : <Reader labels={labels} />}
+        {/* Keyed by draft: a new one takes the fields (and the focus) over from whatever was being written. */}
+        {compose ? <Compose draft={compose} key={compose.id} labels={labels} /> : <Reader labels={labels} />}
       </section>
     </>
+  )
+}
+
+// A click on a link in the mail: never a navigation, only a hand-over to the OS.
+function mailKlick(event: Event) {
+  const ziel = mailKlickZiel(event)
+
+  if (ziel) {
+    void window.hermesDesktop?.openExternal(ziel)
+  }
+}
+
+/** The mail's own HTML, in its own sandboxed document (`post/mail-html.ts`). */
+function MailHtml({ html, labels, title }: { html: string; labels: PostLabels; title: string }) {
+  const { bilderBlockiert, dokument } = useMemo(() => mailDokument(html), [html])
+
+  const verdrahte = (event: SyntheticEvent<HTMLIFrameElement>) => {
+    const inhalt = event.currentTarget.contentDocument
+
+    inhalt?.addEventListener('click', mailKlick)
+    inhalt?.addEventListener('auxclick', mailKlick)
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {bilderBlockiert && (
+        <p className="border-b border-(--ui-stroke-secondary) px-4 py-1.5 text-xs text-(--ui-text-secondary)">
+          {labels.bilderBlockiert}
+        </p>
+      )}
+      <iframe
+        className="min-h-0 w-full flex-1 border-0 bg-white"
+        data-mail-html=""
+        onLoad={verdrahte}
+        referrerPolicy="no-referrer"
+        sandbox={MAIL_SANDBOX}
+        srcDoc={dokument}
+        title={title}
+      />
+    </div>
   )
 }
 
@@ -251,17 +299,6 @@ function Reader({ labels }: { labels: PostLabels }) {
   const message = useStore($message)
   const selectedUid = useStore($selectedUid)
   const busy = useStore($busy)
-
-  const safeHtml = useMemo(
-    () =>
-      message?.html
-        ? DOMPurify.sanitize(message.html, {
-            FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'object', 'embed'],
-            USE_PROFILES: { html: true }
-          })
-        : null,
-    [message]
-  )
 
   if (selectedUid === null) {
     return (
@@ -273,7 +310,7 @@ function Reader({ labels }: { labels: PostLabels }) {
   }
 
   if (!message) {
-    return <p className="p-4 text-sm text-(--ui-text-secondary)">{busy === 'read' ? labels.loading : ''}</p>
+    return <p className="p-4 text-sm text-(--ui-text-secondary)">{busy.has('read') ? labels.loading : ''}</p>
   }
 
   return (
@@ -282,20 +319,15 @@ function Reader({ labels }: { labels: PostLabels }) {
         <div className="flex items-start justify-between gap-3">
           <h2 className="min-w-0 flex-1 text-base font-semibold text-(--ui-text-primary)">{message.subject || '—'}</h2>
           <div className="flex shrink-0 gap-1">
-            <Button onClick={() => startReply(message)} size="sm" variant="secondary">
+            <Button onClick={() => startReply(message, labels.wrote)} size="sm" variant="secondary">
               <Send aria-hidden /> {labels.reply}
             </Button>
-            <Button
-              aria-label={labels.markUnread}
-              onClick={() => void markUnread(message.uid)}
-              size="sm"
-              variant="ghost"
-            >
+            <Button aria-label={labels.markUnread} onClick={() => void markUnread(message)} size="sm" variant="ghost">
               <Mail aria-hidden />
             </Button>
             <Button
               aria-label={labels.delete}
-              onClick={() => void removeMessage(message.uid)}
+              onClick={() => void removeMessage(message)}
               size="icon-sm"
               variant="ghost"
             >
@@ -332,35 +364,31 @@ function Reader({ labels }: { labels: PostLabels }) {
           </div>
         )}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {safeHtml ? (
-          <div
-            className="mail-html max-w-full text-sm text-(--ui-text-primary) [&_a]:text-(--ui-accent) [&_img]:max-w-full"
-            dangerouslySetInnerHTML={{ __html: safeHtml }}
-          />
-        ) : (
+      {message.html ? (
+        <MailHtml html={message.html} labels={labels} title={message.subject || labels.title} />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <pre className="font-sans text-sm whitespace-pre-wrap text-(--ui-text-primary)">{message.text}</pre>
-        )}
-      </div>
+        </div>
+      )}
     </>
   )
 }
 
+/** The draft's fields are `$compose` itself, so what is typed outlives this component. */
 function Compose({ draft, labels }: { draft: ComposeDraft; labels: PostLabels }) {
   const busy = useStore($busy)
-  const [to, setTo] = useState(draft.to)
-  const [cc, setCc] = useState(draft.cc ?? '')
-  const [subject, setSubject] = useState(draft.subject)
-  const [text, setText] = useState(draft.text)
-  const sending = busy === 'send'
+  const { subject, text, to } = draft
+  const cc = draft.cc ?? ''
+  const sending = busy.has('send')
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    await sendCompose({ ...draft, cc, subject, text, to }, labels.sent)
+    await sendCompose(labels.sent)
   }
 
   return (
-    <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
+    <form className="flex min-h-0 flex-1 flex-col" onSubmit={event => void submit(event)}>
       <header className="flex items-center justify-between border-b border-(--ui-stroke-secondary) px-4 py-2">
         <span className="text-sm font-medium text-(--ui-text-primary)">
           {draft.replyToUid ? labels.reply : labels.compose}
@@ -380,20 +408,29 @@ function Compose({ draft, labels }: { draft: ComposeDraft; labels: PostLabels })
           autoFocus={!draft.replyToUid}
           id="tikki-mail-to"
           inputMode="email"
-          onChange={event => setTo(event.target.value)}
+          onChange={event => updateCompose({ to: event.target.value })}
           value={to}
         />
         <label htmlFor="tikki-mail-cc">{labels.cc}</label>
-        <Input id="tikki-mail-cc" inputMode="email" onChange={event => setCc(event.target.value)} value={cc} />
+        <Input
+          id="tikki-mail-cc"
+          inputMode="email"
+          onChange={event => updateCompose({ cc: event.target.value })}
+          value={cc}
+        />
         <label htmlFor="tikki-mail-subject">{labels.subject}</label>
-        <Input id="tikki-mail-subject" onChange={event => setSubject(event.target.value)} value={subject} />
+        <Input
+          id="tikki-mail-subject"
+          onChange={event => updateCompose({ subject: event.target.value })}
+          value={subject}
+        />
       </div>
       <Textarea
         autoCapitalize="sentences"
         autoCorrect="on"
         autoFocus={Boolean(draft.replyToUid)}
         className="m-3 min-h-0 flex-1 resize-none font-sans text-sm"
-        onChange={event => setText(event.target.value)}
+        onChange={event => updateCompose({ text: event.target.value })}
         spellCheck
         value={text}
       />

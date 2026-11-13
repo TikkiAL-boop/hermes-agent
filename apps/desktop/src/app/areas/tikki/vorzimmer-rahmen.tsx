@@ -22,7 +22,8 @@ import { notify } from '@/store/notifications'
 import { $currentModel, $gatewayState } from '@/store/session'
 
 import { rolle } from '../admin/katalog'
-import { oeffneImBrowser } from '../browser-area'
+import { $rollenStand, ladeRollenStand, modellkette } from '../admin/rollen-stand'
+import { oeffneImBrowser } from '../browser-tabs'
 import { areaLabels } from '../labels'
 import { setArea } from '../store'
 import { $neueSuiteOffen, $suites, $suitesBrauchen, ladeSuites, oeffneSuite, type Suite } from '../suites/store'
@@ -271,6 +272,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
   const auftraegeStatus = useStore($auftraegeStatus)
   const modellsuche = useStore($modellsuche)
   const modellsucheStatus = useStore($modellsucheStatus)
+  const rollenStand = useStore($rollenStand)
   const [vorlesen, setVorlesen] = useState(() => vorlesenAktiv(VORLESEN_UEBERSICHT))
 
   // The lists are the backend's truth: read them once the gateway is open, and again whenever it reopens.
@@ -280,6 +282,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
         if (state === 'open') {
           void ladeSuites()
           void ladeAuftraege()
+          void ladeRollenStand()
 
           // Once per start: which models lie on the backend machine and which server answers.
           if ($modellsucheStatus.get() === 'leer') {
@@ -326,7 +329,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
 
   return (
     <div className="tikki-boden @container/vorzimmer flex min-h-0 min-w-0 flex-1 flex-col" data-vorzimmer="">
-      <header className="flex items-center gap-4 px-5 pt-4 pr-40 pb-3">
+      <header className="tikki-fenstergriff flex items-center gap-4 px-5 pt-4 pr-40 pb-3">
         <span className="tikki-wortmarke shrink-0">
           <b>tikki</b>
           <span>{v.titel}</span>
@@ -443,8 +446,7 @@ export function VorzimmerRahmen({ children }: { children: ReactNode }) {
             )}
             {tikki && (
               <p className="text-[12px] text-(--tikki-tinte-weich)">
-                {v.imVorzimmer}: <span className="font-mono">{tikki.modell.primary}</span> ·{' '}
-                <span className="font-mono">{tikki.modell.fallback}</span>
+                {v.imVorzimmer}: <span className="font-mono">{modellkette(tikki, rollenStand)}</span>
               </p>
             )}
           </Karte>

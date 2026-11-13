@@ -12,7 +12,8 @@ vi.mock('@/store/gateway', () => ({
 }))
 vi.mock('@/app/chat/composer/focus', () => ({ requestComposerSubmit: (...args: unknown[]) => submit(...args) }))
 // Neighbours with their own tests; the frame is under test.
-vi.mock('../browser-area', () => ({ oeffneImBrowser: vi.fn() }))
+vi.mock('../browser-tabs', () => ({ oeffneImBrowser: vi.fn() }))
+vi.mock('@/api/profiles', () => ({ getProfiles: async () => ({ profiles: backend.profile }) }))
 vi.mock('./update-waechter', async () => {
   const { atom } = await import('nanostores')
 
@@ -23,6 +24,8 @@ const { VorzimmerRahmen } = await import('./vorzimmer-rahmen')
 const { $gatewayState } = await import('@/store/session')
 const { $suites, $suitesBrauchen } = await import('../suites/store')
 const { $modellsucheStatus } = await import('./modelle')
+const { $rollenStand } = await import('../admin/rollen-stand')
+const { rolle } = await import('../admin/katalog')
 
 /** Every RPC that only reads. Anything else would be the app acting on its own. */
 const LESEND = new Set(['groups.list', 'groups.log', 'groups.state', 'session.active_list', 'session.events.since'])
@@ -36,14 +39,20 @@ const raum = (room_id: string, name: string) => ({
 })
 
 /** What the backend holds; a test changes it the way another surface would. */
-const backend: { raeume: ReturnType<typeof raum>[]; wartend: string[] } = { raeume: [], wartend: [] }
+const backend: {
+  profile: { model?: string; name: string; provider?: string }[]
+  raeume: ReturnType<typeof raum>[]
+  wartend: string[]
+} = { profile: [], raeume: [], wartend: [] }
 
 beforeEach(() => {
   vi.useFakeTimers()
   rpc.mockReset()
   submit.mockClear()
+  backend.profile = []
   backend.raeume = []
   backend.wartend = []
+  $rollenStand.set(null)
   $suites.set([])
   $suitesBrauchen.set([])
   // The model search is its own feature (and its own test); it has run.
@@ -132,5 +141,26 @@ describe('VorzimmerRahmen', () => {
 
     expect(wartet.length).toBeGreaterThan(0)
     expect(wartet.some(knopf => knopf.textContent?.includes('Welches Budget?'))).toBe(true)
+  })
+
+  it("names the model Tikki's profile is set to, not the one a fresh setup would write", async () => {
+    const tikki = rolle('tikki')!
+
+    backend.profile = [{ model: 'eigenes-modell', name: 'tikki', provider: 'eigener-anbieter' }]
+
+    const { container } = mount()
+
+    await vergehen(0)
+
+    expect(container.textContent).toContain('eigener-anbieter/eigenes-modell')
+    expect(container.textContent).not.toContain(tikki.modell.primary)
+  })
+
+  it('has a handle to move the window by: the Vorzimmer is the one area the shell gives none', async () => {
+    const { container } = mount()
+
+    await vergehen(0)
+
+    expect(container.querySelector('[data-vorzimmer] .tikki-fenstergriff')).toBeTruthy()
   })
 })

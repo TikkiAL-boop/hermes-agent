@@ -25,32 +25,45 @@ export function briefingErbitten(bitte: string): boolean {
 
 // ─── Vorlesen ────────────────────────────────────────────────────────────────
 
-/** While reading is on, every finished reply of the Vorzimmer chat is spoken once (`stimme.ts`). */
+/**
+ * While reading is on, every reply that finishes in the chat on screen is
+ * spoken once (`stimme.ts`).
+ *
+ * "Finished" is said of a session, so it is tracked per session: with one flag
+ * for "the active one", switching from a session that is still answering to a
+ * quiet one looked like that quiet one had just finished, and its old reply
+ * was read out. A reply that finishes in a session the person has left is not
+ * spoken — reading aloud follows what is on screen.
+ */
 export function startVorleser(): () => void {
-  let warBeschaeftigt = false
+  const beschaeftigt = new Map<string, boolean>()
   let gesprochen = ''
 
   return $sessionStates.listen(states => {
-    const id = $activeSessionId.get()
-    const state = id ? states[id] : undefined
+    const aktiv = $activeSessionId.get()
 
-    if (!state) {
-      return
+    for (const id of [...beschaeftigt.keys()]) {
+      if (!(id in states)) {
+        beschaeftigt.delete(id)
+      }
     }
 
-    const fertig = warBeschaeftigt && !state.busy
-    warBeschaeftigt = Boolean(state.busy)
+    for (const [id, state] of Object.entries(states)) {
+      const fertig = beschaeftigt.get(id) === true && !state.busy
 
-    if (!fertig || !vorlesenAktiv(VORLESEN_UEBERSICHT)) {
-      return
-    }
+      beschaeftigt.set(id, Boolean(state.busy))
 
-    const letzte = [...state.messages].reverse().find(m => m.role === 'assistant')
-    const text = letzte ? chatMessageText(letzte) : ''
+      if (!fertig || id !== aktiv || !vorlesenAktiv(VORLESEN_UEBERSICHT)) {
+        continue
+      }
 
-    if (text && text !== gesprochen) {
-      gesprochen = text
-      void sprich(text)
+      const letzte = state.messages.findLast(m => m.role === 'assistant')
+      const text = letzte ? chatMessageText(letzte) : ''
+
+      if (text && text !== gesprochen) {
+        gesprochen = text
+        void sprich(text)
+      }
     }
   })
 }

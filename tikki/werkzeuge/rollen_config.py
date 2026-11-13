@@ -19,11 +19,16 @@ Unterbefehle (alle Pfade absolut):
                                                    hermes tools, hermes model), bleibt. --frisch
                                                    ersetzt sie (eben angelegtes Profil),
                                                    --modelle-zuruecksetzen erzwingt die Katalogmodelle
+    seele <quelle> <ziel> [--zuruecksetzen] [--nur-ansehen]
+                                                   SOUL.md der Rolle auf die Fassung des Repos bringen,
+                                                   solange sie im Profil niemand geändert hat (Admin →
+                                                   Regeln); --zuruecksetzen erzwingt die Repo-Fassung
     honcho <vorlage-honcho> <slug> <ziel>         honcho.json der Rolle schreiben, wenn abweichend
 """
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -243,12 +248,18 @@ def _anwenden(doc, aenderungen: list[tuple[tuple, object]]) -> None:
             knoten[pfad[-1]] = wert
 
 
-def _stempel_lesen(pfad: Path) -> dict | None:
+def _stempel_datei(pfad: Path) -> dict:
+    """Der ganze Stempel: ``config`` (letzte Festlegung der config.yaml), ``seele`` (Prüfsumme der
+    zuletzt eingerichteten SOUL.md). Fehlt er oder ist er unlesbar: leer."""
     try:
         daten = json.loads(pfad.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return None
-    config = daten.get("config") if isinstance(daten, dict) else None
+        return {}
+    return daten if isinstance(daten, dict) else {}
+
+
+def _stempel_lesen(pfad: Path) -> dict | None:
+    config = _stempel_datei(pfad).get("config")
     return config if isinstance(config, dict) else None
 
 
@@ -289,7 +300,7 @@ def schreiben(katalog: str, vorlage: str, slug: str, ziel: str, *, modelle_zurue
         geschrieben = not zielpfad.is_file() or zielpfad.read_text(encoding="utf-8") != neu_text
         if geschrieben:
             _ersetzen(zielpfad, neu_text)
-        _stempeln(stempelpfad, _schlicht(soll_doc))
+        _stempeln(stempelpfad, config=_schlicht(soll_doc))
         return geschrieben
 
     ist = _schlicht(ist_doc)
@@ -317,7 +328,7 @@ def schreiben(katalog: str, vorlage: str, slug: str, ziel: str, *, modelle_zurue
         puffer = io.StringIO()
         yaml.dump(ist_doc, puffer)
         _ersetzen(zielpfad, puffer.getvalue())
-    _stempeln(stempelpfad, stempel)
+    _stempeln(stempelpfad, config=stempel)
     return bool(aenderungen)
 
 
@@ -338,10 +349,46 @@ def veraltet(katalog: str, vorlage: str, slug: str, ziel: str) -> bool:
     return soll != stempel
 
 
-def _stempeln(pfad: Path, config: dict) -> None:
-    text = json.dumps({"config": config}, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
+def _stempeln(pfad: Path, **teile) -> None:
+    """Teile des Stempels festhalten (``config``, ``seele``); was der Aufruf nicht nennt, bleibt."""
+    text = json.dumps({**_stempel_datei(pfad), **teile}, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
     if not pfad.is_file() or pfad.read_text(encoding="utf-8") != text:
         _ersetzen(pfad, text)
+
+
+def _pruefsumme(inhalt: bytes) -> str:
+    return hashlib.sha256(inhalt).hexdigest()
+
+
+def seele_einrichten(quelle: str, ziel: str, *, zuruecksetzen: bool = False, nur_ansehen: bool = False) -> str:
+    """Die SOUL.md der Rolle auf die Fassung des Repos bringen, solange sie im Profil niemand
+    geändert hat. Rückgabe: ``geschrieben``, ``unverändert`` oder ``behalten``.
+
+    Die Regeln einer Rolle pflegt der Mensch auch in der App (Admin → Regeln schreibt in dieselbe
+    Datei). Darum merkt sich der Stempel, welche Fassung Tikki zuletzt eingerichtet hat: Trägt das
+    Profil noch genau die, folgt es dem Repo; trägt es eine andere, hat sie jemand geändert und
+    sie bleibt (``zuruecksetzen`` holt die Repo-Fassung zurück). Ohne Stempel – ein eben angelegtes
+    Profil mit Hermes' Platzhalter, oder eines aus der Zeit davor – folgt die Datei dem Repo: dort
+    ließ sich eine eigene Fassung nie halten, jeder Lauf hat sie ersetzt.
+
+    ``nur_ansehen`` sagt, was geschähe, und schreibt nichts.
+    """
+    zielpfad = Path(ziel)
+    stempelpfad = zielpfad.with_name(STEMPEL)
+    neu = Path(quelle).read_bytes()
+    alt = zielpfad.read_bytes() if zielpfad.is_file() else None
+    eingerichtet = _stempel_datei(stempelpfad).get("seele")
+    geaendert = alt is not None and isinstance(eingerichtet, str) and _pruefsumme(alt) != eingerichtet
+    if alt != neu and geaendert and not zuruecksetzen:
+        return "behalten"
+    if nur_ansehen:
+        return "unverändert" if alt == neu else "geschrieben"
+    if alt != neu:
+        tmp = zielpfad.with_name(zielpfad.name + ".tmp")
+        tmp.write_bytes(neu)
+        os.replace(tmp, zielpfad)
+    _stempeln(stempelpfad, seele=_pruefsumme(neu))
+    return "unverändert" if alt == neu else "geschrieben"
 
 
 def honcho_config(vorlage: str, slug: str) -> str:
@@ -402,6 +449,18 @@ def main(argv: list[str]) -> int:
             print(f"  config.yaml geschrieben: {ziel}")
         else:
             print("  config.yaml unverändert")
+        return 0
+    if befehl == "seele":
+        schalter = {"--zuruecksetzen", "--nur-ansehen"}
+        quelle, ziel = [r for r in rest if r not in schalter]
+        ergebnis = seele_einrichten(quelle, ziel, zuruecksetzen="--zuruecksetzen" in rest,
+                                    nur_ansehen="--nur-ansehen" in rest)
+        if ergebnis == "behalten":
+            print("  SOUL.md im Profil geändert (Admin → Regeln) – bleibt; die Repo-Fassung holt --seelen-zuruecksetzen")
+        elif ergebnis == "geschrieben":
+            print(f"  SOUL.md -> {ziel}")
+        else:
+            print("  SOUL.md unverändert")
         return 0
     if befehl == "honcho":
         vorlage, slug, ziel = rest

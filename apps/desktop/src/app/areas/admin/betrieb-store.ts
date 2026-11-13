@@ -18,10 +18,21 @@ export const $mensch = gespeichert(
   (storedString('tikki.betrieb.mensch') ?? '').trim() || 'thorsten'
 )
 
-export const setMensch = (name: string) =>
-  $mensch.set(
-    name
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9._-]/g, '') || 'thorsten'
-  )
+const MENSCH_MAX = 40
+
+/**
+ * A name as the rooms can carry it. The app puts `<name>: ` in front of what
+ * the person says and both clients read it back from there (`NAME_PRAEFIX` in
+ * `suites/store.ts`), so a name has no whitespace and none of `:@[]` and is at
+ * most 40 long. Everything else is the person's: capitals, umlauts, hyphens.
+ */
+export const menschName = (roh: string): string => roh.replace(/[\s:@[\]]/g, '').slice(0, MENSCH_MAX)
+
+/** Take a typed name. One that leaves nothing keeps the name there was. */
+export const setMensch = (roh: string) => {
+  const name = menschName(roh)
+
+  if (name) {
+    $mensch.set(name)
+  }
+}

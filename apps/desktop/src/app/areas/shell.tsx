@@ -11,11 +11,17 @@ import { BrowserArea } from './browser-area'
 import { startMarkenwache } from './markenwache'
 import { PostArea } from './post-area'
 import { AreaRail } from './rail'
-import { $area, type Area } from './store'
+import { $area, type Area, WINDOW_HAS_AREAS } from './store'
 import { SuitesArea } from './suites/suites-area'
 import { TerminalArea } from './terminal-area'
 import { VorzimmerRahmen } from './tikki/vorzimmer-rahmen'
 
+/**
+ * The window has no titlebar; outside the Vorzimmer the Hermes tree (which
+ * carries every drag region upstream) is hidden. The area on screen gets a
+ * handle along its top edge — every area keeps that 1rem free — and only the
+ * one on screen: a hidden layer must not leave a grip behind.
+ */
 function AreaLayer({ active, children, id }: { active: boolean; children: ReactNode; id: Area }) {
   return (
     <div
@@ -24,19 +30,34 @@ function AreaLayer({ active, children, id }: { active: boolean; children: ReactN
       {...hiddenPaneProps(!active)}
     >
       <PaneVisibleContext.Provider value={active}>{children}</PaneVisibleContext.Provider>
+      {active && id !== 'tikki' && (
+        <div aria-hidden className="tikki-fenstergriff absolute inset-x-0 top-0 h-4" data-fenstergriff="" />
+      )}
     </div>
   )
 }
 
 /**
- * Rail on the left, one layer per area on the right. `children` is the chat
- * (the Hermes layout tree). Browser mounts on first visit and stays mounted
- * afterwards; Post is cheap and mounts only while shown. Terminal mounts only
- * while shown: it holds no state of its own (the shells live in the single
- * `PersistentTerminal` overlay), and that overlay can chase only ONE slot — a
- * terminal area left mounted would keep the chat's terminal pane blank.
+ * The Tikki shell around the chat (`children`, the Hermes layout tree). Only
+ * the main window has areas: a session window shows its one session and stays
+ * plain Hermes — no rail, no Vorzimmer frame, none of their background work.
+ * The brand watch runs in both.
  */
 export function AreaShell({ children }: { children: ReactNode }) {
+  useEffect(() => startMarkenwache(), [])
+
+  return WINDOW_HAS_AREAS ? <Areas>{children}</Areas> : <>{children}</>
+}
+
+/**
+ * Rail on the left, one layer per area on the right. Browser mounts on first
+ * visit and stays mounted afterwards; Post is cheap and mounts only while
+ * shown. Terminal mounts only while shown: it holds no state of its own (the
+ * shells live in the single `PersistentTerminal` overlay), and that overlay
+ * can chase only ONE slot — a terminal area left mounted would keep the chat's
+ * terminal pane blank.
+ */
+function Areas({ children }: { children: ReactNode }) {
   const area = useStore($area)
 
   const [visited, setVisited] = useState<Record<Area, boolean>>({
@@ -51,8 +72,6 @@ export function AreaShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setVisited(prev => (prev[area] ? prev : { ...prev, [area]: true }))
   }, [area])
-
-  useEffect(() => startMarkenwache(), [])
 
   return (
     <div className="flex min-h-0 flex-1">

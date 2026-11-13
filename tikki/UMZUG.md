@@ -142,6 +142,8 @@ er vorher ab (erst committen bzw. pushen, oder `--ohne-kern` für einen Lauf ohn
 - Nach Katalog- oder SOUL-Änderungen: `tikki/werkzeuge/rollen-einrichten.sh` (idempotent). Die
   `config.yaml` wird gemischt: Katalog- und Vorlagenänderungen kommen an, Einstellungen aus dem
   Profil bleiben; ein im Profil gewähltes Modell bleibt, bis `--modelle-zuruecksetzen` es ersetzt.
+  Eine in der App geänderte `SOUL.md` (Admin → Regeln) bleibt, bis `--seelen-zuruecksetzen` die
+  Repo-Fassung zurückholt.
 
 ## 7. Was man wissen muss (Kurzliste, Details in HANDOVER §10)
 

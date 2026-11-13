@@ -399,6 +399,41 @@ describe('PersistentTerminal rect tracking', () => {
     expect(mount.container!.querySelector('[data-testid="terminal-workspace"]')).not.toBeNull()
   })
 
+  it('stays with the slot on screen when a later slot mounts inside a hidden layer', () => {
+    // Tikki's Terminal area is open (slot A, visible) and the chat's terminal
+    // pane re-mounts behind it, in the hidden chat layer (slot B, newer). The
+    // shells belong where the person is looking.
+    installRaf()
+    const rectA = rect(10, 20, 200, 100)
+    const rectB = rect(300, 400, 500, 250)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('slot-b') ? rectB : rectA
+    })
+    $terminalTakeover.set(true)
+
+    const harness = (behind: boolean) => (
+      <>
+        <TerminalSlot className="slot-a" />
+        <div {...hiddenPaneProps(true)}>{behind && <TerminalSlot className="slot-b" />}</div>
+        <PersistentTerminal onAddSelectionToChat={() => undefined} />
+      </>
+    )
+
+    mount.render(harness(false))
+
+    const overlay = mount.container!.lastElementChild as HTMLElement
+    expect(overlay.style.top).toBe('10px')
+
+    act(() => {
+      mount.root!.render(harness(true))
+    })
+
+    expect(overlay.style.top).toBe('10px')
+    expect(overlay.style.left).toBe('20px')
+    expect(overlay.style.visibility).toBe('visible')
+    expect(overlay.style.pointerEvents).toBe('auto')
+  })
+
   it('hides the overlay on a tab switch that happens while the window is unfocused', () => {
     // The trap: the terminal is a tab in the main zone and the user clicks
     // another tab without the window being focused (or right as it blurs).

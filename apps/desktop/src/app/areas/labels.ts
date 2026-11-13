@@ -7,24 +7,46 @@ interface AreaLabels {
   admin: {
     sections: Record<AdminSection, string>
     intro: Record<AdminSection, string>
-    roles: { save: string; saved: string; loading: string; missingProfile: string; houseRules: string; pick: string }
+    roles: {
+      save: string
+      saved: string
+      unsaved: string
+      discard: string
+      loading: string
+      loadError: string
+      retry: string
+      saveError: (profile: string) => string
+      clones: (namen: string) => string
+      missingProfile: string
+      houseRules: string
+      pick: string
+    }
     bots: {
       name: string
       task: string
       model: string
-      fallback: string
+      vorgabe: string
       port: string
       status: string
       atStart: string
       onDemand: string
       online: string
       offline: string
+      missing: string
       unknown: string
+      statusFehler: string
       setup: string
     }
     users: { name: string; address: string; role: string; admin: string; member: string; invite: string; note: string }
     nodes: { name: string; kind: string; ram: string; role: string; status: string; note: string }
-    gedaechtnis: { laeuft: string; aus: string; pruefe: string; erklaerung: string; starten: string }
+    gedaechtnis: {
+      laeuft: string
+      aus: string
+      pruefe: string
+      unbekannt: string
+      erklaerung: string
+      starten: string
+    }
     ressourcen: {
       titel: string
       erklaerung: string
@@ -50,6 +72,13 @@ interface AreaLabels {
     betrieb: {
       mensch: string
       menschHinweis: string
+      waToken: string
+      waTokenHinweis: string
+      waTokenPlatzhalter: string
+      waTokenErsetzen: string
+      waTokenSpeichern: string
+      waTokenEntfernen: string
+      waTokenStand: Record<'unbekannt' | 'gesetzt' | 'fehlt' | 'fehler', string>
       rundUmDieUhr: string
     }
   }
@@ -59,6 +88,7 @@ interface AreaLabels {
     address: string
     addressHint: string
     attachments: string
+    bilderBlockiert: string
     cancel: string
     cc: string
     compose: string
@@ -83,6 +113,7 @@ interface AreaLabels {
     title: string
     to: string
     unread: string
+    wrote: (from: string) => string
   }
   rail: { label: string; hinweis: Record<Area, string> }
   vorzimmer: {
@@ -170,7 +201,10 @@ interface AreaLabels {
     allesRuhig: string
     wartetAufDich: string
     brauchtDich: string
+    /** A person in a room whom no one named. */
+    mensch: string
     takt: string
+    takte: Record<'stuendlich' | 'halbstuendlich' | 'taeglich' | 'werktags' | 'montags', string>
     taktEinmalig: string
     taktEigener: string
     taktPlatzhalter: string
@@ -225,6 +259,19 @@ const de: AreaLabels = {
     betrieb: {
       mensch: 'Name des Menschen',
       menschHinweis: 'Steht vor dem, was du in einem Raum sagst – so bleiben mehrere Menschen dort unterscheidbar.',
+      waToken: 'WhatsApp-Bridge-Token',
+      waTokenHinweis:
+        'Damit liest Tikki fürs Briefing neue WhatsApps. Das Token liegt beim Backend im Profil tikki, nicht in der App; angezeigt wird es nie.',
+      waTokenPlatzhalter: 'Token einfügen',
+      waTokenErsetzen: 'Neues Token einfügen',
+      waTokenSpeichern: 'Speichern',
+      waTokenEntfernen: 'Entfernen',
+      waTokenStand: {
+        unbekannt: 'wird geprüft …',
+        gesetzt: 'hinterlegt',
+        fehlt: 'nicht hinterlegt',
+        fehler: 'Nicht erreichbar – läuft das Backend und ist das Profil tikki eingerichtet?'
+      },
       rundUmDieUhr:
         'Rund um die Uhr: Räume mit Takt laufen als Dauerauftrag im Backend weiter, auch wenn die App zu ist. Der Wachhalter geht alle 15 Minuten durch alle Räume; ihn richtet tikki/werkzeuge/rollen-einrichten.sh ein.'
     },
@@ -232,6 +279,7 @@ const de: AreaLabels = {
       laeuft: 'läuft auf diesem Rechner',
       aus: 'nicht erreichbar',
       pruefe: 'wird geprüft …',
+      unbekannt: 'Stand unbekannt',
       erklaerung:
         'Honcho ist Tikkis Gedächtnis und läuft als eigener Dienst auf diesem Rechner: ein Workspace für das System, ein Peer je Mensch, ein AI-Peer je Rolle, eine Sitzung je Suite. Alle Rollenprofile zeigen darauf.',
       starten: 'Starten im Terminal:'
@@ -273,7 +321,13 @@ const de: AreaLabels = {
     roles: {
       save: 'Speichern',
       saved: 'Gespeichert',
+      unsaved: 'Ungespeicherte Änderungen',
+      discard: 'Verwerfen',
       loading: 'Lade …',
+      loadError: 'Die Regeln sind gerade nicht lesbar.',
+      retry: 'Erneut versuchen',
+      saveError: (profile: string) => `Nicht gespeichert für ${profile}:`,
+      clones: (namen: string) => `Speichern gilt auch für: ${namen}.`,
       missingProfile:
         'Profil ist auf diesem Backend noch nicht angelegt. Einrichten mit tikki/werkzeuge/rollen-einrichten.sh.',
       houseRules: 'Hausregeln (gelten für alle Rollen)',
@@ -283,14 +337,16 @@ const de: AreaLabels = {
       name: 'Rolle',
       task: 'Aufgabe',
       model: 'Modell',
-      fallback: 'Ausweich',
+      vorgabe: 'Vorgabe',
       port: 'Port',
       status: 'Status',
       atStart: 'ab Start im Raum',
       onDemand: 'nach Bedarf',
-      online: 'erreichbar',
+      online: 'läuft',
       offline: 'aus',
+      missing: 'nicht eingerichtet',
       unknown: 'unbekannt',
+      statusFehler: 'Der Stand der Rollen ist gerade nicht lesbar – läuft das Backend?',
       setup: 'Truppe einrichten: tikki/werkzeuge/rollen-einrichten.sh auf dem Tikki-Rechner ausführen.'
     },
     users: {
@@ -323,6 +379,8 @@ const de: AreaLabels = {
     address: 'Adresse',
     addressHint: 'Dein Postfach bei tikki.team, z. B. karin@tikki.team. Das Passwort bleibt auf diesem Rechner.',
     attachments: 'Anhänge',
+    bilderBlockiert:
+      'Bilder aus dem Netz werden nicht geladen – so erfährt der Absender nicht, dass du die Mail liest.',
     cancel: 'Abbrechen',
     cc: 'Kopie',
     compose: 'Schreiben',
@@ -346,7 +404,8 @@ const de: AreaLabels = {
     subject: 'Betreff',
     title: 'Post',
     to: 'An',
-    unread: 'ungelesen'
+    unread: 'ungelesen',
+    wrote: (from: string) => `${from} schrieb:`
   },
   rail: {
     label: 'Bereiche',
@@ -396,7 +455,9 @@ const de: AreaLabels = {
     vorlesenAus: 'aus',
     keinChat: 'Kein Gespräch offen. Klick zuerst ins Eingabefeld.',
     update: 'Tikki-Update verfügbar',
-    updateText: (n, version) => `${n} neue Änderungen bei Hermes${version ? ` (Version ${version})` : ''}.`,
+    // Says what is true without the upstream's name: the brand watch would turn
+    // "bei Hermes" into "bei Tikki", and these changes are not Tikki's own.
+    updateText: (n, version) => `${n} neue Änderungen stehen bereit${version ? ` (Version ${version})` : ''}.`,
     updateBefehl: 'Übernehmen im Terminal:',
     updateAktuell: 'Tikki ist auf dem neuesten Stand.'
   },
@@ -440,7 +501,7 @@ const de: AreaLabels = {
     mitglieder: n => (n === 1 ? '1 am Tisch' : `${n} am Tisch`),
     neu: 'Neue Suite',
     raumdienstFehlt:
-      'Der Raumdienst läuft auf diesem Backend nicht. Das Hermes-Gateway neu starten (tikki/werkzeuge/rollen-einrichten.sh richtet es ein).',
+      'Der Raumdienst läuft auf diesem Backend nicht. Das Gateway neu starten (tikki/werkzeuge/rollen-einrichten.sh richtet es ein).',
     rollenFehlen: (profile: string) =>
       `Auf diesem Rechner fehlen die Rollen ${profile}. Einmal tikki/werkzeuge/rollen-einrichten.sh ausführen, dann klappt die Suite.`,
     verlauf: 'Verlauf',
@@ -455,7 +516,15 @@ const de: AreaLabels = {
     allesRuhig: 'Alles ruhig. Keine Suite wartet auf dich.',
     wartetAufDich: 'Wartet auf deine Antwort',
     brauchtDich: 'Braucht dich',
+    mensch: 'Mensch',
     takt: 'Takt',
+    takte: {
+      stuendlich: 'stündlich',
+      halbstuendlich: 'alle 30 Minuten',
+      taeglich: 'täglich 06:00',
+      werktags: 'werktags 08:00',
+      montags: 'montags 09:00'
+    },
     taktEinmalig: 'Einmalig',
     taktEigener: 'Eigener Takt …',
     taktPlatzhalter: 'z. B. every 2h oder 0 7 * * *',
@@ -523,7 +592,13 @@ const en: AreaLabels = {
     roles: {
       save: 'Save',
       saved: 'Saved',
+      unsaved: 'Unsaved changes',
+      discard: 'Discard',
       loading: 'Loading …',
+      loadError: 'The rules cannot be read right now.',
+      retry: 'Try again',
+      saveError: (profile: string) => `Not saved for ${profile}:`,
+      clones: (namen: string) => `Saving also applies to: ${namen}.`,
       missingProfile: 'Profile is not set up on this backend yet. Run tikki/werkzeuge/rollen-einrichten.sh.',
       houseRules: 'House rules (apply to every role)',
       pick: 'Pick a role'
@@ -532,14 +607,16 @@ const en: AreaLabels = {
       name: 'Role',
       task: 'Task',
       model: 'Model',
-      fallback: 'Fallback',
+      vorgabe: 'Default',
       port: 'Port',
       status: 'Status',
       atStart: 'in the room from the start',
       onDemand: 'on demand',
-      online: 'reachable',
+      online: 'running',
       offline: 'off',
+      missing: 'not set up',
       unknown: 'unknown',
+      statusFehler: 'The state of the roles cannot be read right now – is the backend running?',
       setup: 'Set up the troop: run tikki/werkzeuge/rollen-einrichten.sh on the Tikki machine.'
     },
     users: {
@@ -562,6 +639,19 @@ const en: AreaLabels = {
     betrieb: {
       mensch: 'Person name',
       menschHinweis: 'Goes in front of what you say in a room, so several people stay apart there.',
+      waToken: 'WhatsApp bridge token',
+      waTokenHinweis:
+        'Lets Tikki read new WhatsApp messages for the briefing. The token lives with the backend in the tikki profile, not in the app; it is never shown.',
+      waTokenPlatzhalter: 'Paste token',
+      waTokenErsetzen: 'Paste a new token',
+      waTokenSpeichern: 'Save',
+      waTokenEntfernen: 'Remove',
+      waTokenStand: {
+        unbekannt: 'checking …',
+        gesetzt: 'stored',
+        fehlt: 'not stored',
+        fehler: 'Not reachable – is the backend running and the tikki profile set up?'
+      },
       rundUmDieUhr:
         'Around the clock: rooms with a schedule keep running on the backend as a standing order even when the app is closed. The watchkeeper walks all rooms every 15 minutes; tikki/werkzeuge/rollen-einrichten.sh sets it up.'
     },
@@ -569,6 +659,7 @@ const en: AreaLabels = {
       laeuft: 'running on this machine',
       aus: 'not reachable',
       pruefe: 'checking …',
+      unbekannt: 'state unknown',
       erklaerung:
         "Honcho is Tikki's memory and runs as its own service on this machine: one workspace for the system, one peer per person, one AI peer per role, one session per suite. Every role profile points at it.",
       starten: 'Start it in the terminal:'
@@ -609,6 +700,7 @@ const en: AreaLabels = {
     address: 'Address',
     addressHint: 'Your tikki.team mailbox, e.g. karin@tikki.team. The password stays on this machine.',
     attachments: 'Attachments',
+    bilderBlockiert: 'Pictures from the net are not loaded – so the sender does not learn that you read the mail.',
     cancel: 'Cancel',
     cc: 'Cc',
     compose: 'Compose',
@@ -632,7 +724,8 @@ const en: AreaLabels = {
     subject: 'Subject',
     title: 'Mail',
     to: 'To',
-    unread: 'unread'
+    unread: 'unread',
+    wrote: (from: string) => `${from} wrote:`
   },
   rail: {
     label: 'Areas',
@@ -681,7 +774,7 @@ const en: AreaLabels = {
     vorlesenAus: 'off',
     keinChat: 'No conversation open. Click into the input first.',
     update: 'Tikki update available',
-    updateText: (n, version) => `${n} new changes in Hermes${version ? ` (version ${version})` : ''}.`,
+    updateText: (n, version) => `${n} new changes are available${version ? ` (version ${version})` : ''}.`,
     updateBefehl: 'Apply in the terminal:',
     updateAktuell: 'Tikki is up to date.'
   },
@@ -725,7 +818,7 @@ const en: AreaLabels = {
     mitglieder: n => (n === 1 ? '1 at the table' : `${n} at the table`),
     neu: 'New suite',
     raumdienstFehlt:
-      'The room service is not running on this backend. Restart the Hermes gateway (tikki/werkzeuge/rollen-einrichten.sh sets it up).',
+      'The room service is not running on this backend. Restart the gateway (tikki/werkzeuge/rollen-einrichten.sh sets it up).',
     rollenFehlen: (profile: string) =>
       `The roles ${profile} are missing on this machine. Run tikki/werkzeuge/rollen-einrichten.sh once, then the suite opens.`,
     verlauf: 'History',
@@ -740,7 +833,15 @@ const en: AreaLabels = {
     allesRuhig: 'All quiet. No suite is waiting for you.',
     wartetAufDich: 'Waiting for your answer',
     brauchtDich: 'Needs you',
+    mensch: 'Person',
     takt: 'Schedule',
+    takte: {
+      stuendlich: 'hourly',
+      halbstuendlich: 'every 30 minutes',
+      taeglich: 'daily 06:00',
+      werktags: 'weekdays 08:00',
+      montags: 'Mondays 09:00'
+    },
     taktEinmalig: 'Once',
     taktEigener: 'Custom schedule …',
     taktPlatzhalter: 'e.g. every 2h or 0 7 * * *',

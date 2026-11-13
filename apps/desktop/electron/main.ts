@@ -501,6 +501,7 @@ import { createSshTeardownTracker } from './ssh-teardown'
 import { createStreamThrottle } from './stream-throttle'
 import { installSystemCaTrust } from './system-ca'
 import { registerTerminalIpc } from './terminal-ipc'
+import { probeLocalHealth } from './tikki-local-health'
 import { rewriteMailStoreSecret, TikkiMailService } from './tikki-mail'
 import { nativeOverlayWidth as computeNativeOverlayWidth, titleBarOverlayOptions } from './titlebar-overlay-width'
 import {
@@ -15893,6 +15894,9 @@ ipcMain.handle('tikki:mail:seen', (_event, mailbox, uid, seen) =>
 )
 ipcMain.handle('tikki:mail:remove', (_event, mailbox, uid) => tikkiMail.remove(String(mailbox), Number(uid)))
 ipcMain.handle('tikki:mail:send', (_event, input) => tikkiMail.send(input))
+
+// Tikki Admin: "is the local service up?" (tikki-local-health.ts).
+ipcMain.handle('tikki:local-health', (_event, port) => probeLocalHealth(port))
 
 // ── v2 connection registry IPC (multi-source) ───────────────────────────────
 // Storage-level CRUD for named agent sources. Routing/pooling consumption of

@@ -61,8 +61,10 @@ hermes -p default gateway install
 tikki/installieren.sh --nur-pruefen
 ```
 
-Das Einrichten ist wiederholbar: vorhandene Profile werden nicht neu angelegt, `SOUL.md` folgt
-dem Repo, und die `config.yaml` wird gemischt – was Katalog und Vorlage festlegen, kommt an; was
+Das Einrichten ist wiederholbar: vorhandene Profile werden nicht neu angelegt. `SOUL.md` folgt
+dem Repo, solange sie im Profil niemand geändert hat – Regeln, die in der App gepflegt wurden
+(Admin → Regeln), bleiben; `--seelen-zuruecksetzen` holt die Repo-Fassung zurück. Die
+`config.yaml` wird gemischt – was Katalog und Vorlage festlegen, kommt an; was
 im Profil geändert wurde (Hermes-Einstellungen, `hermes tools`, `hermes model`), bleibt. Die
 Modelle folgen dem Katalog, solange niemand im Profil ein anderes gewählt hat;
 `--modelle-zuruecksetzen` erzwingt den Katalog. `--nur <slug>` beschränkt den Lauf auf eine Rolle.

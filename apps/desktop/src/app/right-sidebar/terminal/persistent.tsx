@@ -25,13 +25,17 @@ const $slot = atom<HTMLElement | null>(null)
 
 const SLOT_CLASS = 'relative flex min-h-0 min-w-0 flex-1 flex-col'
 
-// Slots register in mount order; the newest one wins. When the Terminal area
-// (Tikki) mounts its own slot over the chat's bottom pane, the overlay follows
-// it, and when that area unmounts the pane's slot takes over again.
+// Slots register in mount order; the newest one on screen wins. When the
+// Terminal area (Tikki) mounts its own slot over the chat's bottom pane, the
+// overlay follows it, and when that area unmounts the pane's slot takes over
+// again. A slot that mounts inside a hidden layer (the chat's pane reopening
+// behind the Terminal area) must not take the shells away from the one the
+// person is looking at; with nothing on screen the newest keeps the overlay,
+// which hides itself there.
 const registeredSlots: HTMLElement[] = []
 
 const publishSlot = () => {
-  $slot.set(registeredSlots[registeredSlots.length - 1] ?? null)
+  $slot.set(registeredSlots.findLast(el => !isElementInHiddenPane(el)) ?? registeredSlots.at(-1) ?? null)
 }
 
 export function TerminalSlot({ className = SLOT_CLASS }: { className?: string }) {

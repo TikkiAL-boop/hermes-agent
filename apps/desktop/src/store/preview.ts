@@ -554,13 +554,18 @@ function mintBrowserTabId(): RightRailTabId {
  *  rather than stacking another identical tab — new tabs are something you
  *  ask for (the strip's "+"), the way they are in a real browser. */
 function browserTabId(tabs: PreviewTab[]): RightRailTabId {
+  // A popped-out Browser is on screen somewhere else (its own window, Tikki's
+  // Browser area) and hidden from this tree: navigating it from here would
+  // look like a no-op.
+  const popped = $poppedBrowserTabIds.get()
+  const docked = (tab: PreviewTab) => isBrowserTab(tab) && !popped.has(tab.id)
   const active = tabs.find(tab => tab.id === $rightRailActiveTabId.get())
 
-  if (active && isBrowserTab(active)) {
+  if (active && docked(active)) {
     return active.id
   }
 
-  return tabs.findLast(isBrowserTab)?.id ?? mintBrowserTabId()
+  return tabs.findLast(docked)?.id ?? mintBrowserTabId()
 }
 
 /** HTML files open rendered unless the caller asks for a mode. A re-open keeps

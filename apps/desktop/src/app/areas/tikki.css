@@ -210,6 +210,23 @@
   color: var(--tikki-tinte-weich);
 }
 
+/* Fenstergriff: das Fenster hat keine Titelleiste, also zieht man es an den
+   freien Flächen der Bereiche. Alles Bedienbare im Griff bleibt bedienbar. */
+.tikki-fenstergriff {
+  -webkit-app-region: drag;
+}
+
+.tikki-fenstergriff :is(a, button, input, select, textarea, form, label, [role='tab'], .tikki-kein-griff) {
+  -webkit-app-region: no-drag;
+}
+
+/* Ein versteckter Bereich (auch der Hermes-Baum hinter Post, Browser …) zieht
+   nicht und sperrt nichts: seine Griffe und Aussparungen gelten nur, solange
+   man sie sieht. */
+[data-area][data-pane-hidden] * {
+  -webkit-app-region: initial !important;
+}
+
 /* Die Hermes-Flächen im Vorzimmer: ihre Oberflächen-Token werden hier auf
    durchscheinend gesetzt, damit Glas und Boden dahinter sichtbar bleiben.
    Nur Farbe, keine Struktur – Hermes selbst bleibt unverändert. */

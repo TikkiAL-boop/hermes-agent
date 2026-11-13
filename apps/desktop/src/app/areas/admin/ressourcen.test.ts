@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { PA_PROFIL } from '../tikki/auftraege'
+
 import { type Anbieter, anbieterZeichen, MARKE, ressourcenArgv, ressourcenAusAusgabe } from './ressourcen'
 
 const anbieter = (teil: Partial<Anbieter>): Anbieter => ({
@@ -38,8 +40,16 @@ describe('ressourcenAusAusgabe', () => {
     expect(ressourcenAusAusgabe(MARKE + '{kaputt')).toBeNull()
   })
 
-  it('carries the PA profile in argv because cli.exec ignores routed profiles', () => {
-    expect(ressourcenArgv()).toEqual(['-p', 'tikki', 'pa', 'ressourcen', '--json'])
+  it('names the profile in argv itself, because cli.exec ignores routed profiles', () => {
+    // The command must run in the profile it is asked about, whichever that is:
+    // `-p <profile>` is a global flag, so it stands before the subcommand.
+    const argv = ressourcenArgv('familie')
+    const flag = argv.indexOf('-p')
+
+    expect(argv[flag + 1]).toBe('familie')
+    expect(flag).toBeLessThan(argv.indexOf('pa'))
+    // Unasked, it is the PA's profile — the one the standing orders and the briefing use.
+    expect(ressourcenArgv()).toEqual(ressourcenArgv(PA_PROFIL))
   })
 
   it('marks a provider by what the backend found, subscriptions by their sign-in', () => {

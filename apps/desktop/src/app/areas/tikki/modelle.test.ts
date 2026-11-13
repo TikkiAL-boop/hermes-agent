@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { PA_PROFIL } from './auftraege'
 import { MARKE, modellsucheArgv, modellsucheAusAusgabe, modellZeile } from './modelle'
 
 describe('modellsucheAusAusgabe', () => {
@@ -24,8 +25,14 @@ describe('modellsucheAusAusgabe', () => {
     expect(modellsucheAusAusgabe(MARKE + '{kaputt')).toBeNull()
   })
 
-  it('carries the PA profile in argv because cli.exec ignores routed profiles', () => {
-    expect(modellsucheArgv()).toEqual(['-p', 'tikki', 'pa', 'modelle', '--json'])
+  it('names the profile in argv itself, because cli.exec ignores routed profiles', () => {
+    // `-p <profile>` is a global flag: it stands before the subcommand, for whichever profile is asked.
+    const argv = modellsucheArgv('familie')
+    const flag = argv.indexOf('-p')
+
+    expect(argv[flag + 1]).toBe('familie')
+    expect(flag).toBeLessThan(argv.indexOf('pa'))
+    expect(modellsucheArgv()).toEqual(modellsucheArgv(PA_PROFIL))
   })
 
   it('describes a model with what matters for choosing it', () => {

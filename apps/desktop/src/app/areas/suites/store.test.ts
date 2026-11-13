@@ -251,8 +251,9 @@ describe('nachrichtAus', () => {
   })
 
   it('keeps a message without a name prefix whole', () => {
+    // Nobody named: the name stays empty, and the room view says "a person" in its own language.
     expect(nachrichtAus(mensch('[Tür aus „A“] @raumleiter Bitte Stand'), MITGLIEDER)).toMatchObject({
-      name: 'Mensch',
+      name: '',
       text: '[Tür aus „A“] @raumleiter Bitte Stand'
     })
   })

@@ -29,18 +29,34 @@ export const HERMES_BASIS = basis as {
   hermes_version: string
 }
 
-function gespeichert(): UpdateStand | null {
-  try {
-    const raw = storedString(CACHE_KEY)
-    const wert = raw ? (JSON.parse(raw) as UpdateStand) : null
+/**
+ * The answer as it is remembered between starts — together with the commit it
+ * was measured against. "12 commits behind" is a statement about one base: an
+ * update moves the base, and the remembered count is then about another build.
+ */
+export const standAlsCache = (stand: UpdateStand, basisCommit: string = HERMES_BASIS.commit): string =>
+  JSON.stringify({ ...stand, basis: basisCommit })
 
-    return wert && typeof wert.neueCommits === 'number' ? wert : null
+/** Pure: the remembered answer, if it is about the commit this build stands on. */
+export function standAusCache(raw: null | string, basisCommit: string = HERMES_BASIS.commit): UpdateStand | null {
+  try {
+    const wert = raw ? (JSON.parse(raw) as Partial<UpdateStand> & { basis?: unknown }) : null
+
+    if (!wert || wert.basis !== basisCommit || typeof wert.neueCommits !== 'number') {
+      return null
+    }
+
+    return {
+      geprueft: typeof wert.geprueft === 'number' ? wert.geprueft : 0,
+      neueCommits: wert.neueCommits,
+      version: typeof wert.version === 'string' ? wert.version : null
+    }
   } catch {
     return null
   }
 }
 
-export const $updateStand = atom<UpdateStand | null>(gespeichert())
+export const $updateStand = atom<UpdateStand | null>(standAusCache(storedString(CACHE_KEY)))
 
 /** Pure: GitHub's compare and release answers → what the card shows. */
 export function updateStandAus(vergleich: unknown, release: unknown, jetzt = Date.now()): UpdateStand {
@@ -75,7 +91,7 @@ export async function pruefeUpdate(): Promise<UpdateStand | null> {
 
     const stand = updateStandAus(vergleich, release)
     $updateStand.set(stand)
-    persistString(CACHE_KEY, JSON.stringify(stand))
+    persistString(CACHE_KEY, standAlsCache(stand))
 
     return stand
   } catch {

@@ -20,7 +20,10 @@ export const BRAND_NAME = BRANDING_ENABLED ? 'Tikki' : 'Hermes'
 const RULES: ReadonlyArray<readonly [RegExp, string]> = [
   // Longer product phrases first so they collapse to the single brand name.
   [/\bHermes (?:Agent|Desktop|Light)\b/g, BRAND_NAME],
-  [/\bHermes\b/g, BRAND_NAME]
+  // "Hermes Cloud" is not this product: it is Nous' hosted service, and the
+  // buttons that name it sign in there. It keeps its name — there is no
+  // "Tikki Cloud" to sign in to.
+  [/\bHermes\b(?! Cloud\b)/g, BRAND_NAME]
 ]
 
 export function brandString(value: string): string {
@@ -29,9 +32,11 @@ export function brandString(value: string): string {
   }
 
   let out = value
+
   for (const [pattern, replacement] of RULES) {
     out = out.replace(pattern, replacement)
   }
+
   return out
 }
 
@@ -41,20 +46,27 @@ function brandValue(value: unknown): unknown {
   if (typeof value === 'string') {
     return brandString(value)
   }
+
   if (typeof value === 'function') {
     const fn = value as AnyFn
+
     return (...args: unknown[]): unknown => brandValue(fn(...args))
   }
+
   if (Array.isArray(value)) {
     return value.map(brandValue)
   }
+
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {}
+
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
       out[key] = brandValue(entry)
     }
+
     return out
   }
+
   return value
 }
 

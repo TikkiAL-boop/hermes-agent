@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Tikki – richtet für jede Rolle aus rollen/KATALOG.json ein Hermes-Profil ein.
 #
-# Idempotent: vorhandene Profile werden nicht neu angelegt, SOUL.md folgt dem Repo, und die
-# config.yaml wird gemischt: was Katalog und Vorlage festlegen, kommt an; was im Profil
-# geändert wurde (Hermes-Einstellungen, hermes tools, hermes model), bleibt. Die
-# Katalogmodelle erzwingt --modelle-zuruecksetzen. Mit --dry-run wird nur angezeigt, was
-# passieren würde. Keine Geheimnisse werden geschrieben; Schlüssel gehören in die .env der
-# Profile (tikki/werkzeuge/schluessel-einlesen.sh).
+# Idempotent: vorhandene Profile werden nicht neu angelegt. SOUL.md folgt dem Repo, solange
+# sie im Profil niemand geändert hat (Admin → Regeln); die Repo-Fassung erzwingt
+# --seelen-zuruecksetzen. Die config.yaml wird gemischt: was Katalog und Vorlage festlegen,
+# kommt an; was im Profil geändert wurde (Hermes-Einstellungen, hermes tools, hermes model),
+# bleibt. Die Katalogmodelle erzwingt --modelle-zuruecksetzen. Mit --dry-run wird nur
+# angezeigt, was passieren würde. Keine Geheimnisse werden geschrieben; Schlüssel gehören in
+# die .env der Profile (tikki/werkzeuge/schluessel-einlesen.sh).
 #
 # Verwendung:
 #   tikki/werkzeuge/rollen-einrichten.sh [--dry-run] [--nur <slug>] [--modelle-zuruecksetzen]
+#                                        [--seelen-zuruecksetzen]
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,13 +25,15 @@ MODUL="tikki.werkzeuge.rollen_config"
 DRY_RUN=0
 NUR=""
 MODELLE=()
+SEELEN=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
     --nur) shift; NUR="${1:-}" ;;
     --modelle-zuruecksetzen) MODELLE=(--modelle-zuruecksetzen) ;;
+    --seelen-zuruecksetzen) SEELEN=(--zuruecksetzen) ;;
     -h|--help)
-      sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+      sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -151,12 +155,12 @@ while IFS=$'\t' read -r SLUG NAME PORT SOUL_SLUG; do
     fi
   fi
 
-  # 2) SOUL.md kopieren (nur wenn abweichend)
-  if [ "$DRY_RUN" = 1 ] || ! cmp -s "$SOUL_QUELLE" "$ZIEL/SOUL.md" 2>/dev/null; then
-    tun cp "$SOUL_QUELLE" "$ZIEL/SOUL.md"
-    sagen "SOUL.md -> $ZIEL/SOUL.md"
+  # 2) SOUL.md: folgt dem Repo, solange sie im Profil niemand geändert hat (Admin → Regeln
+  #    schreibt in dieselbe Datei). Welche Fassung zuletzt eingerichtet wurde, steht im Stempel.
+  if [ "$DRY_RUN" = 1 ]; then
+    konfig seele "$SOUL_QUELLE" "$ZIEL/SOUL.md" --nur-ansehen ${SEELEN[@]+"${SEELEN[@]}"} | sed 's/^  /  [dry-run] /'
   else
-    sagen "SOUL.md unverändert"
+    konfig seele "$SOUL_QUELLE" "$ZIEL/SOUL.md" ${SEELEN[@]+"${SEELEN[@]}"}
   fi
 
   # 3) config.yaml aus der Vorlage mit Port, Modellen und Werkzeugen der Rolle

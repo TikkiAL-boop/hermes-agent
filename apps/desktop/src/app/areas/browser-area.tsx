@@ -1,110 +1,46 @@
 import { useStore } from '@nanostores/react'
-import { atom } from 'nanostores'
 import { useEffect } from 'react'
 
 import { PreviewTilePane } from '@/app/chat/right-rail/preview'
 import { hiddenPaneProps, PaneVisibleContext } from '@/components/pane-shell/pane-visibility'
 import { useI18n } from '@/i18n'
 import { ChevronLeft, Plus, X } from '@/lib/icons'
-import { persistString, storedString } from '@/lib/storage'
 import { cn } from '@/lib/utils'
-import {
-  $browserPages,
-  $previewTabs,
-  closeRightRailTab,
-  markBrowserTabPopped,
-  newBrowserTab,
-  openPreview,
-  type PreviewTab
-} from '@/store/preview'
+import { $browserPages } from '@/store/preview'
 
-import { adresseAusEingabe } from './browser-adresse'
+import { $activeTab, $bereichTabs, $sichtbarerTab, neuerBereichTab, schliesseBereichTab } from './browser-tabs'
 import { areaLabels } from './labels'
 import { setArea } from './store'
-
-const ACTIVE_KEY = 'tikki.desktop.browser.activeTab'
-
-const $activeTab = atom<null | string>(storedString(ACTIVE_KEY))
-
-$activeTab.subscribe(id => persistString(ACTIVE_KEY, id))
-
-const urlTabs = (tabs: PreviewTab[]) => tabs.filter(tab => tab.target.kind === 'url')
-
-/** Open an address or a search in the Browser area and walk over to it. The whole app turns into the browser; the rail leads back. */
-export function oeffneImBrowser(eingabe: string): void {
-  const url = adresseAusEingabe(eingabe)
-  let label = url
-
-  try {
-    label = new URL(url).hostname || url
-  } catch {
-    // about:blank and friends keep the raw text
-  }
-
-  const ziel = { kind: 'url' as const, label, source: url, url }
-  openPreview(ziel)
-  let tab = $previewTabs.get().findLast(t => t.target.kind === 'url' && t.target.url === url)
-
-  // The rail's own browser tab can live in another scope's bucket; then the
-  // area gets a tab of its own and points it at the page.
-  if (!tab) {
-    newBrowserTab()
-    const neu = $previewTabs.get().findLast(t => t.target.kind === 'url')
-
-    if (neu) {
-      $previewTabs.set($previewTabs.get().map(t => (t.id === neu.id ? { ...t, target: ziel } : t)))
-      tab = { ...neu, target: ziel }
-    }
-  }
-
-  if (tab) {
-    $activeTab.set(tab.id)
-  }
-
-  setArea('browser')
-}
 
 /**
  * Browser as a full area: a tab strip on top, one `PreviewTilePane` per tab
  * underneath (all mounted, inactive ones hidden, so history and scroll
- * survive). Tabs shown here are marked "popped" so the chat's layout tree does
- * not render the same page a second time.
+ * survive). It shows the tabs it holds itself (`browser-tabs.ts`) and nothing
+ * the chat's layout tree shows.
  */
 export function BrowserArea({ active }: { active: boolean }) {
-  const tabs = urlTabs(useStore($previewTabs))
+  const tabs = useStore($bereichTabs)
   const pages = useStore($browserPages)
-  const activeId = useStore($activeTab)
+  const activeId = useStore($sichtbarerTab)?.id ?? null
   const { locale } = useI18n()
   const labels = areaLabels(locale).browser
 
-  // Adopt every URL tab into the area and make sure there is at least one.
+  // A browser on screen always has a page to type an address into.
   useEffect(() => {
-    if (!active) {
-      return
+    if (active && tabs.length === 0) {
+      neuerBereichTab()
     }
-
-    if (tabs.length === 0) {
-      newBrowserTab()
-
-      return
-    }
-
-    for (const tab of tabs) {
-      markBrowserTabPopped(tab.id, true)
-    }
-  }, [active, tabs])
-
-  // Keep the active id pointing at a tab that exists.
-  useEffect(() => {
-    if (tabs.length > 0 && !tabs.some(tab => tab.id === activeId)) {
-      $activeTab.set(tabs[tabs.length - 1].id)
-    }
-  }, [tabs, activeId])
+  }, [active, tabs.length])
 
   return (
     <div className="tikki-boden flex min-h-0 min-w-0 flex-1 flex-col p-4" data-browser-area="">
       <div className="tikki-glas flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex h-9 shrink-0 items-end gap-1 overflow-x-auto px-2 pt-1" role="tablist">
+        {/* Page titles are the pages' words, not the app's: the brand watch leaves them alone. */}
+        <div
+          className={cn('flex h-9 shrink-0 items-end gap-1 overflow-x-auto px-2 pt-1', active && 'tikki-fenstergriff')}
+          data-marke-frei=""
+          role="tablist"
+        >
           <button
             className="tikki-knopf tikki-knopf-still mb-1 shrink-0 px-2.5 py-1 text-xs font-medium"
             data-browser-zurueck=""
@@ -122,7 +58,7 @@ export function BrowserArea({ active }: { active: boolean }) {
             return (
               <div
                 className={cn(
-                  'group flex h-8 max-w-56 min-w-0 items-center gap-1 rounded-t-lg border border-b-0 px-3 text-xs',
+                  'group tikki-kein-griff flex h-8 max-w-56 min-w-0 items-center gap-1 rounded-t-lg border border-b-0 px-3 text-xs',
                   current
                     ? 'border-(--ui-stroke-secondary) bg-(--ui-bg-primary) text-(--ui-text-primary)'
                     : 'border-transparent text-(--ui-text-secondary) hover:bg-(--ui-fill-quinary)'
@@ -141,7 +77,7 @@ export function BrowserArea({ active }: { active: boolean }) {
                 <button
                   aria-label={labels.close}
                   className="rounded p-0.5 opacity-0 hover:bg-(--ui-fill-tertiary) group-hover:opacity-100"
-                  onClick={() => closeRightRailTab(tab.id)}
+                  onClick={() => schliesseBereichTab(tab.id)}
                   type="button"
                 >
                   <X aria-hidden className="size-3.5" />
@@ -152,9 +88,7 @@ export function BrowserArea({ active }: { active: boolean }) {
           <button
             aria-label={labels.newTab}
             className="mb-1 rounded-md p-1 text-(--ui-text-secondary) hover:bg-(--ui-fill-quinary) hover:text-(--ui-text-primary)"
-            onClick={() => {
-              newBrowserTab()
-            }}
+            onClick={() => void neuerBereichTab()}
             type="button"
           >
             <Plus aria-hidden className="size-4" />
@@ -171,7 +105,7 @@ export function BrowserArea({ active }: { active: boolean }) {
                 {...hiddenPaneProps(!visible)}
               >
                 <PaneVisibleContext.Provider value={visible}>
-                  <PreviewTilePane onClose={() => closeRightRailTab(tab.id)} tabId={tab.id} />
+                  <PreviewTilePane onClose={() => schliesseBereichTab(tab.id)} tabId={tab.id} />
                 </PaneVisibleContext.Provider>
               </div>
             )

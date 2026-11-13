@@ -6,9 +6,11 @@ import { Armchair, Bell, Loader2, Plus, Search } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { RAUMLEITER_KLONE, rolle, ROLLEN } from '../admin/katalog'
+import { $rollenStand, hauptmodell } from '../admin/rollen-stand'
 import { areaLabels } from '../labels'
 import { raumZeitplanAnlegen } from '../tikki/auftraege'
 
+import { $suiteFormular, EIGENER_TAKT, formularTakt, leereFormular, schreibeFormular } from './formular'
 import {
   $aktiveSuite,
   $neueSuiteOffen,
@@ -36,16 +38,14 @@ const fehlerzeile = (fehler: string, s: SuiteLabels): string => {
   return raumdienstFehlt(fehler) ? s.raumdienstFehlt : rollen.length ? s.rollenFehlen(rollen.join(', ')) : fehler
 }
 
-/** The rhythms the form offers, each with the Hermes schedule it stands for. */
-export const TAKTE: readonly { name: string; plan: string }[] = [
-  { name: 'stündlich', plan: 'every 1h' },
-  { name: 'alle 30 Minuten', plan: 'every 30m' },
-  { name: 'täglich 06:00', plan: '0 6 * * *' },
-  { name: 'werktags 08:00', plan: '0 8 * * 1-5' },
-  { name: 'montags 09:00', plan: '0 9 * * 1' }
+/** The rhythms the form offers, each with the Hermes schedule it stands for; the names are labels. */
+export const TAKTE: readonly { name: keyof SuiteLabels['takte']; plan: string }[] = [
+  { name: 'stuendlich', plan: 'every 1h' },
+  { name: 'halbstuendlich', plan: 'every 30m' },
+  { name: 'taeglich', plan: '0 6 * * *' },
+  { name: 'werktags', plan: '0 8 * * 1-5' },
+  { name: 'montags', plan: '0 9 * * 1' }
 ]
-
-const EIGENER = '__eigener__'
 
 const raumleiter = rolle(RAUMLEITER)
 /** Roles the person may seat at the table from the start; the base crew is there anyway. */
@@ -54,10 +54,13 @@ const WAEHLBARE_ROLLEN = ROLLEN.filter(r => !r.im_raum_ab_start && r.slug !== 't
 function RaumleiterKarte() {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
+  const stand = useStore($rollenStand)
 
   if (!raumleiter) {
     return null
   }
+
+  const modell = hauptmodell(raumleiter, stand)
 
   return (
     <div className="tikki-glas p-4" data-suite-raumleiter="">
@@ -73,9 +76,16 @@ function RaumleiterKarte() {
       </div>
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
         <dt className="text-(--tikki-tinte-weich)">{s.hauptmodell}</dt>
-        <dd className="font-mono text-(--tikki-tinte)">{raumleiter.modell.primary}</dd>
-        <dt className="text-(--tikki-tinte-weich)">{s.ausweich}</dt>
-        <dd className="font-mono text-(--tikki-tinte)">{raumleiter.modell.fallback}</dd>
+        <dd className="font-mono text-(--tikki-tinte)" data-suite-raumleiter-modell="">
+          {modell}
+        </dd>
+        {/* The catalogue's fallback belongs to the catalogue's model; a profile switched to another has its own. */}
+        {modell === raumleiter.modell.primary && (
+          <>
+            <dt className="text-(--tikki-tinte-weich)">{s.ausweich}</dt>
+            <dd className="font-mono text-(--tikki-tinte)">{raumleiter.modell.fallback}</dd>
+          </>
+        )}
       </dl>
     </div>
   )
@@ -86,15 +96,11 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
   const entsteht = useStore($suiteEntsteht)
-  const [name, setName] = useState('')
-  const [ziel, setZiel] = useState('')
-  const [taktWahl, setTaktWahl] = useState('')
-  const [eigenerTakt, setEigenerTakt] = useState('')
-  const [rollen, setRollen] = useState<string[]>([])
-  const [leiter, setLeiter] = useState('')
+  const stand = useStore($rollenStand)
+  const formular = useStore($suiteFormular)
+  const { eigenerTakt, leiter, name, rollen, taktWahl, ziel } = formular
   const [verbindeName, setVerbindeName] = useState('')
   const [verbindeFehler, setVerbindeFehler] = useState(false)
-  const takt = taktWahl === EIGENER ? eigenerTakt.trim() : taktWahl
 
   const erstellen = async (event: FormEvent) => {
     event.preventDefault()
@@ -103,21 +109,21 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
       return
     }
 
-    await neueSuite(name, ziel, {
+    const suite = await neueSuite(name, ziel, {
       rollen,
-      takt: takt || undefined,
+      takt: formularTakt(formular),
       raumleiter: leiter || undefined,
       zeitplanAnlegen: raumZeitplanAnlegen
     })
-    setName('')
-    setZiel('')
-    setTaktWahl('')
-    setEigenerTakt('')
-    setRollen([])
+
+    // Only what was opened is done with: after a failure the person tries again with what they wrote.
+    if (suite) {
+      leereFormular()
+    }
   }
 
   const rolleUmschalten = (slug: string) =>
-    setRollen(alt => (alt.includes(slug) ? alt.filter(x => x !== slug) : [...alt, slug]))
+    schreibeFormular({ rollen: rollen.includes(slug) ? rollen.filter(x => x !== slug) : [...rollen, slug] })
 
   const verbinden = (event: FormEvent) => {
     event.preventDefault()
@@ -150,7 +156,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
             aria-label={s.name}
             className="tikki-feld text-sm"
             disabled={Boolean(entsteht)}
-            onChange={e => setName(e.target.value)}
+            onChange={e => schreibeFormular({ name: e.target.value })}
             placeholder={s.namePlatzhalter}
             ref={nameFeld}
             required
@@ -160,7 +166,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
             aria-label={s.ziel}
             className="tikki-feld min-h-20 text-sm"
             disabled={Boolean(entsteht)}
-            onChange={e => setZiel(e.target.value)}
+            onChange={e => schreibeFormular({ ziel: e.target.value })}
             placeholder={s.zielPlatzhalter}
             value={ziel}
           />
@@ -170,22 +176,22 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
               className="tikki-feld py-1.5 text-sm"
               data-suite-takt=""
               disabled={Boolean(entsteht)}
-              onChange={e => setTaktWahl(e.target.value)}
+              onChange={e => schreibeFormular({ taktWahl: e.target.value })}
               value={taktWahl}
             >
               <option value="">{s.taktEinmalig}</option>
               {TAKTE.map(t => (
                 <option key={t.plan} value={t.plan}>
-                  {t.name}
+                  {s.takte[t.name]}
                 </option>
               ))}
-              <option value={EIGENER}>{s.taktEigener}</option>
+              <option value={EIGENER_TAKT}>{s.taktEigener}</option>
             </select>
-            {taktWahl === EIGENER && (
+            {taktWahl === EIGENER_TAKT && (
               <input
                 aria-label={s.taktEigener}
                 className="tikki-feld min-w-40 flex-1 py-1.5 text-sm"
-                onChange={e => setEigenerTakt(e.target.value)}
+                onChange={e => schreibeFormular({ eigenerTakt: e.target.value })}
                 placeholder={s.taktPlatzhalter}
                 value={eigenerTakt}
               />
@@ -199,13 +205,13 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
                 className="tikki-feld py-1.5 text-sm"
                 data-suite-leiter=""
                 disabled={Boolean(entsteht)}
-                onChange={e => setLeiter(e.target.value)}
+                onChange={e => schreibeFormular({ leiter: e.target.value })}
                 value={leiter}
               >
-                <option value="">{s.leiterStandard(raumleiter?.modell.primary ?? '')}</option>
+                <option value="">{s.leiterStandard(raumleiter ? hauptmodell(raumleiter, stand) : '')}</option>
                 {RAUMLEITER_KLONE.map(k => (
                   <option key={k.slug} value={k.slug}>
-                    {k.name} · {k.modell.primary}
+                    {k.name} · {hauptmodell(k, stand)}
                   </option>
                 ))}
               </select>
@@ -232,12 +238,7 @@ function SuiteFenster({ nameFeld, suites }: { nameFeld: React.RefObject<HTMLInpu
             <button
               className="tikki-knopf tikki-knopf-still px-3 py-1.5 text-sm"
               disabled={Boolean(entsteht)}
-              onClick={() => {
-                setName('')
-                setZiel('')
-                setRollen([])
-                setLeiter('')
-              }}
+              onClick={leereFormular}
               type="button"
             >
               {s.abbrechen}

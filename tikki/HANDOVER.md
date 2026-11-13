@@ -818,7 +818,11 @@ zurück („Tokens nur Strom“ gilt dann fürs Abo-Kontingent).
   `hermes tools`, `hermes config set`, eine eigene Plattform, MCP-Server), bleibt. Die Modellkette
   folgt dem Katalog, solange im Profil niemand ein anderes Modell gewählt hat (`hermes model`,
   Admin → Modelle); `--modelle-zuruecksetzen` erzwingt den Katalog. Profile aus der Zeit vor dem
-  Stempel behalten ein abweichendes Modell. `platform_toolsets` trägt die Werkzeugliste der Rolle
+  Stempel behalten ein abweichendes Modell. Dasselbe gilt für die `SOUL.md`
+  (`rollen_config.seele_einrichten`, Prüfsumme der zuletzt eingerichteten Fassung im selben
+  Stempel): Sie folgt dem Repo, solange sie im Profil niemand geändert hat; was in Admin → Regeln
+  gepflegt wurde, bleibt, bis `--seelen-zuruecksetzen` die Repo-Fassung zurückholt. Ein Profil
+  ohne Stempel folgt einmal dem Repo. `platform_toolsets` trägt die Werkzeugliste der Rolle
   für `api_server` (HTTP, Raum-Runden), `cli` (Terminal, App) und `cron` (Daueraufträge);
   `known_plugin_toolsets` hält dort die Plugin-Toolsets (`post`, `briefing`, `modelle`,
   `ressourcen`, `gedaechtnis`) aus Rollen heraus, die sie im Katalog nicht haben

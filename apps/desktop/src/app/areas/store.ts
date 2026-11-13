@@ -5,6 +5,7 @@
 import { atom } from 'nanostores'
 
 import { persistString, storedString } from '@/lib/storage'
+import { isAuxiliaryWindow } from '@/store/windows'
 
 export const AREAS = ['tikki', 'suites', 'browser', 'post', 'terminal', 'admin'] as const
 
@@ -14,10 +15,21 @@ const AREA_KEY = 'tikki.desktop.area'
 
 export const isArea = (value: unknown): value is Area => AREAS.includes(value as Area)
 
-const stored = storedString(AREA_KEY)
+// A session window, the HUD and a popped-out browser show one thing and have
+// no rail: they are always "the chat", and they neither read nor write where
+// the main window is — all windows share one localStorage.
+export const WINDOW_HAS_AREAS = !isAuxiliaryWindow()
+
+const stored = WINDOW_HAS_AREAS ? storedString(AREA_KEY) : null
 
 export const $area = atom<Area>(isArea(stored) ? stored : 'tikki')
 
-$area.subscribe(area => persistString(AREA_KEY, area))
+if (WINDOW_HAS_AREAS) {
+  $area.listen(area => persistString(AREA_KEY, area))
+}
 
-export const setArea = (area: Area) => $area.set(area)
+export const setArea = (area: Area) => {
+  if (WINDOW_HAS_AREAS) {
+    $area.set(area)
+  }
+}

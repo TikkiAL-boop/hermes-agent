@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils'
 import { $gatewayState } from '@/store/session'
 
 import { KATALOG, rolle } from '../admin/katalog'
+import { $rollenStand, modellkette } from '../admin/rollen-stand'
 import { areaLabels } from '../labels'
 import { setArea } from '../store'
 import { $auftraege, ladeAuftraege, raumZeitplan } from '../tikki/auftraege'
@@ -209,6 +210,7 @@ const sprecherIcon = (von: string): string => (von === MENSCH ? '🧑' : (rolle(
 function AmTisch({ arbeitet, mitglieder }: { arbeitet?: string; mitglieder: readonly Mitglied[] }) {
   const { locale } = useI18n()
   const s = areaLabels(locale).suites
+  const stand = useStore($rollenStand)
 
   return (
     <Zone count={mitglieder.length} title={s.amTisch}>
@@ -233,7 +235,7 @@ function AmTisch({ arbeitet, mitglieder }: { arbeitet?: string; mitglieder: read
                   {live && <span className="text-[11px] font-normal text-(--ui-accent)">{s.arbeitet}</span>}
                 </div>
                 <div className="truncate text-xs text-(--ui-text-secondary)">
-                  {r ? `${r.modell.primary} · ${r.modell.fallback}` : m.profile}
+                  {r ? modellkette(r, stand) : m.profile}
                 </div>
               </div>
             </li>
@@ -610,7 +612,7 @@ function Tisch({
             </span>
             <div className={cn('min-w-0 max-w-[80%] flex-col gap-0.5', m.von === MENSCH ? 'flex items-end' : 'flex')}>
               <div className="flex items-baseline gap-2 text-[11px] text-(--ui-text-secondary)">
-                <span className="font-semibold text-(--ui-text-primary)">{m.name}</span>
+                <span className="font-semibold text-(--ui-text-primary)">{m.name || s.mensch}</span>
                 <span>{zeit(m.zeit, locale)}</span>
               </div>
               <div

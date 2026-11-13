@@ -182,6 +182,7 @@ export interface Nachricht {
   seq: number
   /** `mensch` for the person, else the member id. */
   von: string
+  /** Who spoke. Empty for a person nobody named — the view words that in its language. */
   name: string
   text: string
   zeit: number
@@ -213,7 +214,7 @@ export function nachrichtAus(event: RaumEreignis, members: readonly Mitglied[] =
     return {
       seq: event.seq,
       von: MENSCH,
-      name: sprecher || (m ? m[1]! : 'Mensch'),
+      name: sprecher || (m ? m[1]! : ''),
       text: mitName ? m[2]! : text,
       zeit: event.created_at,
       still: PASS.test(text.trim()),
@@ -685,7 +686,8 @@ export function zusammenfassung(
   return [
     `## ${suite.titel}`,
     ...(letzte.length
-      ? letzte.map(n => `- ${n.name}: ${n.text.split(/\s+/).join(' ').slice(0, 600)}`)
+      ? // Room content, in the house language like the rest of this text (not a label).
+        letzte.map(n => `- ${n.name || 'Mensch'}: ${n.text.split(/\s+/).join(' ').slice(0, 600)}`)
       : ['- (noch nichts gesagt)'])
   ].join('\n')
 }

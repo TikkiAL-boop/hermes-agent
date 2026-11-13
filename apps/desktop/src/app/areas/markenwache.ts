@@ -3,10 +3,12 @@
 // backend errors ("This chat is open in another Hermes window"), settings
 // descriptions. Rewriting those files would turn every upstream update into a
 // merge fight, so the rendered page is watched instead: visible text and
-// placeholders are branded in place. What people or the model wrote stays as
-// written — message bodies, code, inputs, the terminal.
+// placeholders are branded in place. Only the app's own words are — what
+// people, the model or the outside world wrote stays as written: message
+// bodies, code, inputs, the terminal, mail, the titles of web pages.
 
 import { BRANDING_ENABLED, brandString } from '@/i18n/brand'
+import { PREVIEW_TILE_PREFIX } from '@/store/preview-explicit'
 
 const AUSNAHMEN = [
   '.aui-md',
@@ -15,9 +17,16 @@ const AUSNAHMEN = [
   'code',
   'textarea',
   'input',
-  '[contenteditable="true"]',
+  // Any editor, locked or not: while the composer is busy it is
+  // `contenteditable="false"`, and its DOM is still the draft that gets sent.
+  '[contenteditable]',
   '.xterm',
   'webview',
+  // Mail: senders, subjects and bodies are the correspondents' words
+  // ("Hermes Germany <noreply@myhermes.de>" is a parcel service).
+  '[data-post-area]',
+  // A page or file open as a tab in the chat's layout tree: its title is the page's.
+  `[data-tree-tab^="${PREVIEW_TILE_PREFIX}:"]`,
   '[data-marke-frei]'
 ].join(',')
 
@@ -46,7 +55,13 @@ function elementBranden(element: Element, marke: Marke = brandString): void {
     const wert = element.getAttribute(attribut)
 
     if (wert && HERMES.test(wert) && !frei(element.parentElement)) {
-      element.setAttribute(attribut, marke(wert))
+      const neu = marke(wert)
+
+      // Only a real change: writing the same value back would wake the observer
+      // again, forever, for a name the filter leaves alone ("Hermes Cloud").
+      if (neu !== wert) {
+        element.setAttribute(attribut, neu)
+      }
     }
   }
 }

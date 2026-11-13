@@ -196,3 +196,52 @@ def test_rerun_keeps_the_model_hermes_wrote_and_hermes_indentation(tmp_path, mon
     rolle = next(r for r in _rollen() if r["slug"] == "raumleiter")
     assert cfg["model"]["provider"] + "/" + cfg["model"]["default"] == rolle["modell"]["primary"]
     assert "context_length" not in cfg["model"]
+
+
+def test_rules_edited_in_the_profile_survive_the_next_setup_run(tmp_path):
+    """Admin → Regeln writes the profile's SOUL.md. A later installer or update run must not put
+    the repo version back over it; an untouched profile keeps following the repo."""
+    quelle = tmp_path / "repo-SOUL.md"
+    profil = tmp_path / "profiles" / "raumleiter"
+    profil.mkdir(parents=True)
+    ziel = profil / "SOUL.md"
+    ziel.write_text("Hermes placeholder\n", encoding="utf-8")  # what `hermes profile create` leaves
+
+    quelle.write_text("Regeln v1\n", encoding="utf-8")
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "geschrieben"
+    assert ziel.read_text(encoding="utf-8") == "Regeln v1\n"
+
+    quelle.write_text("Regeln v2\n", encoding="utf-8")  # the repo moves on, nobody touched the profile
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "geschrieben"
+    assert ziel.read_text(encoding="utf-8") == "Regeln v2\n"
+
+    ziel.write_text("Regeln v2\nUnd: duze mich.\n", encoding="utf-8")  # the person edits in the app
+    quelle.write_text("Regeln v3\n", encoding="utf-8")
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "behalten"
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "behalten"  # …and on every later run
+    assert ziel.read_text(encoding="utf-8") == "Regeln v2\nUnd: duze mich.\n"
+
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel), zuruecksetzen=True) == "geschrieben"
+    assert ziel.read_text(encoding="utf-8") == "Regeln v3\n"
+    assert rollen_config.seele_einrichten(str(quelle), str(ziel)) == "unverändert"
+
+
+def test_config_and_rules_keep_their_own_half_of_the_stamp(tmp_path):
+    """One stamp file remembers both what Tikki last wrote as config and as SOUL; writing one
+    must not forget the other, or the next run would take a kept edit for an untouched file."""
+    quelle = tmp_path / "repo-SOUL.md"
+    quelle.write_text("Regeln v1\n", encoding="utf-8")
+    profil = tmp_path / "profiles" / "raumleiter"
+    profil.mkdir(parents=True)
+    seele, config = profil / "SOUL.md", profil / "config.yaml"
+
+    rollen_config.seele_einrichten(str(quelle), str(seele))
+    rollen_config.schreiben(str(KATALOG), str(VORLAGE), "raumleiter", str(config))
+    seele.write_text("Meine Regeln\n", encoding="utf-8")
+    quelle.write_text("Regeln v2\n", encoding="utf-8")
+
+    assert rollen_config.seele_einrichten(str(quelle), str(seele)) == "behalten"
+    assert not rollen_config.schreiben(str(KATALOG), str(VORLAGE), "raumleiter", str(config))
+    assert not rollen_config.veraltet(str(KATALOG), str(VORLAGE), "raumleiter", str(config))
+    assert rollen_config.seele_einrichten(str(quelle), str(seele)) == "behalten"
+    assert seele.read_text(encoding="utf-8") == "Meine Regeln\n"

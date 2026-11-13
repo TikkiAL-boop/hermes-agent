@@ -1,4 +1,5 @@
-import { type ReactElement, useState } from 'react'
+import { useStore } from '@nanostores/react'
+import type { ReactElement } from 'react'
 
 import { useI18n } from '@/i18n'
 import { Activity, Book, Brain, KeyRound, Puzzle, Server, Settings, ShieldLock, Users } from '@/lib/icons'
@@ -14,7 +15,7 @@ import { NutzerSection } from './nutzer'
 import { RechnerSection } from './rechner'
 import { RegelnSection } from './regeln'
 import { SchluesselSection } from './schluessel'
-import { ADMIN_SECTIONS, type AdminSection } from './sections'
+import { $adminSection, ADMIN_SECTIONS, type AdminSection } from './sections'
 import { SystemSection } from './system'
 
 const ICONS: Record<AdminSection, typeof KeyRound> = {
@@ -47,7 +48,7 @@ const SECTION: Record<AdminSection, () => ReactElement> = {
  * users and machines are Tikki's own.
  */
 export function AdminArea() {
-  const [section, setSection] = useState<AdminSection>('modelle')
+  const section = useStore($adminSection)
   const { locale } = useI18n()
   const labels = areaLabels(locale)
   const Body = SECTION[section]
@@ -67,7 +68,7 @@ export function AdminArea() {
               aria-current={active ? 'page' : undefined}
               className={cn('tikki-knopf px-2.5 py-1.5 text-left text-sm', !active && 'tikki-knopf-still')}
               key={id}
-              onClick={() => setSection(id)}
+              onClick={() => $adminSection.set(id)}
               type="button"
             >
               <Icon aria-hidden className="size-4" stroke={1.75} />

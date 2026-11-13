@@ -24,26 +24,38 @@ describe('brand filter', () => {
     expect(brandString('https://hermes-agent.nousresearch.com/docs')).toBe('https://hermes-agent.nousresearch.com/docs')
   })
 
+  test("someone else's service keeps its name", () => {
+    // The button signs in to Nous' Hermes Cloud; a "Tikki Cloud" does not exist.
+    expect(brandString('Sign in to Hermes Cloud')).toBe('Sign in to Hermes Cloud')
+    expect(brandString('Hermes finds your agents on Hermes Cloud.')).toBe('Tikki finds your agents on Hermes Cloud.')
+    expect(brandString('Hermes Cloudflare tunnel')).toBe('Tikki Cloudflare tunnel')
+  })
+
   test('function-valued strings are branded too', () => {
     const branded = brandTranslations({
       a: { b: (name: string) => `Hermes darf ${name} verwenden` }
     } as never) as never as {
       a: { b: (name: string) => string }
     }
+
     expect(branded.a.b('Slack')).toBe('Tikki darf Slack verwenden')
   })
 
   test('no locale in the catalog still shows the upstream name', () => {
     const leaks: string[] = []
+    // The product's name, that is — the hosted service "Hermes Cloud" is not the product.
+    const upstreamName = /\bHermes\b(?! Cloud\b)/
+
     const walk = (value: unknown, path: string): void => {
       if (typeof value === 'string') {
-        if (/\bHermes\b/.test(value)) {
+        if (upstreamName.test(value)) {
           leaks.push(path)
         }
       } else if (typeof value === 'function') {
         // Functions are wrapped; probe with neutral arguments.
         const out = (value as (...a: string[]) => unknown)('x', 'y', 'z')
-        if (typeof out === 'string' && /\bHermes\b/.test(out)) {
+
+        if (typeof out === 'string' && upstreamName.test(out)) {
           leaks.push(path + '()')
         }
       } else if (value && typeof value === 'object') {
@@ -52,9 +64,11 @@ describe('brand filter', () => {
         }
       }
     }
+
     for (const [locale, t] of Object.entries(TRANSLATIONS)) {
       walk(t, locale)
     }
+
     expect(leaks).toEqual([])
     // Sanity: the upstream file itself still says Hermes, so the filter did real work.
     expect(JSON.stringify(en)).toMatch(/Hermes/)

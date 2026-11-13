@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { areaKeybind } from '@/app/areas/tastatur'
 import { closeActiveTab } from '@/app/chat/close-tab'
 import { hudTargetSessionId } from '@/app/hud/handoff'
 import { setTerminalTakeover } from '@/app/right-sidebar/store'
@@ -469,6 +470,14 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
         return
       }
 
+      // Tikki: outside the Vorzimmer the chat tree is hidden, and a hotkey
+      // belongs to the area on screen (see areas/tastatur.ts).
+      const areaHandler = areaKeybind(actionId)
+
+      if (areaHandler === null) {
+        return
+      }
+
       if (isEditableTarget(event.target) && !actionAllowedInInput(actionId, combo)) {
         return
       }
@@ -488,7 +497,7 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
 
       // Built-in handlers first (they carry React context); contributed
       // actions bring their own `run` through the registry.
-      const handler = handlersRef.current[actionId] ?? contributedKeybindHandler(actionId)
+      const handler = areaHandler ?? handlersRef.current[actionId] ?? contributedKeybindHandler(actionId)
 
       if (!handler) {
         return

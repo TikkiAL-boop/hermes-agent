@@ -91,6 +91,11 @@ skript_und_job() {
   jobs="$("$HERMES_BIN" -p "$slug" cron list --all 2>/dev/null || true)"
   if grep -q -- "Name: *$job\$" <<< "$jobs"; then
     sagen "Cronjob $job vorhanden"
+    # Der Auftrag folgt dem Repo wie die Seele; Zeitplan und Zustand des Jobs bleiben.
+    if [ "$art" != "--no-agent" ]; then
+      "$HERMES_BIN" -p "$slug" --run-module tikki.werkzeuge.suite_takt angleichen "$job" "$art" 2>/dev/null \
+        | while IFS= read -r zeile; do [ -n "$zeile" ] && sagen "$zeile"; done || true
+    fi
   elif [ "$art" = "--no-agent" ]; then
     "$HERMES_BIN" -p "$slug" cron create "$plan" --name "$job" --script "$skript" --no-agent --deliver local >/dev/null \
       && sagen "Cronjob $job angelegt ($plan, ohne Modell)"
@@ -189,15 +194,29 @@ while IFS=$'\t' read -r SLUG NAME PORT SOUL_SLUG; do
     fi
   done
 
-  # 3d) Dauerbetrieb: Taktgeber der Räume (raumleiter, ohne Modell), Rundgang des Wachhalters und
-  #     Ressourcen-Stand des MR-Bots (ohne Modell, stündlich nach ~/.tikki/ressourcen.json).
-  #     Die Räume selbst fährt das Gateway; der Taktgeber stellt nur Nachrichten ein.
+  # 3d) Dauerbetrieb: Rundgang des Wachhalters und Ressourcen-Stand des MR-Bots (ohne Modell,
+  #     stündlich nach ~/.tikki/ressourcen.json). Die Räume selbst fährt das Gateway; dass ein Raum
+  #     regelmäßig wieder aufgerufen wird, ist ein Hermes-Zeitplan je Raum (die App legt ihn mit
+  #     cron.manage an, eine Rolle mit ihrem Werkzeug cronjob). Der frühere Taktgeber (tikki-takt,
+  #     alle fünf Minuten im Profil raumleiter) wird abgelöst; Räume, die er getaktet hat, bekommen
+  #     einmalig ihren Zeitplan im Profil tikki. Räume und Verlauf bleiben unberührt.
   #     Hermes-Cron führt nur Skripte aus dem Ordner scripts/ des Profils aus.
   case "$SLUG" in
     raumleiter)
-      skript_und_job "$SLUG" "$ZIEL" tikki-takt.sh \
-        "exec \"$HERMES_BIN\" --run-module tikki.werkzeuge.suite_takt takt" \
-        tikki-takt "every 5m" --no-agent ;;
+      if [ "$DRY_RUN" = 1 ]; then
+        echo "  [dry-run] Cronjob tikki-takt ablösen"
+      elif [ -n "$HERMES_BIN" ]; then
+        "$HERMES_BIN" -p "$SLUG" --run-module tikki.werkzeuge.suite_takt abloesen 2>/dev/null \
+          | while IFS= read -r zeile; do [ -n "$zeile" ] && sagen "$zeile"; done || true
+        rm -f "$ZIEL/scripts/tikki-takt.sh"
+      fi ;;
+    tikki)
+      if [ "$DRY_RUN" = 1 ]; then
+        echo "  [dry-run] Raum-Takte auf Hermes-Zeitpläne umziehen"
+      elif [ -n "$HERMES_BIN" ]; then
+        "$HERMES_BIN" -p "$SLUG" --run-module tikki.werkzeuge.suite_takt umziehen 2>/dev/null \
+          | while IFS= read -r zeile; do [ -n "$zeile" ] && sagen "$zeile"; done || true
+      fi ;;
     mr)
       skript_und_job "$SLUG" "$ZIEL" tikki-ressourcen.sh \
         "exec \"$HERMES_BIN\" --run-module tikki.plugins.pa.ressourcen --json" \
@@ -206,7 +225,7 @@ while IFS=$'\t' read -r SLUG NAME PORT SOUL_SLUG; do
       skript_und_job "$SLUG" "$ZIEL" tikki-raumbericht.sh \
         "exec \"$HERMES_BIN\" --run-module tikki.werkzeuge.suite_takt bericht" \
         tikki-rundgang "every 15m" \
-        "Rundgang: Oben steht der Raumbericht aller Räume. Handle genau nach deinem SOUL und schließe mit dem RUNDGANG-Block." ;;
+        "Oben steht die Lage aller Räume. Schau, wo etwas liegen geblieben ist, und kümmere dich darum." ;;
   esac
 
   # 4) .env-Hinweis (wird nie vom Skript befüllt)
@@ -249,7 +268,7 @@ if [ "$DRY_RUN" = 0 ]; then
   echo "     (Ein export in ~/.zshrc reicht nicht: der Gateway-Dienst erbt die Umgebung der Shell nicht.)"
   echo "     Honcho-SDK einmal bereitstellen: hermes pm install --extra honcho"
   echo "  2. EIN Gateway für alle Rollen, aus dem Hauptprofil:  hermes -p default gateway install"
-  echo "     Es fährt die Räume, die Cronjobs aller Profile (tikki-takt, tikki-rundgang, tikki-ressourcen) und"
+  echo "     Es fährt die Räume, die Cronjobs aller Profile (Raumrunden, tikki-rundgang, tikki-ressourcen) und"
   echo "     Tikkis Daueraufträge. Ein Gateway je Rolle gibt es nicht; Hermes lehnt es ab."
   echo "  3. Vorzimmer = Profil tikki (Tikkis SOUL, Gedächtnis, schnelle Antworten):  hermes profile use tikki"
   echo "  4. Prüfen:             tikki/installieren.sh --nur-pruefen"

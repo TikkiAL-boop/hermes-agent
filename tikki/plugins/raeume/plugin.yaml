@@ -1,0 +1,6 @@
+name: raeume
+version: 1.0.0
+description: "Tikki-Räume: das Werkzeug „raum“ über Hermes' gehosteten Gruppenräumen – Räume auflisten, ihre Lage lesen, eröffnen, hineinsprechen, zwei verschmelzen."
+author: "Tikki"
+provides_tools:
+  - raum

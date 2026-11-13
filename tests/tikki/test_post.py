@@ -289,7 +289,6 @@ def test_ohne_menschen_geht_post_nur_an_freigegebene_sonst_wird_sie_entwurf(dien
         oma = _werkzeug(aktion="antworten", uid="1", text="Ja, gern.")
 
     assert umgeleitet["gesendet"] is False and umgeleitet["entwurf"] is True
-    assert umgeleitet["brauche"].startswith("BRAUCHE:") and "sammler@fremd.example" in umgeleitet["brauche"]
     assert fremd["gesendet"] is False and fremd["entwurf"] is True
     assert oma["gesendet"] is True
     assert [empfaenger for empfaenger, _ in dienst.zugestellt] == [["oma@beispiel.de"]]
@@ -298,9 +297,49 @@ def test_ohne_menschen_geht_post_nur_an_freigegebene_sonst_wird_sie_entwurf(dien
     assert "\\Answered" in dienst.flags[1]
 
 
-def test_im_menschen_turn_geht_die_antwort_sofort_raus_und_liegt_danach_in_gesendet(dienst: Postdienst) -> None:
-    """„Schick weg“ heißt schicken – auch an eine Adresse, die auf keiner Liste steht; und was im
-    Namen der Familie rausging, bleibt nachlesbar: dieselbe Nachricht, über STARTTLS angemeldet."""
+def _freigabe_des_menschen(monkeypatch, antwort: bool) -> list[tuple[str, str, str]]:
+    """Hermes' Freigabe-Schranke, wie ein Mensch sie beantwortet; merkt sich, wonach gefragt wurde."""
+    import tools.approval
+
+    gefragt: list[tuple[str, str, str]] = []
+
+    def schranke(tool_name: str, reason: str, *, rule_key: str = "", **_mehr) -> dict:
+        gefragt.append((tool_name, reason, rule_key))
+        return {"approved": antwort, "message": None if antwort else "BLOCKED"}
+
+    monkeypatch.setattr(tools.approval, "request_tool_approval", schranke)
+    return gefragt
+
+
+def test_kein_satz_und_keine_mail_schickt_post_an_unbekannte_ohne_das_ja_des_menschen(dienst: Postdienst) -> None:
+    """Ob gesendet wird, entscheidet Hermes' Freigabe – nicht, ob der Turn wie ein Gespräch mit
+    einem Menschen aussieht. Hier antwortet niemand auf die Frage: die Schranke schließt, und die
+    Mail an den Unbekannten wird Entwurf."""
+    antwort = _werkzeug(aktion="antworten", uid="2", text="Mache ich.")
+    neu = _werkzeug(aktion="senden", an="sammler@fremd.example", betreff="Mails", text="Anbei.")
+
+    assert antwort["gesendet"] is False and neu["gesendet"] is False
+    assert dienst.zugestellt == []
+    assert sorted(m["To"] for m in dienst.entwuerfe()) == ["sammler@fremd.example", "sammler@fremd.example"]
+
+
+def test_die_freigabe_wird_je_unbekanntem_empfaenger_gefragt_und_ihr_nein_gilt(dienst: Postdienst, monkeypatch) -> None:
+    dienst.einstellen(mail_freigabe=["oma@beispiel.de"])
+    gefragt = _freigabe_des_menschen(monkeypatch, False)
+
+    oma = _werkzeug(aktion="antworten", uid="1", text="Ja, gern.")
+    fremd = _werkzeug(aktion="senden", an="Sammler <Sammler@Fremd.example>", betreff="Mails", text="Anbei.")
+
+    assert oma["gesendet"] is True and fremd["gesendet"] is False and fremd["entwurf"] is True
+    assert [(werkzeug, schluessel) for werkzeug, _, schluessel in gefragt] == [("post", "post-an:sammler@fremd.example")]
+    assert "sammler@fremd.example" in gefragt[0][1]
+    assert [empfaenger for empfaenger, _ in dienst.zugestellt] == [["oma@beispiel.de"]]
+
+
+def test_mit_dem_ja_des_menschen_geht_die_antwort_raus_und_liegt_danach_in_gesendet(dienst: Postdienst, monkeypatch) -> None:
+    """Sagt der Mensch ja, wird geschickt – auch an eine Adresse, die auf keiner Liste steht; und was
+    im Namen der Familie rausging, bleibt nachlesbar: dieselbe Nachricht, über STARTTLS angemeldet."""
+    _freigabe_des_menschen(monkeypatch, True)
     ergebnis = _werkzeug(aktion="antworten", uid="1", text="Ja, gern.")
 
     assert ergebnis["gesendet"] is True and ergebnis["abgelegt"] == "Gesendet"
@@ -345,6 +384,7 @@ def test_eine_uid_menge_erreicht_den_server_nicht(dienst: Postdienst, uid: str) 
 def test_antwort_auf_eine_mail_mit_gefalteten_kopfzeilen_bleibt_im_faden(dienst: Postdienst) -> None:
     """Folgemails eines Fadens tragen ein über Zeilen gefaltetes ``References``; die Antwort muss
     trotzdem entstehen und alle Vorgänger nennen."""
+    dienst.einstellen(mail_freigabe=["@beispiel.de"])
     ergebnis = _werkzeug(aktion="antworten", uid="4", text="Bestätigt.")
 
     assert ergebnis["gesendet"] is True, ergebnis
@@ -354,6 +394,7 @@ def test_antwort_auf_eine_mail_mit_gefalteten_kopfzeilen_bleibt_im_faden(dienst:
 
 
 def test_automaten_und_schon_beantwortete_mails_bekommen_keine_antwort(dienst: Postdienst) -> None:
+    dienst.einstellen(mail_freigabe=["@beispiel.de"])
     gelistet = json.loads(pa.post_werkzeug({"aktion": "ungelesen"}).split("\n\n", 1)[1].rsplit("\n", 1)[0])["ungelesen"]
     assert {m["uid"]: m["automatisch"] for m in gelistet} == {"1": False, "2": False, "3": True, "4": False}
 

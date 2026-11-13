@@ -24,14 +24,17 @@ Aktualisieren und Prüfen. Am Hermes-Kern ändert Tikki zwei kleine Stellen (App
 - **Tikki** (Vorzimmer, persönliche Assistentin) – empfängt mit dem Briefing, erledigt Daueraufträge selbst (Post, Lernen, Nachrichtenlage), macht aus Projekten Räume.
 - **Raumleiter** – sitzt ab Start in jedem Raum, plant, verteilt Arbeit an die Mitglieder, prüft, fasst zusammen, stoppt erst bei Ziel oder Entscheidung. Vier Klone mit anderem Modell (`raumleiter-xai`, `-anthropic`, `-codex`, `-lokal`) lassen Räume parallel laufen.
 - **Deine KI** – die KI des Menschen, sitzt ab Start in jedem Raum.
-- **Wachhalter** – kein Raummitglied: geht alle 15 Minuten durch alle Räume und weckt stille.
+- **Wachhalter** – kein Raummitglied: schaut alle 15 Minuten nach Räumen, in denen etwas liegen geblieben ist.
 - **Arbeiter** (werden bei Bedarf geholt): Rechercheur, Prüfer, Schreiber, Frontend-Entwickler,
   Backend-Entwickler, Sicherheitsbeauftragter, Datenanalyst, Organisator, API-Fachmann, Übersetzer.
 - **MR** (Model Resources) – weiß, welche Schlüssel, Abos, lokalen Modelle und Raumleiter-Klone frei
   sind; nennt dem Raumleiter bei Ausfall die Alternative (`hermes pa ressourcen`).
 
-Jede Seele enthält dieselben Hausregeln: Deutsch, kurz, keine Technik-Werbung, Aufgaben zu Ende
-bringen, bei echtem Bedarf eine `BRAUCHE:`-Zeile mit Vorschlag, Ergebnisse im Raum-Chat.
+Eine Seele beschreibt nur die Rolle: wer sie ist, für wen sie arbeitet, worin sie gut ist, wie sie
+auftritt. Sie schreibt keinen Ablauf und keine Zeilen vor – alles Weitere tut die Rolle mit Hermes'
+eigenen Mitteln (Rückfrage `clarify`, Zeitplan `cronjob`, Delegation, Freigaben) und mit den
+Werkzeugen der Tikki-Plugins (`raum`, `post`, `briefing_sammeln` …), die das Modell selbst wählt.
+Die App liest dafür nie Text eines Modells, sondern den Zustand des Backends.
 
 ## Einrichten auf dem Mac
 
@@ -73,8 +76,8 @@ nennt Hermes selbst (auch mit eigenem `HERMES_HOME`).
 | `installieren.sh` | Alles mit einem Befehl: Kern, App, Rollen, Schlüssel, Dienste, Sprach-Extras (`--ohne-sprache` lässt sie aus), danach Selbsttest |
 | `werkzeuge/selbsttest.py` | Prüft jede Schicht (Rollen samt Stand gegen Katalog, Plugin, Cronjobs, Schlüsselnamen, Anbieter, Sprache, App, Backend-Start); Aufruf: `installieren.sh --nur-pruefen` |
 | `hermes/vorlage-rolle.yaml` → `voice`/`stt`/`tts` | Sprache: Tikki hört über faster-whisper (`hermes pm install --extra voice`) und spricht mit Edge-TTS (`--extra edge-tts`), in der App über Hermes' eigene Sprachpfade (HANDOVER 4.2c) |
-| `werkzeuge/raeume.py` | Räume auf Hermes' gehosteten Gruppenräumen: anlegen, senden, Verlauf, Tür, verschmelzen, auflösen |
-| `werkzeuge/suite_takt.py` | Taktgeber ohne Modell (Cronjob `tikki-takt`): `TAKT-RUNDE` an fällige Räume, Türen weiterreichen, Übungsergebnisse an den Hauptraum, Raumbericht für den Wachhalter |
+| `werkzeuge/raeume.py` | Räume auf Hermes' gehosteten Gruppenräumen: anlegen, senden, Verlauf, Lage (aus Ereignisarten), verschmelzen, auflösen. Das Plugin `plugins/raeume` gibt dasselbe den Rollen als Werkzeug `raum` |
+| `werkzeuge/suite_takt.py` | Raumbericht für den Wachhalter (`bericht`) und der einmalige Umzug alter Raum-Takte in Hermes-Cronjobs (`umziehen`, `abloesen`). Der Takt eines Raums ist ein Cronjob `Raumrunde <raum>` im Profil `tikki`; einen eigenen Taktgeber gibt es nicht mehr |
 | `werkzeuge/schluessel-einlesen.sh` | Schlüssel aus einer Textdatei in das Hauptprofil und die Rollenprofile übernehmen, ohne sie anzuzeigen; Postfach-Passwort, WhatsApp- und Bot-Token nur ins Profil `tikki` (`--profil`) |
 | `werkzeuge/abos-einrichten.sh` | Prüft Abo-Kommandozeilen, Skills und Anmeldungen (ändert nichts); `--anmelden` meldet Claude-, Codex-, Grok-Abo je Rolle an |
 | `werkzeuge/openclaw-einrichten.sh` | ClawHub-Katalog (OpenClaw) lokal, Skills auf Abruf in die Bibliothek `openclaw` |
@@ -130,9 +133,11 @@ hermes -p tikki pa freigabe --dazu @tikki.team         # … .mail_freigabe (Adr
 hermes -p tikki pa status
 ```
 
-Führt ein Mensch das Gespräch, sendet Tikki ohne Rückfrage. In Daueraufträgen und Räumen geht Post
-nur an freigegebene Empfänger; alles andere legt das Werkzeug als Entwurf ab, markiert die Mail
-mit Stern und liefert die `BRAUCHE:`-Zeile dazu. Jede gesendete Mail liegt als Kopie in „Gesendet“.
+An freigegebene Empfänger sendet das Werkzeug direkt. Für jeden anderen Empfänger fragt es über
+Hermes' Freigabe (`tools/approval.py`) den Menschen – einmal, für die Sitzung oder immer. Ist kein
+Mensch erreichbar (etwa im Dauerauftrag) oder sagt er Nein, bleibt die Mail als Entwurf mit Stern
+liegen. Das entscheidet das Werkzeug, kein Satz im Prompt; wer in Hermes die Freigaben ganz
+abschaltet (`approvals.mode: off`, yolo), schaltet auch diese ab. Jede gesendete Mail liegt als Kopie in „Gesendet“.
 Mailtext erreicht das Modell nur in Hermes' Rahmen für Fremdinhalte (`untrusted_tool_result`).
 
 Nie in Dateien in diesem Repo, nie im Chat, nie in Seelen. Der Sicherheitsbeauftragte und der

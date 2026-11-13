@@ -4,8 +4,8 @@ Jedes Werkzeug hat sein eigenes Toolset; eine Rolle bekommt nur, was ihr Katalog
 
 - ``post`` (Toolset ``post``, nur mit eingerichtetem Postfach): ungelesene Mails sehen, eine
   lesen, beantworten, neue schreiben, als erledigt markieren. Läuft im Backend, also auch in
-  Daueraufträgen ohne geöffnete App. Sagt der Mensch „schick weg“, wird geschickt; ohne Menschen
-  im Turn geht Post nur an freigegebene Empfänger, sonst wird sie Entwurf (``post.py``).
+  Daueraufträgen ohne geöffnete App. An freigegebene Empfänger wird gesendet; für jeden anderen
+  fragt das Werkzeug Hermes' Freigabe, und ohne Ja wird die Mail Entwurf (``post.py``).
 - ``briefing_sammeln`` (Toolset ``briefing``): was seit dem letzten Briefing erledigt wurde
   (Ausgaben der Daueraufträge), ungelesene Post, Räume, die warten, neue WhatsApps.
 - ``lokale_modelle`` (Toolset ``modelle``): welche Modelle auf der Platte liegen (LM Studio,
@@ -34,10 +34,9 @@ _POST_SCHEMA = {
         "Das Postfach der Familie: 'ungelesen' listet neue Mails (uid, von, betreff, kurz, automatisch), "
         "'lesen' holt den ganzen Text einer Mail, 'antworten' schickt eine Antwort im selben Faden "
         "und markiert sie als beantwortet, 'senden' schreibt eine neue Mail, 'erledigt' markiert als "
-        "gelesen. Mails mit automatisch=true (Newsletter, Autoresponder, Bounces) werden nie beantwortet. "
-        "Antworten gehen sofort raus – wenn der Mensch gesagt hat, dass du antworten sollst, "
-        "fragst du nicht noch einmal. Ohne Menschen im Gespräch (Dauerauftrag, Raum) legt das Werkzeug "
-        "Post an nicht freigegebene Empfänger als Entwurf ab, statt sie zu senden."
+        "gelesen. Mails mit automatisch=true (Newsletter, Autoresponder, Bounces) beantwortet das Werkzeug "
+        "nicht. Post an Empfänger, die nicht freigegeben sind, legt es dem Menschen zur Freigabe vor; "
+        "ohne sein Ja liegt sie als Entwurf im Postfach (Ergebnis: gesendet=false, entwurf=true)."
     ),
     "parameters": {
         "type": "object",
@@ -56,9 +55,9 @@ _POST_SCHEMA = {
 _BRIEFING_SCHEMA = {
     "name": "briefing_sammeln",
     "description": (
-        "Sammelt alles für das Briefing: was deine Daueraufträge seit dem letzten Briefing erledigt "
-        "haben, ungelesene Post, Räume, die auf den Menschen warten, neue WhatsApps. Rufe es auf, "
-        "wenn der Mensch 'Briefing' sagt oder ankommt; danach erzählst du es ihm."
+        "Sammelt, was seit dem letzten Briefing angefallen ist: was die Daueraufträge erledigt haben, "
+        "ungelesene Post, Räume, in denen eine Runde gescheitert ist oder eine Wortmeldung des Menschen "
+        "noch ohne Antwort ist, neue WhatsApps."
     ),
     "parameters": {
         "type": "object",
@@ -79,9 +78,26 @@ KEIN_POSTFACH = (
 )
 
 
-def post_werkzeug(args: dict, user_task: str | None = None, **_kw) -> str:
-    from tikki.werkzeuge.turn_art import MENSCH, turn_art
+def mensch_stimmt_zu(empfaenger: str) -> bool:
+    """Hermes' Freigabe für eine Mail an einen nicht freigegebenen Empfänger.
 
+    Dieselbe Schranke wie für gefährliche Befehle: Der Mensch sieht die Frage in der Sitzung
+    (einmal / für die Sitzung / immer / nein), im Raum steht sie als offene Freigabe an, ein
+    Dauerauftrag folgt ``approvals.cron_mode``, und wo niemand antworten kann, heißt es nein.
+    „Immer“ gilt je Empfänger.
+    """
+    from tools.approval import request_tool_approval
+
+    adresse = parseaddr(empfaenger or "")[1].strip().lower() or str(empfaenger)
+    try:
+        ergebnis = request_tool_approval("post", f"Mail an {adresse} senden", rule_key=f"post-an:{adresse}")
+    except Exception as exc:
+        logger.warning("Freigabe für Mail an %s nicht einholbar: %s", adresse, exc)
+        return False
+    return bool(ergebnis.get("approved"))
+
+
+def post_werkzeug(args: dict, **_kw) -> str:
     aktion = str(args.get("aktion") or "").strip()
     try:
         werte = post.einstellungen()
@@ -98,8 +114,8 @@ def post_werkzeug(args: dict, user_task: str | None = None, **_kw) -> str:
         if aktion == "lesen":
             n = fach.lesen(uid)
             return post.rahmen(_antwort(post.als_dict(n)), "post") if n else _antwort({"fehler": "Mail nicht gefunden"})
-        # Wer den Turn führt, entscheidet, ob ohne Rückfrage gesendet wird (turn_art.py).
-        mensch, freigabe = turn_art(prompt=user_task) == MENSCH, post.freigabe(werte)
+        # Nicht der Prompt und nicht die Mail entscheiden, ob gesendet wird, sondern Hermes' Freigabe.
+        mensch, freigabe = mensch_stimmt_zu, post.freigabe(werte)
         if aktion == "antworten":
             text = str(args.get("text") or "").strip()
             if not text:
@@ -151,8 +167,7 @@ _RESSOURCEN_SCHEMA = {
         "Welche Modell-Kraft gerade frei ist: je Anbieter Schlüssel gesetzt (nur Namen), Endpunkt erreichbar, "
         "Modelle; Abo-Kommandozeilen (claude, codex, gemini, grok) vorhanden und angemeldet; lokale Modelle und "
         "laufende Server; Raumleiter-Klone mit Modellkette; und 'Frei jetzt' – welcher Klon nutzbar ist "
-        "(lokal → Abo → API). Rufe es auf, wenn ein Modell ausfällt, ein Limit erreicht ist oder jemand "
-        "@mr fragt. Nenne nie Schlüsselwerte."
+        "(lokal → Abo → API). Schlüsselwerte enthält das Ergebnis nicht."
     ),
     "parameters": {
         "type": "object",
@@ -173,7 +188,7 @@ def _cli_setup(parser) -> None:
     p.add_argument("uid", nargs="?")
     a = sub.add_parser("postfach", help="Adresse des Postfachs für dieses Profil eintragen (Passwort: .env)")
     a.add_argument("adresse")
-    f = sub.add_parser("freigabe", help="Empfänger, an die Tikki ohne Menschen senden darf (Adresse oder @domain)")
+    f = sub.add_parser("freigabe", help="Empfänger, an die Tikki ohne Nachfrage senden darf (Adresse oder @domain)")
     f.add_argument("--dazu", action="append", default=[], metavar="EMPFÄNGER")
     f.add_argument("--weg", action="append", default=[], metavar="EMPFÄNGER")
     m = sub.add_parser("modelle", help="Lokale Modelle und laufende Modellserver finden")

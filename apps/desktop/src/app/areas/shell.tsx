@@ -14,7 +14,6 @@ import { AreaRail } from './rail'
 import { $area, type Area } from './store'
 import { SuitesArea } from './suites/suites-area'
 import { TerminalArea } from './terminal-area'
-import { startVorzimmerWache } from './tikki/vorzimmer'
 import { VorzimmerRahmen } from './tikki/vorzimmer-rahmen'
 
 function AreaLayer({ active, children, id }: { active: boolean; children: ReactNode; id: Area }) {
@@ -53,8 +52,6 @@ export function AreaShell({ children }: { children: ReactNode }) {
     setVisited(prev => (prev[area] ? prev : { ...prev, [area]: true }))
   }, [area])
 
-  // Tikki's room orders open suites wherever the person is standing.
-  useEffect(() => startVorzimmerWache(), [])
   useEffect(() => startMarkenwache(), [])
 
   return (

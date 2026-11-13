@@ -1,18 +1,16 @@
 // Räume, Schritt 1: Who is speaking in a delegation.
 //
 // Hermes' delegation has no notion of a named child — a `delegate_task` child
-// is "task 2 of 5" and nothing more. Tikki's room lead, however, addresses
-// every task by the house protocol (`tikki/rollen/raumleiter/SOUL.md`):
+// is "task 2 of 5" and nothing more. When the goal text happens to name a role
+// in an `AN:` line (older transcripts were written that way; no prompt asks
+// for it any more), the result card shows that role's name and icon:
 //
 //   AN: rechercheur
 //   AUFGABE: …
-//   FERTIG WENN: …
-//   ABGABE: …
 //
-// That `AN:` line is the only place a role is named, so this module reads it
-// back out of the goal text and resolves it against the troop catalogue. Pure
-// text in, catalogue role out; the renderer decides what to do with a task
-// that names no role.
+// This is presentation only: nothing the app DOES depends on it, and a goal
+// written any other way is shown under its first line. Pure text in, catalogue
+// role out; the renderer decides what to do with a task that names no role.
 
 import { type KatalogRolle, ROLLEN } from '../admin/katalog'
 

@@ -2,7 +2,7 @@
 
 Tikkis Daueraufträge sind Hermes-Cronjobs ihres Profils; jeder Lauf hinterlässt eine Datei unter
 ``<profil>/cron/output/<job>/<zeit>.md``. Das Briefing sammelt alles, was seit dem letzten
-Briefing dazukam, dazu ungelesene Post, Räume, die auf den Menschen warten, und neue WhatsApps,
+Briefing dazukam, dazu ungelesene Post, Räume, in denen etwas liegen geblieben ist, und neue WhatsApps,
 wenn die WA-Bridge erreichbar ist. Der Zeitpunkt des letzten Briefings steht in
 ``~/.tikki/briefing.json`` (``TIKKI_HOME`` übersteuert) – pro Mensch.
 """
@@ -84,18 +84,19 @@ def erledigtes(seit: float) -> tuple[list[dict], dict[str, int]]:
 
 
 def wartende_raeume() -> list[dict]:
-    """Räume, deren Raumleiter auf den Menschen wartet; die Räume liegen neben der Hermes-Wurzel, nicht im Profil."""
+    """Räume, in denen etwas liegen geblieben ist – abgelesen an der Art ihrer Ereignisse, nicht an
+    Worten: eine gescheiterte Runde, oder eine Wortmeldung des Menschen, auf die niemand geantwortet
+    hat und an der niemand arbeitet. Die Räume liegen neben der Hermes-Wurzel, nicht im Profil."""
     try:
-        from tikki.werkzeuge.suite_takt import alle_raeume
+        from tikki.werkzeuge import raeume
+
+        lagen = [raeume.lage(r) for r in raeume.liste()] if raeume.db_pfad().is_file() else []
     except Exception:
         return []
-    try:
-        return [
-            {"titel": r.titel, "brauche": r.brauche, "stand": r.stand}
-            for r in alle_raeume() if r.brauche
-        ][:10]
-    except Exception:
-        return []
+    return [
+        {"titel": l["name"], "gescheitert": l["gescheitert"], "unbeantwortet": l["unbeantwortet"]}
+        for l in lagen if l["gescheitert"] or l["unbeantwortet"]
+    ][:10]
 
 
 def neue_whatsapps(token: str | None = None, timeout: float = 4.0) -> list[dict] | None:

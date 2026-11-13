@@ -57,18 +57,31 @@ def test_honcho_config_names_the_role_as_ai_peer_in_the_shared_workspace(tmp_pat
     assert not rollen_config.honcho_schreiben(str(VORLAGE_HONCHO), "raumleiter", str(ziel))
 
 
-def test_room_lead_carries_every_bot_toolset_and_its_soul_names_them():
+def test_room_lead_carries_every_bot_toolset():
     """Hermes gives a delegated child only toolsets its parent has: a bot the room lead
     cannot equip is a bot without web, browser or terminal."""
     rollen = {r["slug"]: r for r in _rollen()}
-    soul = (TIKKI / "rollen" / "raumleiter" / "SOUL.md").read_text(encoding="utf-8")
     raumleiter = set(rollen["raumleiter"]["werkzeuge"])
 
     for slug, rolle in rollen.items():
         if slug in {"tikki", "raumleiter", "wachhalter"} or rolle.get("klon_von"):
             continue
         assert set(rolle["werkzeuge"]) <= raumleiter, slug
-        assert f"- `{slug}`: {', '.join(rolle['werkzeuge'])}" in soul, slug
+
+
+def test_whoever_talks_to_the_human_can_ask_and_whoever_runs_rooms_can_reach_them(tmp_path):
+    """Rückfragen und Räume sind Hermes-Werkzeuge, keine Zeilen in der Antwort: Die Rollen, die mit
+    dem Menschen sprechen oder Räume führen, tragen sie auf jeder Oberfläche, auch im Dauerauftrag."""
+    from ruamel.yaml import YAML
+
+    for slug, noetig in (("tikki", {"clarify", "raeume", "cronjob"}), ("raumleiter", {"clarify", "raeume", "delegation"}),
+                         ("wachhalter", {"raeume"})):
+        ziel = tmp_path / f"{slug}.yaml"
+        rollen_config.schreiben(str(KATALOG), str(VORLAGE), slug, str(ziel))
+        cfg = YAML().load(ziel.read_text(encoding="utf-8"))
+        for oberflaeche in ("cli", "api_server", "cron"):
+            assert noetig <= set(cfg["platform_toolsets"][oberflaeche]), (slug, oberflaeche)
+        assert "raeume" in cfg["plugins"]["enabled"]
 
 
 def test_skill_roles_see_tikki_skills_every_builtin_hermes_skill_and_the_openclaw_library(tmp_path):

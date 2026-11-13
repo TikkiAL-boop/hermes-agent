@@ -3,7 +3,7 @@
     "slug": "tikki",
     "name": "Tikki",
     "icon": "🐾",
-    "kurz": "Persönliche Assistentin: empfängt mit dem Briefing, erledigt Daueraufträge (Post, Lernen, Nachrichtenlage) selbst, öffnet Räume für Projekte.",
+    "kurz": "Persönliche Assistentin im Vorzimmer: kümmert sich um Post, Termine, Daueraufträge und die Räume des Hauses.",
     "kategorie": "vorzimmer",
     "modell": {
       "primary": "cursor/claude-haiku-4-5",
@@ -18,6 +18,7 @@
       "gedaechtnis",
       "post",
       "briefing",
+      "raeume",
       "modelle",
       "web",
       "browser",
@@ -25,6 +26,8 @@
       "terminal",
       "skills",
       "cronjob",
+      "clarify",
+      "delegation",
       "todo",
       "memory"
     ],
@@ -50,7 +53,7 @@
     "slug": "raumleiter",
     "name": "Raumleiter",
     "icon": "🧭",
-    "kurz": "Leitet den Raum rund um die Uhr (Grok 4.7 über das Cursor-Abo): plant, holt beliebig viele Bots an den Tisch, bleibt dran bis zum Ziel.",
+    "kurz": "Projektleiter des Raums: plant, verteilt die Arbeit an die Fachleute, prüft Ergebnisse und bringt das Vorhaben ans Ziel.",
     "kategorie": "leitung",
     "modell": {
       "primary": "cursor/grok-4.7",
@@ -62,8 +65,10 @@
     },
     "werkzeuge": [
       "delegation",
+      "clarify",
       "todo",
       "gedaechtnis",
+      "raeume",
       "ressourcen",
       "modelle",
       "web",
@@ -108,7 +113,7 @@
     "slug": "raumleiter-anthropic",
     "name": "Raumleiter (Claude)",
     "icon": "🧭",
-    "kurz": "Klon des Raumleiters mit Claude Opus über das Claude-Abo: gründliche Übungsläufe.",
+    "kurz": "Klon des Raumleiters mit Claude Opus über das Claude-Abo: eigener Turn, läuft parallel.",
     "kategorie": "leitung",
     "klon_von": "raumleiter",
     "modell": {
@@ -127,7 +132,7 @@
     "slug": "raumleiter-codex",
     "name": "Raumleiter (Codex)",
     "icon": "🧭",
-    "kurz": "Klon des Raumleiters mit GPT über das Codex-Abo: breite, parallele Übungsläufe.",
+    "kurz": "Klon des Raumleiters mit GPT über das Codex-Abo: eigener Turn, läuft parallel.",
     "kategorie": "leitung",
     "klon_von": "raumleiter",
     "modell": {
@@ -406,7 +411,7 @@
     "slug": "organisator",
     "name": "Organisator",
     "icon": "📅",
-    "kurz": "Termine, To-dos, Erinnerungen, Fristen; hält den Überblick.",
+    "kurz": "To-dos, Erinnerungen und Fristen; hält den Überblick.",
     "kategorie": "organisation",
     "modell": {
       "primary": "xai/grok-4.7",
@@ -431,7 +436,7 @@
     "slug": "api-fachmann",
     "name": "API-Fachmann",
     "icon": "🔌",
-    "kurz": "Prüft alle 4 h Anbieter-Schlüssel und Modelle, meldet nur Änderungen.",
+    "kurz": "Kennt die Anbieter-Schlüssel und Modelle des Hauses und merkt, wenn sich etwas ändert.",
     "kategorie": "betrieb",
     "modell": {
       "primary": "xai/grok-4.7",
@@ -479,7 +484,7 @@
     "slug": "wachhalter",
     "name": "Wachhalter",
     "icon": "🛡️",
-    "kurz": "Geht rund um die Uhr von Raum zu Raum, weckt stille Räume und prüft Ergebnisse.",
+    "kurz": "Schaut regelmäßig in alle Räume und kümmert sich, wo etwas liegen geblieben ist.",
     "kategorie": "leitung",
     "modell": {
       "primary": "anthropic/claude-opus-5-5",
@@ -490,6 +495,7 @@
       ]
     },
     "werkzeuge": [
+      "raeume",
       "terminal",
       "file",
       "todo",

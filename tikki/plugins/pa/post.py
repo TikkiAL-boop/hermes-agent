@@ -16,9 +16,12 @@ Profile; ``os.environ`` trägt nur die Werte des Startprofils):
   ``mail_imap_host``/``mail_imap_port``/``mail_smtp_host``/``mail_smtp_port``.
 
 Eine Mail ist Fremdinhalt. Ihr Text erreicht das Modell nur gerahmt (``rahmen``), und was sie
-verlangt, ist nie ein Auftrag: Außerhalb eines Menschen-Turns (Dauerauftrag, Raum-Runde,
-delegierter Lauf) geht Post nur an freigegebene Empfänger; alles andere wird Entwurf, und der
-Mensch entscheidet. Jede gesendete Mail liegt als Kopie im Ordner „Gesendet“.
+verlangt, ist nie ein Auftrag. Ob Post rausgeht, entscheidet deshalb kein Satz im Prompt und kein
+Wort in einer Mail, sondern das Werkzeug: an freigegebene Empfänger (``mail_freigabe``) wird
+gesendet, für jeden anderen fragt es Hermes' Freigabe (``tools.approval``) – der Mensch sieht
+„Mail an … senden“ und sagt ja oder nein; wo niemand antworten kann (Dauerauftrag), gilt Hermes'
+Regel dafür, im Zweifel nein. Ohne Ja wird die Mail Entwurf. Jede gesendete Mail liegt als Kopie
+im Ordner „Gesendet“.
 """
 
 from __future__ import annotations
@@ -410,11 +413,10 @@ class Postfach:
         return ergebnis
 
     def entwurf(self, msg: EmailMessage) -> dict:
-        """Statt zu senden: die Mail in „Entwürfe“ legen. Das Ergebnis trägt die fertige
-        ``BRAUCHE:``-Zeile, über die der Mensch im Briefing davon erfährt."""
+        """Statt zu senden: die Mail in „Entwürfe“ legen; dort findet der Mensch sie im Postfach."""
         ergebnis = {
             "gesendet": False, "entwurf": False, "an": msg["To"],
-            "grund": "kein Mensch im Gespräch, Empfänger nicht freigegeben",
+            "grund": "Empfänger nicht freigegeben und vom Menschen nicht bestätigt",
         }
         try:
             ordner = self.ablegen(msg, "entwurf")
@@ -422,19 +424,26 @@ class Postfach:
             ordner, ergebnis["fehler"] = None, f"Entwurf nicht abgelegt ({type(exc).__name__}: {exc})"
         if ordner is None:
             ergebnis.setdefault("fehler", "Das Postfach hat keinen Entwürfe-Ordner.")
-            ergebnis["brauche"] = f"BRAUCHE: Mail an {msg['To']} wartet auf Freigabe (kein Entwurf abgelegt)"
         else:
-            ergebnis.update(entwurf=True, ordner=ordner,
-                            brauche=f"BRAUCHE: Mail an {msg['To']} liegt als Entwurf im Postfach – senden?")
+            ergebnis.update(entwurf=True, ordner=ordner)
         return ergebnis
 
-    def zustellen(self, msg: EmailMessage, *, mensch: bool, freigabe: list[str]) -> dict:
-        """Senden, wenn ein Mensch den Turn führt oder der Empfänger freigegeben ist; sonst Entwurf."""
-        if mensch or freigegeben(msg["To"], freigabe):
+    @staticmethod
+    def _darf(msg: EmailMessage, mensch, freigabe: list[str]) -> bool:
+        """Freigegebene Empfänger immer; sonst zählt das Ja des Menschen. ``mensch`` ist dieses Ja –
+        oder die Frage danach (``mensch(empfänger) -> bool``), die nur gestellt wird, wenn es
+        darauf ankommt."""
+        if freigegeben(msg["To"], freigabe):
+            return True
+        return bool(mensch(msg["To"])) if callable(mensch) else bool(mensch)
+
+    def zustellen(self, msg: EmailMessage, *, mensch, freigabe: list[str]) -> dict:
+        """Senden, wenn der Empfänger freigegeben ist oder der Mensch zustimmt; sonst Entwurf."""
+        if self._darf(msg, mensch, freigabe):
             return self.senden(msg)
         return self.entwurf(msg)
 
-    def antworten(self, uid: str, text: str, *, mensch: bool, freigabe: list[str]) -> dict:
+    def antworten(self, uid: str, text: str, *, mensch, freigabe: list[str]) -> dict:
         original = self.lesen(uid)
         if original is None:
             return {"fehler": f"Mail {uid} nicht gefunden"}
@@ -444,7 +453,7 @@ class Postfach:
         if original.beantwortet:
             return {"gesendet": False, "fehler": f"Mail {uid} ist schon als beantwortet markiert; keine zweite Antwort."}
         msg = antwort_bauen(original, text, self.zugang.adresse)
-        if not (mensch or freigegeben(msg["To"], freigabe)):
+        if not self._darf(msg, mensch, freigabe):
             ergebnis = self.entwurf(msg)
             # Gelesen und mit Stern: der nächste Lauf legt keinen zweiten Entwurf an, und im
             # Postfach sieht der Mensch, welche Mail auf ihn wartet.

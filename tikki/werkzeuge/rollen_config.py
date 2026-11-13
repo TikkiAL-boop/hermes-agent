@@ -32,7 +32,7 @@ from pathlib import Path
 
 #: Toolsets, die die Tikki-Plugins anmelden (``tikki/plugins/*``); eine Rolle bekommt davon nur,
 #: was ihr Katalog nennt. Der Vertrag mit den Plugins steht in ``tests/tikki/test_plugins_echt.py``.
-PLUGIN_TOOLSETS = ("briefing", "gedaechtnis", "modelle", "post", "ressourcen")
+PLUGIN_TOOLSETS = ("briefing", "gedaechtnis", "modelle", "post", "raeume", "ressourcen")
 #: Oberflächen, auf denen jede Rolle läuft: HTTP-Dienst und Raum-Runden (``api_server``), Terminal
 #: und App (``cli``), Daueraufträge (``cron``).
 OBERFLAECHEN = ("api_server", "cli", "cron")

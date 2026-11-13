@@ -8,6 +8,7 @@ laufen über Hermes' Hook-Dispatch.
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -56,7 +57,7 @@ def test_plugins_melden_ihre_werkzeuge_an_und_genau_die_toolsets_die_rollen_conf
     from tools.registry import registry
 
     geladen = plugins_mod.get_plugin_manager()._plugins
-    for name in ("pa", "gedaechtnis"):
+    for name in ("pa", "gedaechtnis", "raeume"):
         manifest = yaml.safe_load((TIKKI / "plugins" / name / "plugin.yaml").read_text(encoding="utf-8"))
         assert geladen[name].enabled and geladen[name].error is None, geladen[name].error
         assert set(manifest["provides_tools"]) == set(geladen[name].tools_registered)
@@ -106,6 +107,32 @@ def test_briefing_geht_direkt_ans_modell_und_post_erst_mit_eingerichtetem_postfa
     monkeypatch.setenv(post.PASSWORT, "geheim")
 
     assert "post" in namen()
+
+
+def test_tikki_eroeffnet_einen_raum_mit_dem_werkzeug_und_ihre_worte_tragen_ihren_namen_im_absender(profil: Path) -> None:
+    """Der Weg vom Vorzimmer in einen Raum ist ein Werkzeugaufruf über Hermes' Registry – kein Text,
+    den die App aus der Antwort lesen müsste. Der Raum liegt im echten Raumspeicher, mit Grundbesatzung."""
+    from tikki.werkzeuge import raeume
+    from tools.registry import registry
+
+    for e in raeume.katalog():
+        ordner = profil.parent / e["hermes_profil"]
+        ordner.mkdir(exist_ok=True)
+        if not (ordner / "config.yaml").exists():
+            (ordner / "config.yaml").write_text("model:\n  default: x\n", encoding="utf-8")
+
+    def raum(**args) -> dict:
+        return json.loads(registry.dispatch("raum", args))
+
+    neu = raum(aktion="eroeffnen", name="Urlaub Ostsee", rollen=["rechercheur"], text="@raumleiter Bitte plant eine Woche Ostsee.")
+
+    assert set(raeume.grundbesatzung()) | {"rechercheur"} <= set(neu["mitglieder"])
+    (eintrag,) = raum(aktion="liste")["raeume"]
+    assert eintrag["room_id"] == neu["eroeffnet"] and eintrag["unbeantwortet"] is True
+    auftakt = raeume.verlauf(neu["eroeffnet"])[-1]
+    assert auftakt["kind"] == "message.user" and auftakt["actor"]["display_name"] == "Tikki"
+    assert raum(aktion="senden", raum="Urlaub", text="Noch etwas.")["gesendet"] is True
+    assert "fehler" in raum(aktion="senden", raum="gibt es nicht", text="Hallo")
 
 
 def _warten_auf(bedingung, sekunden: float = 10.0):

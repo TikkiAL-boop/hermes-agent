@@ -12,4 +12,22 @@ describe('adresseAusEingabe', () => {
     )
     expect(adresseAusEingabe('   ')).toBe('about:blank')
   })
+
+  it.each([
+    'javascript://example.org/%0aalert(document.cookie)',
+    'JavaScript://x/%0afetch("//evil")',
+    'data://text/html,<script>alert(1)</script>',
+    'data:text/html,<script>alert(1)</script>',
+    'chrome://settings',
+    'devtools://devtools/bundled/inspector.html',
+    'view-source://example.org',
+    'about:config',
+    'https://'
+  ])('never navigates to anything but a web or file address: %s', eingabe => {
+    const ziel = adresseAusEingabe(eingabe)
+
+    // Whatever it is, it ends up as a search for the words — never as a navigation of its own.
+    expect(new URL(ziel).origin).toBe('https://www.google.com')
+    expect(new URL(ziel).searchParams.get('q')).toBe(eingabe)
+  })
 })

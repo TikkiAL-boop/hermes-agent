@@ -90,12 +90,12 @@ def test_takt_warnt_wenn_der_letzte_lauf_scheiterte_und_nennt_die_letzte_fehlerz
     from cron import jobs
 
     ids = _cronjobs_anlegen(tmp_path, monkeypatch)
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "profiles" / "raumleiter"))
-    assert jobs.mark_job_run(ids["raumleiter"], success=False, error="Traceback …\nModuleNotFoundError: tikki")
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "profiles" / "wachhalter"))
+    assert jobs.mark_job_run(ids["wachhalter"], success=False, error="Traceback …\nModuleNotFoundError: tikki")
 
     punkt = selbsttest.pruefe_takt(tmp_path / "profiles")
     assert punkt.stand == selbsttest.WARNUNG
-    assert "raumleiter/tikki-takt" in punkt.text and "ModuleNotFoundError: tikki" in punkt.text
+    assert "wachhalter/tikki-rundgang" in punkt.text and "ModuleNotFoundError: tikki" in punkt.text
     assert "Traceback" not in punkt.text
 
 

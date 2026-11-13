@@ -1,11 +1,7 @@
 """Tikki – wer den laufenden Turn treibt: ein Mensch, ein Raum oder ein Auftrag ohne Menschen.
 
-Zwei Tikki-Plugins hängen daran:
-
-- ``pa`` (Postfach): Senden ohne Rückfrage gibt es nur, wenn ein Mensch den Turn führt. In
-  Daueraufträgen, Raum-Runden und delegierten Läufen liest Tikki fremde Texte (Mails, Webseiten,
-  andere Bots) ohne Aufsicht; dort geht Post nur an freigegebene Empfänger, sonst wird sie Entwurf.
-- ``gedaechtnis``: nur was ein Mensch gesagt hat, steht als „Mensch:“ im Gedächtnis.
+Das Plugin ``gedaechtnis`` hängt daran: nur was ein Mensch gesagt hat, steht als „Mensch:“ im
+Gedächtnis. (Ob Post rausgeht, hängt nicht daran, sondern an Hermes' Freigabe – ``pa/post.py``.)
 
 Gelesen werden Hermes' eigene Kennzeichen des Turns (ContextVars, je Turn gebunden – nie die
 Prozessumgebung eines anderen Profils): Cron-Sitzung, delegiertes Kind, Kanban-Arbeiter, Sitzung

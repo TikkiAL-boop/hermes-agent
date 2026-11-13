@@ -5,11 +5,14 @@ import { I18nProvider } from '@/i18n'
 
 const rpc = vi.fn()
 
-vi.mock('@/store/gateway', () => ({ activeGateway: () => ({ request: (...args: unknown[]) => rpc(...args) }) }))
+vi.mock('@/store/gateway', () => ({
+  activeGateway: () => ({ request: (...args: unknown[]) => rpc(...args) }),
+  requestGatewayForProfile: (_profil: string, ...args: unknown[]) => rpc(...args)
+}))
 // The lobby is under test; the room polls its own log.
 vi.mock('./suite-room', () => ({ SuiteRoom: () => null }))
 
-const { SuitesArea, suiteHinweis, verlaufGruppen } = await import('./suites-area')
+const { SuitesArea, suiteHinweis } = await import('./suites-area')
 const { $suites, $suitesStatus } = await import('./store')
 const { areaLabels } = await import('../labels')
 
@@ -60,29 +63,20 @@ describe('SuitesArea', () => {
 })
 
 describe('suiteHinweis', () => {
-  it('tells what the room needs before anything else, then done, then who works, else who sits there', () => {
+  it('tells what waits for the person before anything else, then who works, else who sits there', () => {
     const s = areaLabels('de').suites
     const basis = { ...suite('a', 'A'), mitglieder: [{ member_id: 'raumleiter', profile: 'raumleiter', handle: 'rl' }] }
+    const leer = { freigaben: [], wiederholbar: [], rueckfragen: [] }
+    const frage = { raum: 'a', sitzung: 's', anfrage: 'srq-1', frage: 'Welches Budget?', auswahl: [], teile: [] }
 
-    expect(suiteHinweis({ ...basis, brauche: 'Budget', fertig: true }, s)).toBe('Budget')
-    expect(suiteHinweis({ ...basis, fertig: true, arbeitet: 'raumleiter' }, s)).toBe(s.fertigGemeldet)
-    expect(suiteHinweis({ ...basis, arbeitet: 'raumleiter' }, s)).toBe(`rl ${s.arbeitet}`)
+    expect(suiteHinweis({ ...basis, arbeitet: 'raumleiter', offen: { ...leer, rueckfragen: [frage] } }, s)).toBe(
+      'Welches Budget?'
+    )
+    expect(suiteHinweis({ ...basis, offen: { ...leer, freigaben: [{ kind: 'approval' }] } }, s)).toBe(s.offeneFreigabe)
+    expect(suiteHinweis({ ...basis, offen: { ...leer, wiederholbar: [{ kind: 'retry' }] } }, s)).toBe(
+      s.rundeGescheitert
+    )
+    expect(suiteHinweis({ ...basis, arbeitet: 'raumleiter', offen: leer }, s)).toBe(`rl ${s.arbeitet}`)
     expect(suiteHinweis(basis, s)).toBe(s.mitglieder(1))
-  })
-})
-
-describe('verlaufGruppen', () => {
-  it("hangs practice runs under their project's room and leaves orphans standing alone", () => {
-    const gruppen = verlaufGruppen([
-      suite('u3', 'App-thorsten-3@tikki.team'),
-      suite('h', 'App'),
-      suite('u2', 'App-thorsten-2@tikki.team'),
-      suite('w', 'Weg-thorsten-2@tikki.team')
-    ])
-
-    expect(gruppen.map(g => [g.suite.id, g.uebungen.map(u => u.id)])).toEqual([
-      ['h', ['u2', 'u3']],
-      ['w', []]
-    ])
   })
 })

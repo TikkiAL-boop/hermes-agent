@@ -74,7 +74,7 @@ approvals:
 # Liste für den HTTP-Dienst und die Raum-Runden (api_server), Terminal und App (cli) und die
 # Daueraufträge der Rolle (cron).
 # Gültige Namen: toolsets.py (terminal, file, web, browser, delegation, todo, cronjob, …) und die
-# Toolsets der Tikki-Plugins (post, briefing, modelle, ressourcen, gedaechtnis).
+# Toolsets der Tikki-Plugins (post, briefing, modelle, ressourcen, gedaechtnis, raeume).
 platform_toolsets:
   api_server: []
   cli: []
@@ -109,12 +109,14 @@ memory:
 
 # Tikki-Plugins (Hermes lädt Plugins nur, wenn sie hier stehen; rollen-einrichten.sh verlinkt
 # sie). „gedaechtnis“ merkt Gespräche und Raum-Wortmeldungen und gibt das Werkzeug
-# „nachschlagen“; „pa“ gibt Postfach, Briefing, Modellsuche und Ressourcen-Stand – welche
-# Rolle welches Werkzeug bekommt, entscheidet allein ihr Katalogeintrag.
+# „nachschlagen“; „pa“ gibt Postfach, Briefing, Modellsuche und Ressourcen-Stand; „raeume“ gibt
+# das Werkzeug „raum“ (Räume auflisten, eröffnen, hineinsprechen) – welche Rolle welches
+# Werkzeug bekommt, entscheidet allein ihr Katalogeintrag.
 plugins:
   enabled:
     - "gedaechtnis"
     - "pa"
+    - "raeume"
 
 # Sprache (Hermes-Schlüssel aus hermes_cli/config_defaults.py: voice, stt, tts). Die App hört
 # über das Mikrofon des Rechners, auf dem sie läuft, und schickt die Aufnahme an das Backend

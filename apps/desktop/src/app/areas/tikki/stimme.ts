@@ -42,14 +42,13 @@ export interface Vorlesbar {
   von: string
   text: string
   still: boolean
-  system: boolean
 }
 
 /**
  * Pure: which room messages are read now — only the room lead's own words,
- * only those after `abSeq`, never `(pass)` or anything the backend put into
- * the room. Returns the new cursor too, so a backlog seen while reading is
- * off is skipped rather than read later.
+ * only those after `abSeq`, never `(pass)`. Who spoke comes from the event's
+ * actor, never from the wording. Returns the new cursor too, so a backlog
+ * seen while reading is off is skipped rather than read later.
  */
 export function neuVorzulesen(
   nachrichten: readonly Vorlesbar[],
@@ -60,7 +59,7 @@ export function neuVorzulesen(
 
   return {
     seq: neu.reduce((max, n) => Math.max(max, n.seq), abSeq),
-    texte: neu.filter(n => n.von === sprecher && !n.still && !n.system && n.text.trim()).map(n => n.text)
+    texte: neu.filter(n => n.von === sprecher && !n.still && n.text.trim()).map(n => n.text)
   }
 }
 

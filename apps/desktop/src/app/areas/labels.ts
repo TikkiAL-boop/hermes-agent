@@ -48,15 +48,9 @@ interface AreaLabels {
       nichtsFrei: string
     }
     betrieb: {
-      uebungen: string
-      uebungenHinweis: string
-      kapazitaet: string
-      kapazitaetHinweis: string
       mensch: string
       menschHinweis: string
       rundUmDieUhr: string
-      briefingAutomatik: string
-      briefingAutomatikHinweis: string
     }
   }
   areas: Record<Area, string>
@@ -118,7 +112,7 @@ interface AreaLabels {
     neueSuiteHinweis: string
     einstellungen: string
     briefing: string
-    briefingLaeuft: string
+    briefingBitte: string
     vorlesen: string
     vorlesenAn: string
     vorlesenAus: string
@@ -147,9 +141,7 @@ interface AreaLabels {
     daten: string
     leereAusgabe: string
     leereDaten: string
-    leereTodos: string
     output: string
-    todoWand: string
     zurueck: string
     betreten: string
     erneut: string
@@ -177,9 +169,7 @@ interface AreaLabels {
     aufmerksamkeit: string
     allesRuhig: string
     wartetAufDich: string
-    fertigGemeldet: string
     brauchtDich: string
-    stand: string
     takt: string
     taktEinmalig: string
     taktEigener: string
@@ -188,9 +178,6 @@ interface AreaLabels {
     leiter: string
     leiterStandard: (modell: string) => string
     rollen: string
-    uebungenGeplant: (n: number) => string
-    uebungslaeufe: (n: number) => string
-    uebungslauf: (nr: number) => string
     keineNachrichten: string
     denkt: (name: string) => string
     schreiben: string
@@ -202,6 +189,14 @@ interface AreaLabels {
     freigabe: string
     freigabeEinmal: string
     freigabeAblehnen: string
+    rueckfrage: string
+    rueckfrageAntwort: string
+    rueckfrageSenden: string
+    rundeGescheitert: string
+    rundeNochmal: string
+    zeitplanPausiert: string
+    offeneFreigabe: string
+    offeneRueckfrage: string
     tuerNach: (name: string) => string
     tuerText: string
     tuerPlatzhalter: string
@@ -228,18 +223,10 @@ const de: AreaLabels = {
       system: 'System'
     },
     betrieb: {
-      uebungen: 'Übungsläufe je Auftrag',
-      uebungenHinweis:
-        'Jeder neue Auftrag läuft so oft: dein Raum plus Übungsräume mit anderen Modellen und Ansätzen. Das erste fertige Ergebnis bekommst du sofort, danach lernt der Raumleiter aus dem Vergleich. Übungsräume starten nur, wenn genug Kapazität frei ist. 1 = aus.',
-      kapazitaet: 'Gleichzeitige Räume',
-      kapazitaetHinweis:
-        'So viele Räume dürfen im ganzen Haus gleichzeitig arbeiten. Übungsläufe halten sich daran, dein Raum nie.',
       mensch: 'Name des Menschen',
-      menschHinweis: 'Steht in den Namen der Übungsräume: Projekt-name-2@tikki.team.',
-      briefingAutomatik: 'Briefing beim Ankommen',
-      briefingAutomatikHinweis: 'Tikki begrüßt dich mit dem Briefing, wenn das letzte länger als vier Stunden her ist.',
+      menschHinweis: 'Steht vor dem, was du in einem Raum sagst – so bleiben mehrere Menschen dort unterscheidbar.',
       rundUmDieUhr:
-        'Rund um die Uhr: Räume mit Takt laufen im Backend weiter, auch wenn die App zu ist; der Wachhalter geht alle 15 Minuten durch alle Räume. Beides richtet tikki/werkzeuge/rollen-einrichten.sh ein.'
+        'Rund um die Uhr: Räume mit Takt laufen als Dauerauftrag im Backend weiter, auch wenn die App zu ist. Der Wachhalter geht alle 15 Minuten durch alle Räume; ihn richtet tikki/werkzeuge/rollen-einrichten.sh ein.'
     },
     gedaechtnis: {
       laeuft: 'läuft auf diesem Rechner',
@@ -280,7 +267,7 @@ const de: AreaLabels = {
       nutzer: 'Die Familie. Jeder sieht nur seine Räume, der Admin alle.',
       rechner: 'Die Rechnerflotte hinter Tikki. Grundlage für die Bot-Armee.',
       gedaechtnis: 'Was Tikki sich merkt: getrennt nach Nutzer, System und Projekt.',
-      betrieb: 'Wie die Räume arbeiten: Übungsläufe, Kapazität, Dauerbetrieb.',
+      betrieb: 'Wie die Räume arbeiten: dein Name im Raum, Dauerbetrieb.',
       system: 'Backend, Gateway, Verbindungen, Updates.'
     },
     roles: {
@@ -403,7 +390,7 @@ const de: AreaLabels = {
     neueSuiteHinweis: 'Platz für einen Auftrag',
     einstellungen: 'Einstellungen',
     briefing: 'Briefing',
-    briefingLaeuft: 'Sammle …',
+    briefingBitte: 'Gib mir bitte ein Briefing.',
     vorlesen: 'Antwort vorlesen',
     vorlesenAn: 'an',
     vorlesenAus: 'aus',
@@ -438,9 +425,7 @@ const de: AreaLabels = {
     daten: 'Daten-Screen',
     leereAusgabe: 'Noch nichts fertig. Ergebnisse, Dateien und Links der Bots erscheinen hier.',
     leereDaten: 'Noch nichts hereingegeben. Dateien, Links und Ordner aus dem Gespräch erscheinen hier.',
-    leereTodos: 'Noch keine Aufgaben an der Wand. Der Raumleiter hängt sie auf, sobald er plant.',
     output: 'Output-Screen',
-    todoWand: 'To-do-Wand',
     zurueck: 'Zur Lobby',
     betreten: 'Betreten',
     erneut: 'Erneut versuchen',
@@ -469,20 +454,15 @@ const de: AreaLabels = {
     aufmerksamkeit: 'Benötigt deine Aufmerksamkeit',
     allesRuhig: 'Alles ruhig. Keine Suite wartet auf dich.',
     wartetAufDich: 'Wartet auf deine Antwort',
-    fertigGemeldet: 'Der Raumleiter meldet: fertig',
     brauchtDich: 'Braucht dich',
-    stand: 'Stand',
     takt: 'Takt',
-    taktEinmalig: 'Einmalig – fertig ist fertig',
+    taktEinmalig: 'Einmalig',
     taktEigener: 'Eigener Takt …',
-    taktPlatzhalter: 'z. B. alle 2 Stunden, montags 09:00, 0 7 * * *',
+    taktPlatzhalter: 'z. B. every 2h oder 0 7 * * *',
     dauerauftrag: 'Dauerauftrag',
     leiter: 'Raumleiter-Modell',
     leiterStandard: (modell: string) => `Standard (${modell})`,
     rollen: 'Bots von Anfang an am Tisch (Raumleiter und deine KI sitzen immer dort)',
-    uebungenGeplant: n => (n > 1 ? `Dazu ${n - 1} Übungsläufe mit anderen Ansätzen, wenn Kapazität frei ist.` : ''),
-    uebungslaeufe: n => (n === 1 ? '1 Übungslauf' : `${n} Übungsläufe`),
-    uebungslauf: nr => `Übungslauf ${nr}`,
     keineNachrichten: 'Noch nichts gesagt. Der Raumleiter meldet sich, sobald er geplant hat.',
     denkt: name => `${name} denkt …`,
     schreiben: 'In den Raum sprechen … (Enter sendet, @raumleiter weckt nur ihn)',
@@ -494,6 +474,14 @@ const de: AreaLabels = {
     freigabe: 'bittet um Freigabe',
     freigabeEinmal: 'Einmal erlauben',
     freigabeAblehnen: 'Ablehnen',
+    rueckfrage: 'Rückfrage',
+    rueckfrageAntwort: 'Deine Antwort',
+    rueckfrageSenden: 'Antworten',
+    rundeGescheitert: 'Eine Runde ist gescheitert',
+    rundeNochmal: 'Noch einmal versuchen',
+    zeitplanPausiert: 'pausiert',
+    offeneFreigabe: 'Freigabe offen',
+    offeneRueckfrage: 'Rückfrage offen',
     tuerNach: name => `Durch die Tür nach „${name}“`,
     tuerText: 'Nachricht an den anderen Raum',
     tuerPlatzhalter: 'Was soll der Raumleiter dort wissen oder tun?',
@@ -504,7 +492,7 @@ const de: AreaLabels = {
     verschmelzenHinweis:
       'Zwei Räume werden einer: alle Bots beider Räume an einem Tisch, der Stand beider als Auftakt. Die alten Räume werden aufgelöst.',
     verschmelzenMit: name => `Mit „${name}“ verschmelzen`,
-    zielPlatzhalter: 'Ein Satz: Was muss am Ende fertig sein?'
+    zielPlatzhalter: 'Worum geht es? Das wird deine erste Nachricht im Raum.'
   }
 }
 
@@ -529,7 +517,7 @@ const en: AreaLabels = {
       nutzer: 'The family. Everyone sees only their rooms, the admin sees all.',
       rechner: 'The machine fleet behind Tikki. Foundation for the bot army.',
       gedaechtnis: 'What Tikki remembers: separated by user, system and project.',
-      betrieb: 'How rooms work: practice runs, capacity, around-the-clock operation.',
+      betrieb: 'How rooms work: your name in a room, around-the-clock operation.',
       system: 'Backend, gateway, connections, updates.'
     },
     roles: {
@@ -572,18 +560,10 @@ const en: AreaLabels = {
       note: 'Machines will register themselves later. Until then this is the planned fleet.'
     },
     betrieb: {
-      uebungen: 'Practice runs per order',
-      uebungenHinweis:
-        'Every new order runs this many times: your room plus practice rooms with other models and approaches. You get the first finished result right away; afterwards the room lead learns from the comparison. Practice rooms only start when there is capacity. 1 = off.',
-      kapazitaet: 'Rooms at the same time',
-      kapazitaetHinweis:
-        'How many rooms may work at once across the house. Practice runs respect it, your own room never waits.',
       mensch: 'Person name',
-      menschHinweis: 'Used in practice room names: project-name-2@tikki.team.',
-      briefingAutomatik: 'Briefing on arrival',
-      briefingAutomatikHinweis: 'Tikki greets you with the briefing when the last one is more than four hours old.',
+      menschHinweis: 'Goes in front of what you say in a room, so several people stay apart there.',
       rundUmDieUhr:
-        'Around the clock: rooms with a schedule keep running on the backend even when the app is closed; the watchkeeper walks all rooms every 15 minutes. tikki/werkzeuge/rollen-einrichten.sh sets both up.'
+        'Around the clock: rooms with a schedule keep running on the backend as a standing order even when the app is closed. The watchkeeper walks all rooms every 15 minutes; tikki/werkzeuge/rollen-einrichten.sh sets it up.'
     },
     gedaechtnis: {
       laeuft: 'running on this machine',
@@ -695,7 +675,7 @@ const en: AreaLabels = {
     neueSuiteHinweis: 'Room for an order',
     einstellungen: 'Settings',
     briefing: 'Briefing',
-    briefingLaeuft: 'Collecting …',
+    briefingBitte: 'Please give me a briefing.',
     vorlesen: 'Read replies aloud',
     vorlesenAn: 'on',
     vorlesenAus: 'off',
@@ -730,9 +710,7 @@ const en: AreaLabels = {
     daten: 'Data screen',
     leereAusgabe: 'Nothing finished yet. Results, files and links from the bots appear here.',
     leereDaten: 'Nothing handed in yet. Files, links and folders from the conversation appear here.',
-    leereTodos: 'No tasks on the wall yet. The room lead pins them up once it plans.',
     output: 'Output screen',
-    todoWand: 'To-do wall',
     zurueck: 'To the lobby',
     betreten: 'Enter',
     erneut: 'Try again',
@@ -761,20 +739,15 @@ const en: AreaLabels = {
     aufmerksamkeit: 'Needs your attention',
     allesRuhig: 'All quiet. No suite is waiting for you.',
     wartetAufDich: 'Waiting for your answer',
-    fertigGemeldet: 'The room lead reports: done',
     brauchtDich: 'Needs you',
-    stand: 'Status',
     takt: 'Schedule',
-    taktEinmalig: 'Once – done is done',
+    taktEinmalig: 'Once',
     taktEigener: 'Custom schedule …',
-    taktPlatzhalter: 'e.g. alle 2 Stunden, montags 09:00, 0 7 * * *',
+    taktPlatzhalter: 'e.g. every 2h or 0 7 * * *',
     dauerauftrag: 'Standing order',
     leiter: 'Room-lead model',
     leiterStandard: (modell: string) => `Default (${modell})`,
     rollen: 'Bots at the table from the start (the room lead and your AI always sit there)',
-    uebungenGeplant: n => (n > 1 ? `Plus ${n - 1} practice runs with other approaches when capacity allows.` : ''),
-    uebungslaeufe: n => (n === 1 ? '1 practice run' : `${n} practice runs`),
-    uebungslauf: nr => `Practice run ${nr}`,
     keineNachrichten: 'Nothing said yet. The room lead speaks up once it has planned.',
     denkt: name => `${name} is thinking …`,
     schreiben: 'Speak into the room … (Enter sends, @raumleiter wakes only the lead)',
@@ -786,6 +759,14 @@ const en: AreaLabels = {
     freigabe: 'asks for approval',
     freigabeEinmal: 'Allow once',
     freigabeAblehnen: 'Deny',
+    rueckfrage: 'Question',
+    rueckfrageAntwort: 'Your answer',
+    rueckfrageSenden: 'Answer',
+    rundeGescheitert: 'A turn failed',
+    rundeNochmal: 'Try again',
+    zeitplanPausiert: 'paused',
+    offeneFreigabe: 'Approval pending',
+    offeneRueckfrage: 'Question pending',
     tuerNach: name => `Through the door to “${name}”`,
     tuerText: 'Message to the other room',
     tuerPlatzhalter: 'What should the room lead over there know or do?',
@@ -796,7 +777,7 @@ const en: AreaLabels = {
     verschmelzenHinweis:
       'Two rooms become one: every bot of both rooms at one table, the state of both as the opening. The old rooms are disbanded.',
     verschmelzenMit: name => `Merge with “${name}”`,
-    zielPlatzhalter: 'One sentence: what has to be done in the end?'
+    zielPlatzhalter: 'What is it about? This becomes your first message in the room.'
   }
 }
 

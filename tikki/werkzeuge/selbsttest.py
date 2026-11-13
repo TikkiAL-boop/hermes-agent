@@ -40,7 +40,8 @@ REPO = Path(__file__).resolve().parents[2]
 TIKKI = REPO / "tikki"
 ZWEIG = "tikki-app"
 #: Cronjobs, die rollen-einrichten.sh anlegt: Profil → Jobname.
-CRONJOBS = {"raumleiter": "tikki-takt", "wachhalter": "tikki-rundgang"}
+#: Die Daueraufträge des Hauses. Raum-Takte sind Hermes-Zeitpläne je Raum und stehen nicht hier.
+CRONJOBS = {"wachhalter": "tikki-rundgang"}
 
 OK, WARNUNG, FEHLER = "ok", "warnung", "fehler"
 ZEICHEN = {OK: "✓", WARNUNG: "⚠", FEHLER: "✗"}
@@ -160,7 +161,7 @@ def pruefe_takt(profile: Path) -> Punkt:
                           "Cronjob abgeschaltet: " + ", ".join(aus) + " → hermes -p <profil> cron enable" if aus else ""])))
     if kaputt:
         return Punkt("Takt", WARNUNG, "letzter Lauf gescheitert – " + "; ".join(kaputt) + " → hermes -p <profil> cron logs")
-    return Punkt("Takt", OK, "Raumleiter-Takt (5 min) und Wachhalter-Rundgang (15 min) angelegt")
+    return Punkt("Takt", OK, "Wachhalter-Rundgang (15 min) angelegt; Raum-Takte sind Hermes-Zeitpläne je Raum")
 
 
 def pruefe_raum(home: Path) -> Punkt:

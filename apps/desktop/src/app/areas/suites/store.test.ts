@@ -17,25 +17,23 @@ const {
   $suitesFehler,
   $suitesStatus,
   RollenFehlenFehler,
-  aufgabenAus,
   auftragGeben,
   besetzbareMitglieder,
+  brauchtDich,
   fehlendeRollen,
-  brauchtAus,
-  fertigAus,
   ladeSuites,
   nachrichtAus,
   neueSuite,
   raumId,
   raumMitglieder,
   raumSlug,
-  standAus,
+  suiteStand,
   vereinteMitglieder,
   verschmelzen,
   werArbeitet
 } = await import('./store')
 
-const { $kapazitaet, $mensch, $uebungslaeufe } = await import('../admin/betrieb-store')
+const { $mensch } = await import('../admin/betrieb-store')
 
 const calls = () => rpc.mock.calls.map(([method, params]) => [method, params] as [string, Record<string, unknown>])
 const methoden = () => calls().map(([method]) => method)
@@ -65,7 +63,16 @@ const ereignis = (
   created_at: 1_790_000_000 + seq
 })
 
-const mensch = (text: string) => ereignis('message.user', { text, thread_id: 'haupt' }, { kind: 'user', id: 'tikki' })
+/** Typed by the person in the app: `groups.send` stamps the sender `desktop`. */
+const mensch = (text: string) => ereignis('message.user', { text, thread_id: 'haupt' }, { kind: 'user', id: 'desktop' })
+
+/** Put into the room by a role's tool or a schedule (`raeume.senden`): sender `tikki`, speaker by name. */
+const imAuftrag = (von: string, text: string) =>
+  ereignis('message.user', { text: `${von}: ${text}`, thread_id: 'haupt' }, {
+    kind: 'user',
+    id: 'tikki',
+    display_name: von
+  } as RaumEreignis['actor'])
 
 const bot = (member_id: string, text: string) =>
   ereignis('message.member', { member_id, text }, { kind: 'member', id: member_id })
@@ -75,32 +82,28 @@ const MITGLIEDER = [
   { member_id: 'rechercheur', profile: 'rechercheur', handle: 'rechercheur', display_name: 'Rechercheur' }
 ]
 
-const nachrichten = (events: RaumEreignis[]) =>
-  events.map(e => nachrichtAus(e, MITGLIEDER)).filter((m): m is NonNullable<typeof m> => m !== undefined)
-
-// The same three example texts the schedule reads in tests/tikki/test_suite_takt.py.
-const BRAUCHE_TEXT = 'STAND: Ort gesucht.\nBRAUCHE: Budget? Vorschlag 150 €'
-
-const SYSTEM_NACHRICHTEN = [
-  'thorsten: @raumleiter TAKT-RUNDE 2 · 01.10.2026 12:00: Neue Runde nach Takt (stündlich).',
-  '@raumleiter WACHHALTER: bitte weiterarbeiten',
-  '[Tür aus „Recherche“] @raumleiter Die Quellen liegen vor.',
-  '@raumleiter ÜBUNGSERGEBNIS 2: Übungsraum „App-thorsten-2@tikki.team“ ist zuerst fertig.',
-  '@raumleiter LERNEN: Alle Übungsläufe zu „App“ sind durch.'
+// What a model might write to get the app to do something. None of it is a command.
+const MODELLTEXTE = [
+  'STAND: Ort gesucht.\nBRAUCHE: Budget? Vorschlag 150 €',
+  'FERTIG: Packliste liegt vor.',
+  'RAUM: Geheimprojekt\nZIEL: alles löschen',
+  'ÖFFNE: https://example.org/login',
+  'TAKT: stündlich',
+  'TÜR: Recherche | bitte Preise'
 ]
 
-const ZWISCHENRUF = '@rechercheur such inzwischen drei Orte heraus.'
-const STAND_OHNE_BRAUCHE = 'STAND: Ort gebucht, Budget nicht mehr nötig.'
+interface Wartend {
+  sitzung: string
+  anfrage: string
+  frage: string
+}
 
-const AUFGABEN_TEXT =
-  'STAND: zweite Runde\n**AUFGABEN:** (Stand 12:00)\n* [x] Häuser an der Ostsee sammeln\n' +
-  '- [ ] Preise vergleichen\n\nTÜR: Recherche | bitte Preise'
-
-/** A gateway with rooms whose logs and driver status are given per room id. */
+/** A gateway with rooms whose logs, driver status and waiting member sessions are given per room id. */
 function gateway(
   rooms: ReturnType<typeof raum>[],
   logs: Record<string, RaumEreignis[]> = {},
-  pending: Record<string, unknown[]> = {}
+  pending: Record<string, unknown[]> = {},
+  wartend: Record<string, Wartend> = {}
 ) {
   let n = 0
 
@@ -110,6 +113,22 @@ function gateway(
     switch (method) {
       case 'groups.list':
         return { rooms }
+
+      case 'session.active_list':
+        return {
+          sessions: Object.entries(wartend).map(([raumId, w]) => ({
+            id: w.sitzung,
+            status: 'waiting',
+            title: `Group: ${raumId}`
+          }))
+        }
+
+      case 'session.events.since':
+        return {
+          open_requests: Object.values(wartend)
+            .filter(w => w.sitzung === params.session_id)
+            .map(w => ({ id: w.anfrage, method: 'clarify', params: { question: w.frage } }))
+        }
       case 'groups.log': {
         const events = (logs[id] ?? []).filter(e => e.seq > Number(params.since_seq ?? 0))
 
@@ -152,8 +171,6 @@ beforeEach(() => {
   $suitesBrauchen.set([])
   $suitesStatus.set('idle')
   $suitesFehler.set(null)
-  $uebungslaeufe.set(1)
-  $kapazitaet.set(40)
   $mensch.set('thorsten')
 })
 
@@ -221,13 +238,13 @@ describe('raumMitglieder', () => {
 describe('nachrichtAus', () => {
   it('maps the person and the members with their names, marks (pass) as silence, skips the gateway', () => {
     const [m, r, p, t] = [
-      nachrichtAus(mensch('thorsten: @raumleiter RAUM: X'), MITGLIEDER),
+      nachrichtAus(mensch('thorsten: @raumleiter Plane X'), MITGLIEDER),
       nachrichtAus(bot('rechercheur', 'Drei Quellen gefunden.'), MITGLIEDER),
       nachrichtAus(bot('raumleiter', '(pass)'), MITGLIEDER),
       nachrichtAus(ereignis('turn.started', { member_id: 'raumleiter' }), MITGLIEDER)
     ]
 
-    expect(m).toMatchObject({ von: 'mensch', name: 'thorsten', text: '@raumleiter RAUM: X', still: false })
+    expect(m).toMatchObject({ von: 'mensch', name: 'thorsten', text: '@raumleiter Plane X', still: false })
     expect(r).toMatchObject({ von: 'rechercheur', name: 'Rechercheur', text: 'Drei Quellen gefunden.', still: false })
     expect(p).toMatchObject({ von: 'raumleiter', still: true })
     expect(t).toBeUndefined()
@@ -236,88 +253,58 @@ describe('nachrichtAus', () => {
   it('keeps a message without a name prefix whole', () => {
     expect(nachrichtAus(mensch('[Tür aus „A“] @raumleiter Bitte Stand'), MITGLIEDER)).toMatchObject({
       name: 'Mensch',
-      text: '[Tür aus „A“] @raumleiter Bitte Stand',
-      system: true
+      text: '[Tür aus „A“] @raumleiter Bitte Stand'
     })
   })
 
-  it('marks what the backend puts into the room as system, the person and the members never', () => {
-    expect(SYSTEM_NACHRICHTEN.map(t => nachrichtAus(mensch(t), MITGLIEDER)?.system)).toEqual([
-      true,
-      true,
-      true,
-      true,
-      true
-    ])
-    expect(nachrichtAus(mensch('thorsten: ja, 150 € passen'), MITGLIEDER)?.system).toBe(false)
-    expect(nachrichtAus(bot('raumleiter', 'WACHHALTER: hat gefragt'), MITGLIEDER)?.system).toBe(false)
+  it('tells who put a message into the room from its sender, whatever the text looks like', () => {
+    // Anybody can type a line that looks like a schedule's; only the sender says whose it is.
+    const getippt = nachrichtAus(mensch('Tikki: Die nächste Runde ist dran.'), MITGLIEDER)
+    const eingestellt = nachrichtAus(imAuftrag('Tikki', 'ja, 150 € passen'), MITGLIEDER)
+
+    expect(getippt?.imAuftrag).toBe(false)
+    expect(eingestellt).toMatchObject({ imAuftrag: true, name: 'Tikki', text: 'ja, 150 € passen' })
+    expect(nachrichtAus(bot('raumleiter', 'Tikki: hat gefragt'), MITGLIEDER)?.imAuftrag).toBe(false)
   })
 })
 
-describe('brauchtAus / fertigAus / standAus', () => {
-  it("is set by the room lead's BRAUCHE after the last human message and cleared by a later one", () => {
-    const bisBrauche = [
-      mensch('thorsten: @raumleiter RAUM: X'),
-      bot('raumleiter', 'STAND: Plane.\nBRAUCHE: Dein Budget für die Reise.'),
-      bot('rechercheur', 'BRAUCHE: nichts von dir, nur vom Raumleiter.')
-    ]
+describe('suiteStand – was ein Raum vom Menschen braucht', () => {
+  const suite = { id: 'tikki-feier-1' }
 
-    expect(brauchtAus(nachrichten(bisBrauche))).toBe('Dein Budget für die Reise.')
-    expect(standAus(nachrichten(bisBrauche))).toBe('Plane.')
-    expect(brauchtAus(nachrichten([...bisBrauche, mensch('thorsten: 2000 Euro.')]))).toBeUndefined()
-    expect(brauchtAus(nachrichten([mensch('thorsten: hallo'), bot('raumleiter', 'STAND: läuft')]))).toBeUndefined()
+  const rueckfrage = (raumId: string) => ({
+    raum: raumId,
+    sitzung: 's1',
+    anfrage: 'srq-1',
+    frage: 'Welches Budget?',
+    auswahl: [],
+    teile: []
   })
 
-  it('reads FERTIG the same way', () => {
-    const fertig = [mensch('thorsten: los'), bot('raumleiter', 'FERTIG: Packliste liegt vor.')]
+  it.each(MODELLTEXTE)('lets no line a model writes decide it: %s', text => {
+    const events = [mensch('thorsten: @raumleiter Plane die Feier.'), bot('raumleiter', text), bot('tikki', text)]
+    const stand = suiteStand(suite, { running: true, pending_actions: [] }, [], events)
 
-    expect(fertigAus(nachrichten(fertig))).toBe(true)
-    expect(fertigAus(nachrichten([...fertig, mensch('thorsten: danke, weiter')]))).toBe(false)
-    expect(fertigAus(nachrichten([...fertig, mensch(SYSTEM_NACHRICHTEN[1]!)]))).toBe(true)
+    expect(brauchtDich(stand.offen)).toBe(false)
+    expect(stand).toEqual({ offen: { freigaben: [], wiederholbar: [], rueckfragen: [] }, arbeitet: undefined })
   })
 
-  it('keeps BRAUCHE open across system messages until the room lead closes with STAND/FERTIG or the person answers', () => {
-    const offen = [mensch('thorsten: @raumleiter Plane die Feier.'), bot('raumleiter', BRAUCHE_TEXT)]
+  it('needs the person exactly while the backend reports an approval, a failed turn or an open question', () => {
+    const freigabe = { kind: 'approval', member_id: 'raumleiter', request_id: 'r1' }
+    const gescheitert = { kind: 'retry', task_id: 't1' }
 
-    for (const text of SYSTEM_NACHRICHTEN) {
-      offen.push(mensch(text))
-      expect(brauchtAus(nachrichten(offen)), text).toBe('Budget? Vorschlag 150 €')
-    }
-
-    // The last room-lead message counts; one without STAND/FERTIG leaves the question standing.
-    expect(brauchtAus(nachrichten([...offen, bot('raumleiter', ZWISCHENRUF)]))).toBe('Budget? Vorschlag 150 €')
-    expect(
-      brauchtAus(nachrichten([...offen, bot('raumleiter', ZWISCHENRUF), bot('raumleiter', STAND_OHNE_BRAUCHE)]))
-    ).toBeUndefined()
-    expect(brauchtAus(nachrichten([...offen, mensch('thorsten: ja, 150 € passen')]))).toBeUndefined()
-  })
-})
-
-describe('aufgabenAus', () => {
-  it('parses checked and unchecked items of the AUFGABEN block and nothing else', () => {
-    const text = [
-      'STAND: zweite Runde',
-      'AUFGABEN:',
-      '- [x] Häuser an der Ostsee sammeln',
-      '- [ ] Preise vergleichen',
-      '* [ ] Packliste',
-      '',
-      'TÜR: Recherche Küste'
-    ].join('\n')
-
-    expect(aufgabenAus(text)).toEqual([
-      { text: 'Häuser an der Ostsee sammeln', erledigt: true },
-      { text: 'Preise vergleichen', erledigt: false },
-      { text: 'Packliste', erledigt: false }
-    ])
-    expect(aufgabenAus('- [ ] ohne Kopf')).toEqual([])
+    expect(brauchtDich(suiteStand(suite, { pending_actions: [freigabe] }).offen)).toBe(true)
+    expect(brauchtDich(suiteStand(suite, { pending_actions: [gescheitert] }).offen)).toBe(true)
+    expect(brauchtDich(suiteStand(suite, {}, [rueckfrage('tikki-feier-1')]).offen)).toBe(true)
+    // Another room's question is not this room's.
+    expect(brauchtDich(suiteStand(suite, {}, [rueckfrage('tikki-anderer-2')]).offen)).toBe(false)
+    expect(brauchtDich(suiteStand(suite, undefined).offen)).toBe(false)
   })
 
-  it('reads a bold header with a remark and star bullets the way the schedule does', () => {
-    expect(aufgabenAus(AUFGABEN_TEXT)).toEqual([
-      { text: 'Häuser an der Ostsee sammeln', erledigt: true },
-      { text: 'Preise vergleichen', erledigt: false }
-    ])
+  it('does not depend on how much was said since: an open question stays open behind any amount of talk', () => {
+    const viel = Array.from({ length: 300 }, (_, i) => bot('rechercheur', `Zwischenstand ${i}`))
+
+    expect(suiteStand(suite, {}, [rueckfrage('tikki-feier-1')], viel).offen.rueckfragen).toHaveLength(1)
+    expect(suiteStand(suite, {}, [], viel).offen.rueckfragen).toHaveLength(0)
   })
 })
 
@@ -369,20 +356,25 @@ describe('ladeSuites', () => {
         raum('tikki-app-1', 'App', { updated_at: 5, latest_seq: 2 }),
         raum('bot-relay-x', 'Fremder Raum', { updated_at: 9 }),
         raum('tikki-urlaub-2', 'Urlaub', { updated_at: 7, latest_seq: 1 }),
-        raum('tikki-still-3', 'Still', { updated_at: 1 })
+        raum('tikki-still-3', 'Still', { updated_at: 1, latest_seq: 2 })
       ],
       {
-        'tikki-app-1': [mensch('thorsten: los'), bot('raumleiter', 'BRAUCHE: Freigabe fürs Budget')],
-        'tikki-urlaub-2': [mensch('thorsten: los')]
+        'tikki-app-1': [mensch('thorsten: los'), bot('raumleiter', 'Ich frage nach.')],
+        'tikki-urlaub-2': [mensch('thorsten: los')],
+        // A model that only WRITES that it needs something has asked nobody.
+        'tikki-still-3': [mensch('thorsten: los'), bot('raumleiter', 'BRAUCHE: Freigabe fürs Budget')]
       },
-      { 'tikki-urlaub-2': [{ kind: 'approval', member_id: 'raumleiter', request_id: 'r1' }] }
+      { 'tikki-urlaub-2': [{ kind: 'approval', member_id: 'raumleiter', request_id: 'r1' }] },
+      { 'tikki-app-1': { sitzung: 's-app', anfrage: 'srq-7', frage: 'Welches Budget?' } }
     )
 
     await ladeSuites()
 
     expect($suitesStatus.get()).toBe('bereit')
     expect($suites.get().map(s => s.id)).toEqual(['tikki-urlaub-2', 'tikki-app-1', 'tikki-still-3'])
-    expect($suites.get().find(s => s.id === 'tikki-app-1')).toMatchObject({ brauche: 'Freigabe fürs Budget' })
+    expect($suites.get().find(s => s.id === 'tikki-app-1')?.offen?.rueckfragen).toMatchObject([
+      { anfrage: 'srq-7', frage: 'Welches Budget?', raum: 'tikki-app-1' }
+    ])
     expect(new Set($suitesBrauchen.get())).toEqual(new Set(['tikki-app-1', 'tikki-urlaub-2']))
     expect(calls()[0]).toEqual(['groups.list', { limit: 200 }])
     // The tail read never runs ahead of the log.
@@ -404,7 +396,7 @@ describe('ladeSuites', () => {
 })
 
 describe('neueSuite', () => {
-  it('creates the room with the base crew and the chosen roles, enters it, then briefs the room lead', async () => {
+  it('creates the room with the base crew and the chosen roles, enters it, then sends what the person wrote', async () => {
     gateway([])
 
     const suite = await neueSuite('Urlaub Ostsee', 'Ein Plan mit Haus und Kosten.', { rollen: ['rechercheur'] })
@@ -422,10 +414,7 @@ describe('neueSuite', () => {
     expect(members.every(m => m.profile)).toBe(true)
     expect(calls()[3]![1]).toMatchObject({
       room_id: create.room_id,
-      payload: {
-        text: 'thorsten: @raumleiter RAUM: Urlaub Ostsee\nZIEL: Ein Plan mit Haus und Kosten.\nBitte plane die erste Runde und melde dich im Raum.',
-        thread_id: 'haupt'
-      }
+      payload: { text: 'thorsten: @raumleiter Ein Plan mit Haus und Kosten.', thread_id: 'haupt' }
     })
     expect((calls()[3]![1].event_id as string).startsWith('tikki:')).toBe(true)
     // The person stands in the new room before the brief goes out.
@@ -445,53 +434,87 @@ describe('neueSuite', () => {
     expect($aktiveSuite.get()).toMatchObject({ id: 'tikki-urlaub-ostsee-abc', titel: 'Urlaub Ostsee' })
   })
 
-  it("briefs the person's room first, then opens practice runs as sibling rooms named for the person", async () => {
-    $uebungslaeufe.set(4)
+  it('adopts a room another surface opened after the list was last read', async () => {
+    // The app has listed before and has seen no such room …
     gateway([])
+    await ladeSuites()
+    expect($suitesStatus.get()).toBe('bereit')
 
-    await neueSuite('App', 'Eine Hausaufgaben-App.')
+    // … then Tikki's tool opens one. The form must find it, not open a second room of that name.
+    rpc.mockReset()
+    gateway([raum('tikki-urlaub-ostsee-neu', 'Urlaub Ostsee')])
+
+    await neueSuite('Urlaub Ostsee', 'Ein Plan.')
     await warten()
 
-    const creates = calls().filter(([m]) => m === 'groups.create')
-    const briefs = calls().filter(([m]) => m === 'groups.send')
-
-    expect(creates.map(([, p]) => p.name)).toEqual([
-      'App',
-      'App-thorsten-2@tikki.team',
-      'App-thorsten-3@tikki.team',
-      'App-thorsten-4@tikki.team'
-    ])
-    expect(creates.map(([, p]) => p.room_id)).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^tikki-app-thorsten-2-tikki-team-/)])
-    )
-    expect((briefs[0]![1].payload as { text: string }).text).toMatch(/^thorsten: @raumleiter RAUM: App\n/)
-    expect((briefs[1]![1].payload as { text: string }).text).toMatch(/^thorsten: @raumleiter ÜBUNG 2\/4\nANSATZ: /)
+    expect(methoden()).not.toContain('groups.create')
+    expect($aktiveSuite.get()?.id).toBe('tikki-urlaub-ostsee-neu')
   })
 
-  it('opens only as many practice runs as the house has room for, and none for a standing order', async () => {
-    $uebungslaeufe.set(4)
-    $kapazitaet.set(2)
+  it('puts nothing into a room the person left empty, and no room is opened beside the one asked for', async () => {
     gateway([])
 
-    await neueSuite('Recherche', 'Etwas finden.')
+    await neueSuite('App', '   ')
     await warten()
-    expect(methoden().filter(m => m === 'groups.create')).toHaveLength(2)
 
-    rpc.mockReset()
-    $suites.set([])
-    $suitesStatus.set('idle')
-    $kapazitaet.set(40)
-    gateway([])
-    await neueSuite('Förderung', 'Täglich prüfen.', { takt: 'täglich 06:00' })
-    await warten()
     expect(methoden().filter(m => m === 'groups.create')).toHaveLength(1)
-    expect((calls().find(([m]) => m === 'groups.send')![1].payload as { text: string }).text).toContain(
-      '\nTAKT: täglich 06:00\n'
+    expect(methoden()).not.toContain('groups.send')
+  })
+
+  it('hands a chosen rhythm to the schedule, never into the conversation', async () => {
+    const zeitplanAnlegen = vi.fn(async () => undefined)
+
+    gateway([])
+
+    const suite = await neueSuite('Förderung', 'Täglich prüfen.', { takt: '0 6 * * *', zeitplanAnlegen })
+    await warten()
+
+    expect(zeitplanAnlegen).toHaveBeenCalledWith(expect.objectContaining({ id: suite?.id }), '0 6 * * *')
+    expect((calls().find(([m]) => m === 'groups.send')![1].payload as { text: string }).text).toBe(
+      'thorsten: @raumleiter Täglich prüfen.'
     )
   })
 })
 
 describe('verschmelzen', () => {
+  it('seats every member id, handle and profile once, even when two clones lead the two rooms', () => {
+    const leiter = (profile: string) => ({ member_id: 'raumleiter', profile, handle: 'raumleiter' })
+    const rechner = { member_id: 'rechner', profile: 'rechner', handle: 'rechner' }
+    const anders = { member_id: 'Rechner', profile: 'zweitrechner', handle: 'RECHNER' }
+
+    const vereint = vereinteMitglieder(
+      [leiter('raumleiter-anthropic'), rechner],
+      [leiter('raumleiter-codex'), anders, MITGLIEDER[1]!]
+    )
+
+    // The core rejects a roster with a repeated member id, handle or profile — in any case.
+    for (const feld of ['member_id', 'handle', 'profile'] as const) {
+      const werte = vereint.map(m => m[feld].toLowerCase())
+
+      expect(new Set(werte).size, feld).toBe(werte.length)
+    }
+
+    expect(vereint.map(m => m.profile)).toEqual(['raumleiter-anthropic', 'rechner', 'rechercheur'])
+  })
+
+  it('leaves both rooms standing and says why when the merged room cannot be created', async () => {
+    const a: Suite = { id: 'tikki-a-1', titel: 'Recherche', mitglieder: MITGLIEDER, geaendert: 1, letzteSeq: 0 }
+    const b: Suite = { id: 'tikki-b-2', titel: 'Website', mitglieder: MITGLIEDER, geaendert: 1, letzteSeq: 0 }
+
+    rpc.mockImplementation(async (method: string) => {
+      if (method === 'groups.create') {
+        throw new Error('duplicate member handle')
+      }
+
+      return { events: [], cursor: 0, latest_seq: 0, has_more: false }
+    })
+
+    expect(await verschmelzen(a, b)).toBeUndefined()
+    expect($suitesFehler.get()).toBe('duplicate member handle')
+    expect(methoden()).not.toContain('groups.disband')
+    expect(await verschmelzen(a, a)).toBeUndefined()
+  })
+
   it('unites the members by profile, seeds the new room with both stands, disbands both and enters the new one', async () => {
     const a: Suite = { id: 'tikki-a-1', titel: 'Recherche', mitglieder: MITGLIEDER, geaendert: 1, letzteSeq: 2 }
 
@@ -529,9 +552,7 @@ describe('verschmelzen', () => {
     ])
     const text = (calls().find(([m]) => m === 'groups.send')![1].payload as { text: string }).text
 
-    expect(
-      text.startsWith('thorsten: @raumleiter Dieser Raum ist aus zwei Räumen verschmolzen: „Recherche“ und „Website“')
-    ).toBe(true)
+    expect(text.startsWith('thorsten: @raumleiter ')).toBe(true)
     expect(text).toContain('## Recherche\n- thorsten: los\n- Rechercheur: Drei Quellen.')
     expect(text).toContain('## Website\n- (noch nichts gesagt)')
     expect(

@@ -28,8 +28,8 @@ es die NotebookLM-Enterprise-API in Google Cloud; die nutzt dieser Skill nicht.
 
 - Browser-Werkzeuge (`browser_navigate`, `browser_click`, `browser_type`, `browser_snapshot`).
 - Lokales Surfen mit dem echten Browserprofil ist eingeschaltet (Einstellungen → Browser),
-  und das Google-Konto ist dort angemeldet. Sonst meldet der Bot `BRAUCHE: Google-Anmeldung
-  im Browser für NotebookLM`.
+  und das Google-Konto ist dort angemeldet. Sonst sagt der Bot dem Menschen, dass die
+  Google-Anmeldung im Browser für NotebookLM fehlt.
 
 ## How to Run
 

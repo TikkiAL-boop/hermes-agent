@@ -22,8 +22,8 @@ config_schema:
   mail_freigabe:
     type: list
     default: []
-    label: "Senden ohne Menschen"
-    description: "Empfänger (Adresse oder @domain), an die Tikki in Daueraufträgen und Räumen selbst senden darf. Alles andere wird Entwurf, und der Mensch entscheidet."
+    label: "Senden ohne Nachfrage"
+    description: "Empfänger (Adresse oder @domain), an die Tikki ohne Freigabe senden darf. Für alle anderen fragt sie den Menschen; ohne sein Ja wird die Mail Entwurf."
   mail_imap_host:
     type: str
     label: "IMAP-Server"
